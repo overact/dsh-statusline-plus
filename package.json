@@ -1,0 +1,82 @@
+{
+  "name": "dsh-statusline-plus",
+  "version": "0.1.0",
+  "description": "Statusline for DeepSeek Harness Web: DeepSeek balance and peak hours, Kimi / Z.ai / Zhipu / OpenCode / OpenRouter / Codex / Antigravity quotas, Git state, context, cost, agent and tool activity, streaming TPS",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "statusline",
+    "quota",
+    "deepseek",
+    "kimi",
+    "zai",
+    "git",
+    "tps",
+    "web-ui"
+  ],
+  "homepage": "https://github.com/overact/dsh-statusline-plus#readme",
+  "bugs": {
+    "url": "https://github.com/overact/dsh-statusline-plus/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/overact/dsh-statusline-plus.git"
+  },
+  "license": "MIT",
+  "author": "overact",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "check": "node --check lib/index.js && node --check lib/client.js && node --check lib/provider-presets.js && node --check lib/request-pool.js && node --check lib/tps.js && node --check lib/session-metrics.js && node --check lib/model-pricing.js && node --check lib/tool-activity.js && node --check lib/peak-schedule.js && node --check scripts/verification.mjs && node --check scripts/verify.mjs && node --check scripts/ui-fixture.mjs && node --check scripts/verify-ui.mjs && node --check scripts/screenshots.mjs",
+    "test": "node --test --test-reporter=tap --experimental-test-isolation=none tests/*.test.js",
+    "verify": "node scripts/verify.mjs",
+    "verify:all": "node scripts/verify.mjs --all",
+    "verify:ui": "node scripts/verify-ui.mjs",
+    "screenshots": "node scripts/screenshots.mjs",
+    "ui:install": "npm --prefix tools/ui ci --ignore-scripts"
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0",
+    "dsh": ">=0.2.0-rc.2 <0.3.0-0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-session",
+        "@deepseek-ai/dsh-client-ui-workspace",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ],
+      "platform": "web"
+    }
+  },
+  "dependencies": {
+    "zod": "^4.0.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-home-paths": ">=0.2.0-rc.2 <0.3.0-0",
+    "@deepseek-ai/schemastery": ">=3.18.3"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh": "0.2.0-rc.2"
+  }
+}

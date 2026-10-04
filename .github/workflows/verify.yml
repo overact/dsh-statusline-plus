@@ -1,0 +1,68 @@
+name: Verify
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tools/ui/package-lock.json
+      - name: Install project dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund --no-package-lock
+      - name: Syntax and full test suite
+        run: npm run verify:all -- --ui none
+      - name: Select UI coverage
+        id: ui
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          node --input-type=module <<'JS'
+          import { execFileSync } from 'node:child_process'
+          import { appendFileSync } from 'node:fs'
+          import { selectChecks } from './scripts/verification.mjs'
+          const base = process.env.BASE_SHA
+          let run = true
+          if (base && !/^0+$/.test(base)) {
+            const files = execFileSync('git', ['diff', '--name-only', '-z', base, 'HEAD'], { encoding: 'utf8' }).split('\0').filter(Boolean)
+            run = selectChecks(files).panel !== null
+          }
+          appendFileSync(process.env.GITHUB_OUTPUT, `run=${run}\n`)
+          JS
+      - name: Install UI tooling
+        if: steps.ui.outputs.run == 'true'
+        run: |
+          npm run ui:install
+          node tools/ui/node_modules/playwright/cli.js install --with-deps chromium
+      - name: Offline browser smoke check
+        if: steps.ui.outputs.run == 'true'
+        run: npm run verify:ui
+      - name: Verify public demo screenshots
+        if: steps.ui.outputs.run == 'true'
+        run: npm run screenshots
+      - name: Save reports and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification
+          path: output/playwright/
+          retention-days: 7
