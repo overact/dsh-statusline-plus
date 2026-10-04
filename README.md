@@ -1,6 +1,6 @@
 # dsh-statusline-plus
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue)](https://github.com/overact/dsh-statusline-plus/releases/tag/v0.1.0)
+[![Version](https://img.shields.io/badge/version-0.1.1-blue)](https://github.com/overact/dsh-statusline-plus/releases/tag/v0.1.1)
 [![Verify](https://github.com/overact/dsh-statusline-plus/actions/workflows/verify.yml/badge.svg)](https://github.com/overact/dsh-statusline-plus/actions/workflows/verify.yml)
 
 [English](#english) | [简体中文](#简体中文)
@@ -62,9 +62,9 @@ All screenshots use illustrative data rendered by the actual plugin UI; they con
 Requires DeepSeek Harness **>=0.2.0-rc.2 and <0.3.0**; tested on **0.2.0-rc.2**. The package declares a `dsh.bundle`, so installing it registers the `statusline-plus` row; no manual `cordis.patch.yml` edit is needed.
 
 ```sh
-dsh plugin --profile web add https://github.com/overact/dsh-statusline-plus/releases/download/v0.1.0/dsh-statusline-plus-0.1.0.tgz
+dsh plugin --profile web add https://github.com/overact/dsh-statusline-plus/releases/download/v0.1.1/dsh-statusline-plus-0.1.1.tgz
 # or pin the source tag
-dsh plugin --profile web add github:overact/dsh-statusline-plus#v0.1.0
+dsh plugin --profile web add github:overact/dsh-statusline-plus#v0.1.1
 # or from a local clone
 dsh plugin --profile web add file:/path/to/dsh-statusline-plus
 ```

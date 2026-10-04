@@ -1,0 +1,6 @@
+# dsh-statusline-plus bundle patch: one dual-face row for the Web profile.
+# The node half (exports ".") serves quota, Git, TPS and peak routes on the
+# host; `dsh.client` in package.json loads the browser half (exports "./client").
+- insert:
+    - id: statusline-plus
+      name: dsh-statusline-plus

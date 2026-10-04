@@ -1,5 +1,10 @@
 # Release notes
 
+## 0.1.1
+
+- Include the bundle patch in the public source checkout. The 0.1.0 tarball already contains it; use 0.1.1 for a source-tag installation.
+- Check declared distribution entry files in CI before publishing.
+
 ## 0.1.0
 
 First public release. Earlier private snapshots used a separate development version sequence.

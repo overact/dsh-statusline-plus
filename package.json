@@ -1,6 +1,6 @@
 {
   "name": "dsh-statusline-plus",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Statusline for DeepSeek Harness Web: DeepSeek balance and peak hours, Kimi / Z.ai / Zhipu / OpenCode / OpenRouter / Codex / Antigravity quotas, Git state, context, cost, agent and tool activity, streaming TPS",
   "keywords": [
     "deepseek-harness",
