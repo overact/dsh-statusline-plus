@@ -1,5 +1,9 @@
 # Release notes
 
+## Unreleased
+
+- Release the settings listener with the plugin scope, like every other listener and route, so repeated Harness reloads never leave a duplicate handler.
+
 ## 0.1.1
 
 - Include the bundle patch in the public source checkout. The 0.1.0 tarball already contains it; use 0.1.1 for a source-tag installation.
