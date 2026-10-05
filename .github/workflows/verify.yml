@@ -42,7 +42,9 @@ jobs:
           import { selectChecks } from './scripts/verification.mjs'
           const base = process.env.BASE_SHA
           let run = true
-          if (base && !/^0+$/.test(base)) {
+          let known = false
+          try { execFileSync('git', ['cat-file', '-e', `${base}^{commit}`], { stdio: 'ignore' }); known = true } catch {}
+          if (base && !/^0+$/.test(base) && known) {
             const files = execFileSync('git', ['diff', '--name-only', '-z', base, 'HEAD'], { encoding: 'utf8' }).split('\0').filter(Boolean)
             run = selectChecks(files).panel !== null
           }
