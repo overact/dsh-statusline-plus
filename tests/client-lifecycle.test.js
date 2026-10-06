@@ -609,7 +609,7 @@ test('QuotaChip passes the saved percentage mode, defaulting to used', () => {
 
 test('settings switch percentage mode and reset preferences in two steps without touching accounts', async () => {
   const h = harness()
-  h.setConfig({ ...config, quotaPercentMode: 'used', showTps: true, cacheTtlMs: 30000, componentOrder: ['tools', 'git'],
+  h.setConfig({ ...config, hideBottomOnNarrow: true, quotaPercentMode: 'used', showTps: true, cacheTtlMs: 30000, componentOrder: ['tools', 'git'],
     apiKeyEnv: 'MY_REF', codexAccount: 'a.json', gitCwd: '/repo', showCodexQuota: false, providers: [{ id: 'deepseek', apiKeyEnv: 'DS_REF' }] })
   h.renderComponent(h.SettingsPage)
   let view = h.renderComponent(h.SettingsPage)
@@ -628,11 +628,12 @@ test('settings switch percentage mode and reset preferences in two steps without
   const ops = h.mutations[1]
   assert.ok(ops.every(op => op.op === 'unset'))
   const keys = ops.map(op => op.path[0])
-  for (const key of ['quotaPercentMode', 'showTps', 'cacheTtlMs', 'componentOrder', 'enabled']) assert.ok(keys.includes(key), key)
+  for (const key of ['quotaPercentMode', 'showTps', 'cacheTtlMs', 'componentOrder', 'enabled', 'hideBottomOnNarrow']) assert.ok(keys.includes(key), key)
   for (const key of ['apiKeyEnv', 'usageUrl', 'codexAccount', 'antigravityAccount', 'gitCwd', 'providers', 'showCodexQuota', 'showAntigravityQuota', 'showOpenCodeQuota']) assert.ok(!keys.includes(key), key)
   view = h.renderComponent(h.SettingsPage)
   assert.equal(descendants(view, node => node.props?.['data-mode'] === 'used')[0].props['aria-pressed'], true)
   assert.equal(descendants(view, node => node.props?.name === 'cacheTtlMs')[0].props.defaultValue, '60')
+  assert.equal(descendants(view, node => node.props?.name === 'hideBottomOnNarrow')[0].props.checked, false)
   assert.match(textContent(view), /Defaults restored/)
   h.advance(700); await flush()
   assert.equal(h.mutations.length, 2, 'no debounced save writes the old values back')

@@ -17,7 +17,7 @@ function options(args) {
     else if (arg === '--plan') value.plan = true
     else throw new Error('Unknown option: ' + arg)
   }
-  if (!['auto', 'none', 'cost', 'subagents', 'all'].includes(value.ui)) throw new Error('--ui must be auto, none, cost, subagents or all')
+  if (!['auto', 'none', 'cost', 'subagents', 'responsive', 'all'].includes(value.ui)) throw new Error('--ui must be auto, none, cost, subagents, responsive or all')
   if (value.styleOnly && value.ui === 'none') throw new Error('--style-only keeps the browser check enabled')
   if (value.files.some(file => file.startsWith('/') || file.split('/').includes('..'))) throw new Error('--files paths must stay inside the project')
   return value

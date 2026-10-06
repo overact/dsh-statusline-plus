@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join, relative, resolve } from 'node:path'
 import { artifacts, excerpt, redact, root } from './verification.mjs'
-import { mountFixture, uiRequire } from './ui-fixture.mjs'
+import { mountFixture, mountResponsiveFixture, uiRequire } from './ui-fixture.mjs'
 
 function options(args) {
   const opts = { panel: 'all', live: false, session: null, service: 'dsh-web', output: null }
@@ -16,7 +16,8 @@ function options(args) {
       opts[arg.slice(2)] = value
     } else throw new Error('Unknown option: ' + arg)
   }
-  if (!['all', 'cost', 'subagents'].includes(opts.panel)) throw new Error('--panel must be cost, subagents or all')
+  if (!['all', 'cost', 'subagents', 'responsive'].includes(opts.panel)) throw new Error('--panel must be cost, subagents, responsive or all')
+  if (opts.live && opts.panel === 'responsive') throw new Error('Responsive verification changes fixture settings and is offline only')
   if (opts.live && !opts.session) throw new Error('--live requires an explicitly selected --session ID')
   return opts
 }
@@ -126,6 +127,53 @@ async function verifySubagents(page, folder, live, count) {
   return { panel: 'subagents', ...size, lifecycle: live ? 'read-only snapshot' : 'progress/expiry/resumption passed', screenshot: relative(root, screenshot) }
 }
 
+async function verifyResponsive(page, folder) {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mountResponsiveFixture(page)
+  const toggle = page.getByRole('checkbox', { name: 'Hide bottom status line on narrow screens', exact: true })
+  const dock = page.locator('#fixture-dock .slp-root')
+  const assertResources = async (open, total) => {
+    await page.waitForFunction(({ open, total }) => {
+      const state = window.slpResponsive
+      return state.sources.filter(source => !source.closed).length === open &&
+        state.gitRequests.length === total && state.gitRequests.filter(request => !request.aborted).length === open
+    }, { open, total })
+  }
+  await toggle.waitFor()
+  if (!await toggle.isChecked() || await dock.count()) throw new Error('Stored preference did not suppress the initial narrow dock')
+  await assertResources(0, 0)
+  await page.locator('#fixture-header .slp-quota-with-age').waitFor()
+  await page.locator('#fixture-footer .slp-peak-dot-btn').waitFor()
+  await page.setViewportSize({ width: 481, height: 844 })
+  await dock.waitFor(); await assertResources(1, 1)
+  await page.setViewportSize({ width: 480, height: 844 })
+  await dock.waitFor({ state: 'detached' }); await assertResources(0, 1)
+  await page.setViewportSize({ width: 320, height: 844 })
+  await page.clock.runFor(2000); await assertResources(0, 1)
+  if (!await page.locator('#fixture-header .slp-quota-with-age').isVisible() ||
+      !await page.locator('#fixture-footer .slp-peak-dot-btn').isVisible() ||
+      !await page.locator('#fixture-native').isVisible()) throw new Error('Hiding the dock affected other UI')
+  await toggle.uncheck(); await page.clock.runFor(700)
+  await dock.waitFor(); await assertResources(1, 2)
+  await toggle.check(); await page.clock.runFor(700)
+  await dock.waitFor({ state: 'detached' }); await assertResources(0, 2)
+  await page.evaluate(() => window.slpFixtureRoot.unmount())
+  await page.waitForFunction(() => window.slpResponsive.mediaListeners === 0)
+  await page.evaluate(() => window.remountResponsiveFixture())
+  await toggle.waitFor()
+  if (!await toggle.isChecked() || await dock.count()) throw new Error('Setting was not retained on remount')
+  await assertResources(0, 2)
+  const screenshot = join(folder, 'responsive-settings.png')
+  await page.locator('.slp-set').screenshot({ path: screenshot, animations: 'disabled' })
+  await page.setViewportSize({ width: 768, height: 844 })
+  await dock.waitFor(); await assertResources(1, 3)
+  await page.evaluate(() => window.disposeResponsiveFixture())
+  await assertResources(0, 3)
+  await page.waitForFunction(() => window.slpResponsive.mediaListeners === 0)
+  return { panel: 'responsive', widths: [320, 390, 480, 481, 768],
+    lifecycle: 'initial suppression/settings save/remount/resize/resource cleanup passed', screenshot: relative(root, screenshot) }
+}
+
 let browser, folder
 try {
   const opts = options(process.argv.slice(2)), errors = [], started = performance.now()
@@ -140,14 +188,15 @@ try {
   page.on('pageerror', error => errors.push(redact(error.message)))
   let network = 0
   page.on('request', request => { if (/^https?:/.test(request.url())) network++ })
-  const data = opts.live ? await mountLive(page, opts) : (await mountFixture(page), { hasCosts: true, subagents: 2 })
+  const data = opts.live ? await mountLive(page, opts) : opts.panel === 'responsive' ? {} : (await mountFixture(page), { hasCosts: true, subagents: 2 })
   const checks = []
-  if (opts.panel !== 'subagents') {
+  if (['all', 'cost'].includes(opts.panel)) {
     if (!data.hasCosts) throw new Error('Selected session has no priced usage')
     checks.push(await verifyCost(page, folder, opts.live))
   }
-  if (opts.panel !== 'cost') checks.push(await verifySubagents(page, folder, opts.live, data.subagents))
-  if (!opts.live) await page.evaluate(() => window.slpFixtureRoot.unmount())
+  if (['all', 'subagents'].includes(opts.panel)) checks.push(await verifySubagents(page, folder, opts.live, data.subagents))
+  if (!opts.live && ['all', 'responsive'].includes(opts.panel)) checks.push(await verifyResponsive(page, folder))
+  else if (!opts.live) await page.evaluate(() => window.slpFixtureRoot.unmount())
   if (errors.length || !opts.live && network) throw new Error(errors.join('; ') || 'Offline fixture made a network request')
   if (opts.live && await page.evaluate(() => window.slpModules.entries.state.getSnapshot().failures.length)) throw new Error('Native module loader reported failures')
   const report = { ok: true, mode: opts.live ? 'live' : 'fixture', durationMs: Math.round(performance.now() - started), checks, errors: 0 }

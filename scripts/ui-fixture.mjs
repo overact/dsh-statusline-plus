@@ -24,7 +24,7 @@ export async function mountFixture(page) {
   })
   const source = await readFile(join(root, 'lib/client.js'), 'utf8')
   if (!source.includes('return module.exports')) throw new Error('Client factory format changed; update UI fixture adapter')
-  await page.addScriptTag({ content: source.replace('return module.exports', 'return { ActivityRow, CostRow, CSS }') })
+  await page.addScriptTag({ content: source.replace('return module.exports', 'return { apply, ActivityRow, CostRow, CSS }') })
   await page.evaluate(() => {
     const { React, ReactDOM, slpComponents: components } = window
     const style = document.createElement('style'); style.textContent = components.CSS; document.head.appendChild(style)
@@ -47,5 +47,79 @@ export async function mountFixture(page) {
     }
     window.slpFixtureRoot = ReactDOM.createRoot(document.getElementById('root'))
     window.slpFixtureRoot.render(React.createElement(App))
+  })
+}
+
+// Exercise the registered settings/header/dock slots together, with native-like
+// configuration updates and observable live-resource cleanup, without accounts.
+export async function mountResponsiveFixture(page) {
+  await mountFixture(page)
+  await page.evaluate(() => {
+    window.slpFixtureRoot.unmount()
+    document.getElementById('shell').style.cssText = 'position:static;height:auto;overflow:visible'
+    document.getElementById('root').style.cssText = 'position:static;padding:12px'
+    const { React, ReactDOM, slpComponents: components } = window
+    const defaults = { enabled: true, hideBottomOnNarrow: false, showGit: true, showTps: true,
+      showContext: false, showCost: false, showActivity: false, showTools: false, showCwd: false,
+      showQuota: true, quotaAuto: false, showDeepseekPeak: false, showPeakDot: true, providers: [],
+      cacheTtlMs: 60000, fetchTimeoutMs: 10000 }
+    let config = { ...defaults, hideBottomOnNarrow: true }
+    const listeners = new Set(), registrations = new Map(), cleanups = []
+    window.slpResponsive = { sources: [], gitRequests: [], mutations: [], mediaListeners: 0 }
+    const activity = window.slpResponsive
+    const matchMedia = window.matchMedia.bind(window)
+    window.matchMedia = query => {
+      const media = matchMedia(query), add = media.addEventListener.bind(media), remove = media.removeEventListener.bind(media)
+      media.addEventListener = (name, fn) => { if (name === 'change') activity.mediaListeners++; add(name, fn) }
+      media.removeEventListener = (name, fn) => { if (name === 'change') activity.mediaListeners--; remove(name, fn) }
+      return media
+    }
+    window.EventSource = class {
+      constructor(url) { this.url = url; activity.sources.push(this) }
+      close() { this.closed = true }
+    }
+    window.fetch = async (url, options = {}) => {
+      if (url === '/statusline/api/git') {
+        const request = { aborted: false }; activity.gitRequests.push(request)
+        return new Promise(resolve => options.signal.addEventListener('abort', () => {
+          request.aborted = true; resolve({ json: async () => ({ ok: false, error: 'aborted' }) })
+        }))
+      }
+      if (url === '/statusline/api/usage') return { json: async () => ({ ok: true, data: {
+        primary: { usedPercent: 20, windowMinutes: 300 }, fetchedAt: Date.now(),
+      } }) }
+      if (url === '/statusline/api/peak-schedule') return { json: async () => ({ ok: false }) }
+      throw new Error('Unexpected responsive fixture request: ' + url)
+    }
+    const scope = {
+      getSnapshot: () => ({ value: config, mode: 'host', writable: true }),
+      subscribe: fn => { listeners.add(fn); return () => listeners.delete(fn) },
+      mutate: async ops => {
+        activity.mutations.push(ops)
+        for (const op of ops) config = { ...config, [op.path[0]]: op.op === 'unset' ? defaults[op.path[0]] : op.value }
+        listeners.forEach(fn => fn())
+      },
+    }
+    const slots = { inject: (_name, setup) => setup(), register: (spec, component) => {
+      registrations.set(spec.name, component); return () => registrations.delete(spec.name)
+    } }
+    components.apply({ configForms: { get: () => scope }, get: name => name === 'slots' ? slots : null,
+      effect: setup => { const cleanup = setup(); if (cleanup) cleanups.push(cleanup) } })
+    const sessionProps = { sessionId: 'fixture-parent', useProjection: () => ({ steps: 0 }),
+      useSessions: select => select({ byId: { 'fixture-parent': { cwd: '/fixture-repo' } } }) }
+    function App() {
+      return React.createElement(React.Fragment, null,
+        React.createElement('div', { id: 'fixture-header' }, React.createElement(registrations.get('conversation.session.header.actions'), sessionProps)),
+        React.createElement('div', { id: 'fixture-native' }, 'Native composer stats'),
+        React.createElement('div', { id: 'fixture-dock' }, React.createElement(registrations.get('conversation.composer.dock'), sessionProps)),
+        React.createElement('div', { id: 'fixture-footer' }, React.createElement(registrations.get('sidebar.footer.action'))),
+        React.createElement(registrations.get('settings.section')))
+    }
+    window.remountResponsiveFixture = () => {
+      window.slpFixtureRoot = ReactDOM.createRoot(document.getElementById('root'))
+      window.slpFixtureRoot.render(React.createElement(App))
+    }
+    window.disposeResponsiveFixture = () => { window.slpFixtureRoot.unmount(); cleanups.forEach(fn => fn()) }
+    window.remountResponsiveFixture()
   })
 }

@@ -90,6 +90,7 @@ function loadClientPluginForTest(options = {}) {
         try {
           value = component(props)
           if (value && typeof value.type === 'function') value = value.type(value.props)
+          if (value && typeof value.type === 'function' && value.type.name === 'LiveStatusPanel') value = value.type(value.props)
         } finally {
           activeRenderer = null
         }
@@ -350,6 +351,12 @@ test('quota percentage mode accepts only used/left and defaults to used', () => 
   assert.equal(__test.sanitizeConfig({}).quotaPercentMode, 'used')
   assert.equal(__test.sanitizeConfig({ quotaPercentMode: 'left' }).quotaPercentMode, 'left')
   assert.equal(__test.sanitizeConfig({ quotaPercentMode: 'remaining' }).quotaPercentMode, 'used')
+})
+
+test('narrow-screen preference defaults off and survives config sanitization', () => {
+  assert.equal(__test.sanitizeConfig({}).hideBottomOnNarrow, false)
+  assert.equal(__test.sanitizeConfig({ hideBottomOnNarrow: true }).hideBottomOnNarrow, true)
+  assert.equal(__test.sanitizeConfig({ hideBottomOnNarrow: 'false' }).hideBottomOnNarrow, false)
 })
 
 test('sanitizeConfig normalizes booleans, clamps numbers, and keeps usage on the official endpoint', () => {
