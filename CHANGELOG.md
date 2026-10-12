@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Give quota requests a plugin-owned HTTP connection pool with a 5-second address-attempt window, without changing Host defaults. Update quotas as soon as a query succeeds; the window does not delay refreshes. Release the pool when the plugin unloads.
+- Allow Codex quota requests up to 15 seconds overall so a slower connection can still complete TLS and return usage.
+- Resume exhausted quota recovery when the visible page regains focus; keep the three-retry limit and successful data, and explain network failures and exhausted retries in quota chips.
 - Retry transient quota failures at most three times, with backoff and offline/online recovery. Preserve successful data while retrying; credential and invalid-response errors do not retry.
 - Measure the input area's width for narrow-screen suppression, including sidebar resizes; hide only this plugin's bottom components and keep native statistics available.
 - Log quota transport failures with elapsed time and allowlisted connection codes, without URLs, credentials or exception text.

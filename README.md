@@ -61,7 +61,7 @@ Presets change bottom components only. Reset restores display, layout and refres
 
 ## Limits
 
-- Quota refreshes reuse cached results; expiry alone does not poll. Network failures retry at most three times after 15/30/60 seconds; rate-limit retries wait 60/120/240 seconds. Going offline pauses recovery; coming online, becoming visible, a new step or a manual refresh starts a fresh query cycle. Successful data remains visible during retries. Credential and invalid-response errors require correction. Manual refresh bypasses successful cache, while error/rate-limit backoff still applies. Missing or invalid data stays unknown.
+- Quota requests use a plugin-owned connection pool with a 5-second address-attempt window; request timeouts still bound the whole operation (Codex: 15 seconds), and Host network defaults stay unchanged. Successful queries update the display immediately, without waiting for the connection window to end. Quota refreshes reuse cached results; expiry alone does not poll. Network failures retry at most three times after 15/30/60 seconds; rate-limit retries wait 60/120/240 seconds. Going offline pauses recovery; coming online, becoming visible, a new step or a manual refresh starts a fresh query cycle. Regaining focus resumes failed recovery once the active retry cycle has ended. Successful data remains visible during retries; chips explain network errors and exhausted retries. Credential and invalid-response errors require correction. Manual refresh bypasses successful cache, while error/rate-limit backoff still applies. Missing or invalid data stays unknown.
 - Cost is an estimate from actual usage and the model vendor's public API prices, including cache rates where known. Subscriptions use the same reference prices. USD and CNY remain separate; missing prices stay unpriced. It excludes child sessions, inherited fork history and extra fees, and does not represent an account charge.
 - TPS distinguishes character estimates from settled output-token rates. Tool durations include approval and waiting. Subagents show direct children; stopped does not imply success.
 - Provider APIs and price catalogs may change independently. DeepSeek's calendar has a built-in 2025–2026 fallback, and a fetched holiday-cn calendar wins where that year is published; outside that, a weekday inside a peak window in an uncovered year is not guessed. The official pricing page is only a change detector: if its rule sentence stops matching, pricing and the peak indicator keep using the schedule they already hold and the indicator adds a "rules may have changed" warning next to its link to the official page.
@@ -75,7 +75,7 @@ DSH 网页端状态行：顶部显示账号余额与套餐额度，输入区显�
 
 **设置：** 打开 **DSH Web → 设置 → Statusline（状态栏）**，调整显示、排序、预设、顶部额度、账号来源及缓存。密钥仅在宿主侧解析，设置里填写凭据引用。
 
-**额度恢复：** 网络失败最多自动重试 3 次，分别等待 15／30／60 秒；限流时等待 60／120／240 秒。断网时暂停，网络恢复、页面重新可见、新步骤或手动刷新会开启新一轮查询。重试期间保留已有的成功数据；凭据与响应格式错误不自动重试。
+**额度恢复：** 额度请求使用插件自有连接池，每个地址的连接尝试窗口为 5 秒，完整请求仍受总超时限制（Codex 为 15 秒）；宿主网络默认值不变。查询成功即更新显示，不必等满 5 秒。网络失败每轮最多自动重试 3 次，分别等待 15／30／60 秒；限流时等待 60／120／240 秒。断网时暂停，网络恢复、页面重新可见、新步骤或手动刷新会开启新一轮查询；当前重试轮结束后，页面重新获得焦点也可恢复查询。重试期间保留已有的成功数据，并提示网络异常及重试已用完；凭据与响应格式错误不自动重试。
 
 **窄屏：** 在“底部状态行”中开启“窄屏时隐藏底部状态行”（`hideBottomOnNarrow`，默认关闭）。输入区域宽度 ≤480px 时不挂载本插件的底部组件，停止相关客户端刷新与计时；侧栏挤窄输入区域也会触发，变宽后自动恢复。顶部额度、峰谷指示与原生输入区统计仍可使用。此开关与发布说明中 **Unreleased** 下的其它改动尚未包含在任何已发布的版本中；已发布的 v0.1.1 安装包保持不变。
 

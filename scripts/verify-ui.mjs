@@ -155,12 +155,15 @@ async function verifyResponsive(page, folder) {
     await page.clock.runFor(delay); await quotaCount(index + 3)
   }
   await page.clock.runFor(120000); await quotaCount(5)
+  if (!(await quota.getAttribute('title')).includes('Automatic retries exhausted')) throw new Error('Retry exhaustion was not explained while retaining successful data')
   const retryBodies = await page.evaluate(() => window.slpResponsive.quotaRequests.slice(2).map(request => JSON.parse(request.body)))
   if (retryBodies.some(body => body.force)) throw new Error('Automatic retries bypassed Host backoff')
-  await page.evaluate(() => window.dispatchEvent(new Event('online')))
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
   await quotaCount(6)
   await page.locator('#fixture-header .slp-err').waitFor({ state: 'detached' })
-  if (!(await quota.innerText()).includes('20%')) throw new Error('Online recovery did not restore the quota')
+  if (!(await quota.innerText()).includes('20%')) throw new Error('Focus recovery did not restore the quota')
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await quotaCount(6)
   await page.keyboard.press('Escape')
   await page.setViewportSize({ width: 481, height: 844 })
   await dock.waitFor(); await assertResources(1, 1)
@@ -195,7 +198,7 @@ async function verifyResponsive(page, folder) {
   await assertResources(0, 4)
   await page.waitForFunction(() => window.slpResponsive.observers.every(observer => observer.closed))
   return { panel: 'responsive', widths: [320, 390, 480, 481, 768],
-    lifecycle: 'three retries/online recovery/container suppression/native stats/settings save/remount/resource cleanup passed', screenshot: relative(root, screenshot) }
+    lifecycle: 'three retries/exhaustion hint/focus recovery/container suppression/native stats/settings save/remount/resource cleanup passed', screenshot: relative(root, screenshot) }
 }
 
 let browser, folder

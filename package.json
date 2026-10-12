@@ -42,7 +42,7 @@
     "icon.svg"
   ],
   "scripts": {
-    "check": "node --check lib/index.js && node --check lib/client.js && node --check lib/provider-presets.js && node --check lib/request-pool.js && node --check lib/tps.js && node --check lib/session-metrics.js && node --check lib/model-pricing.js && node --check lib/tool-activity.js && node --check lib/peak-schedule.js && node --check scripts/verification.mjs && node --check scripts/verify.mjs && node --check scripts/ui-fixture.mjs && node --check scripts/verify-ui.mjs && node --check scripts/screenshots.mjs",
+    "check": "node --check lib/index.js && node --check lib/client.js && node --check lib/provider-presets.js && node --check lib/request-pool.js && node --check lib/quota-transport.js && node --check lib/tps.js && node --check lib/session-metrics.js && node --check lib/model-pricing.js && node --check lib/tool-activity.js && node --check lib/peak-schedule.js && node --check scripts/verification.mjs && node --check scripts/verify.mjs && node --check scripts/ui-fixture.mjs && node --check scripts/verify-ui.mjs && node --check scripts/screenshots.mjs",
     "test": "node --test --test-reporter=tap --experimental-test-isolation=none tests/*.test.js",
     "verify": "node scripts/verify.mjs",
     "verify:all": "node scripts/verify.mjs --all",
@@ -72,6 +72,7 @@
     }
   },
   "dependencies": {
+    "undici": "^7.30.0",
     "zod": "^4.0.0"
   },
   "peerDependencies": {

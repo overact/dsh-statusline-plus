@@ -105,9 +105,35 @@ test('network failures retry at 15/30/60 seconds and stop after three retries', 
   h.requests[3].resolve({ ok: false, error: 'network' }); await flush()
   h.advance(300000); assert.equal(h.requests.length, 4)
   assert.equal(h.timeouts.size, 0)
+  assert.equal(h.render(resource, config).retryExhausted, true)
   h.unmount()
   assert.equal(h.windowEvents.get('online').size, 0)
   assert.equal(h.windowEvents.get('offline').size, 0)
+  assert.equal(h.windowEvents.get('focus').size, 0)
+})
+
+test('focus recovers after exhaustion, preserves good data and never resets an active retry cycle', async () => {
+  const h = harness(); h.render(resource, config)
+  const data = { remaining: 5, fetchedAt: 1700000000000 }
+  h.requests[0].resolve({ ok: true, data }); await flush()
+  h.render(resource, config).refresh()
+  const focus = () => h.windowEvents.get('focus').forEach(fn => fn())
+  for (const [index, delay] of [15000, 30000, 60000].entries()) {
+    h.requests[index + 1].resolve({ ok: false, error: 'network' }); await flush()
+    focus(); assert.equal(h.requests.length, index + 2, 'focus does not bypass active backoff')
+    h.advance(delay)
+  }
+  h.requests[4].resolve({ ok: false, error: 'network' }); await flush()
+  assert.equal(h.render(resource, config).retryExhausted, true)
+  assert.equal(h.render(resource, config).data, data)
+  focus(); focus()
+  assert.equal(h.requests.length, 6, 'focus during recovery enqueues no duplicate request')
+  assert.equal(JSON.parse(h.requests[5].opts.body).force, false)
+  assert.equal(h.render(resource, config).retryExhausted, false)
+  h.requests[5].resolve({ ok: true, data: { remaining: 4 } }); await flush()
+  assert.equal(h.render(resource, config).data.remaining, 4)
+  focus(); assert.equal(h.requests.length, 6, 'successful data does not refetch on every focus')
+  h.unmount(); assert.equal(h.windowEvents.get('focus').size, 0)
 })
 
 test('an automatic retry restores quota and preserves the last good data while waiting', async () => {
@@ -677,6 +703,17 @@ test('quota errors are retry buttons with localized reasons; loading is inert', 
     assert.equal(h[name]({ provider: { label: 'Test' }, data: null, error: null, refresh() {} }).children[0].type, 'span')
   }
   assert.equal(calls, 4)
+})
+
+test('failed quota chips name the error and expose exhausted recovery without inventing a number', () => {
+  const h = harness()
+  for (const name of ['CodexQuotaLine', 'AntigravityQuotaLine', 'ProviderQuotaLine', 'OpenCodeQuotaLine']) {
+    const chip = h[name]({ provider: { label: 'Test' }, error: 'network', retryExhausted: true, refresh() {} }).children[0]
+    assert.match(textContent(chip), /network error.*3 retries used/)
+    assert.doesNotMatch(textContent(chip), /\?|\d+%/)
+    assert.match(chip.props.title, /Automatic retries exhausted.*refocus/)
+    assert.equal(chip.props['data-retry-exhausted'], 'true')
+  }
 })
 
 test('used/left mode reads the same in chip, tooltip and details, and colour tracks consumption', () => {

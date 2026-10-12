@@ -80,6 +80,25 @@ test('every independent plugin route enforces Connection admission before handli
   assert.equal((await call(f.routes.get('/statusline/api/config'), {}, 'GET')).value.ok, true, 'admitted config reads remain available')
 })
 
+test('quota routes share a plugin-owned dispatcher and release it on unmount', async t => {
+  const requests = [], previous = global.fetch
+  t.after(() => { global.fetch = previous })
+  global.fetch = async (url, options) => { requests.push(options); throw new Error('fixture-network') }
+  const f = await fixture(); t.after(f.close)
+  const warn = console.warn; console.warn = () => {}; t.after(() => { console.warn = warn })
+  await call(f.routes.get('/statusline/api/usage'))
+  await call(f.routes.get('/statusline/api/provider-quota'), { id: 'openrouter' })
+  const dispatcher = requests[0].dispatcher
+  assert.ok(dispatcher && requests.every(request => request.dispatcher === dispatcher), 'quota sources reuse one scoped dispatcher')
+  assert.ok(requests.every(request => request.signal instanceof AbortSignal), 'each request retains its own cancellation deadline')
+  await f.close()
+  assert.equal(dispatcher.destroyed, true, 'scope disposal releases the connection pool')
+  const next = await fixture(); t.after(next.close)
+  await call(next.routes.get('/statusline/api/usage'))
+  assert.notEqual(requests.at(-1).dispatcher, dispatcher, 'remount gets a new dispatcher')
+  assert.equal(requests.at(-1).dispatcher.destroyed, false)
+})
+
 test('one invalid stored provider is skipped with a warning instead of failing the whole plugin', async t => {
   const warnings = []
   const original = console.warn
