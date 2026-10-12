@@ -12,6 +12,7 @@ process.env.SLP_TEST = '1'
 const { __test } = require('../lib/index.js')
 
 function loadClientPluginForTest(options = {}) {
+  const renderers = []
   const previous = {
     window: global.window,
     document: global.document,
@@ -24,6 +25,8 @@ function loadClientPluginForTest(options = {}) {
     Date: global.Date,
   }
   function restore() {
+    for (const renderer of renderers) renderer.unmount()
+    renderers.length = 0
     global.window = previous.window
     global.document = previous.document
     global.fetch = previous.fetch
@@ -109,6 +112,7 @@ function loadClientPluginForTest(options = {}) {
         }
       },
     }
+    renderers.push(renderer)
     return renderer
   }
   const style = { setAttribute() {}, textContent: '', parentNode: { removeChild() {} } }
@@ -689,6 +693,7 @@ async function installRouteHarness(options = {}) {
   let disposeBridgeFiber = () => {}
   const context = {
     on() { return () => {} },
+    connection: { admit() { return { peer: {} } } },
     webServer: {
       register(spec) {
         routes.set(spec.path, spec.handler)

@@ -5,12 +5,13 @@ const { createRequire } = require('node:module')
 const { join } = require('node:path')
 const { pathToFileURL } = require('node:url')
 const { EventEmitter } = require('node:events')
+const { hostPiVersion } = require('./native-pricing-fixture.cjs')
 process.env.SLP_TEST = '1'
 const plugin = require('../lib/index')
 const fromDsh = createRequire(process.env.DSH_PACKAGE_DIR ? join(process.env.DSH_PACKAGE_DIR, 'package.json') : require.resolve('@deepseek-ai/dsh/package.json'))
 const dsh = name => import(pathToFileURL(fromDsh.resolve('@deepseek-ai/' + name)).href)
 
-async function fixture() {
+async function fixture(options) {
   const [{ Context }, { SessionStore }, { SessionProjectionRegistry }, { SettingsProvider }] = await Promise.all([
     dsh('cordis'), dsh('dsh-session'), dsh('dsh-session-projection'), dsh('dsh-settings'),
   ])
@@ -19,22 +20,145 @@ async function fixture() {
   const { installSettings } = await import('./native-settings-fixture.mjs')
   const attach = await installSettings(ctx, dsh)
   ctx.provide('webServer', { register(spec) { routes.set(spec.path, spec.handler); return () => routes.delete(spec.path) } })
+  ctx.provide('connection', { admit(req) {
+    return req.headers['x-fixture-auth'] === 'denied' ? { rejection: 401 }
+      : req.headers['x-fixture-auth'] === 'forbidden' ? { rejection: 403 } : { peer: {} }
+  } })
   ctx.provide('subprocess', {})
   ctx.provide('credentials', { resolve: async () => ({ value: 'fixture-key-not-real' }) })
-  const fiber = ctx.plugin(plugin)
+  const fiber = options === undefined ? ctx.plugin(plugin) : ctx.plugin(plugin, options)
   await fiber.await()
   attach('statusline-plus', fiber)
-  return { ctx, fiber, routes, close: () => ctx.fiber.dispose() }
+  return { ctx, fiber, routes, entries: attach.entries, close: () => ctx.fiber.dispose() }
 }
-async function call(route, body = {}) {
+async function call(route, body = {}, method = 'POST') {
   const req = new EventEmitter(), res = new EventEmitter()
-  Object.assign(req, { method: 'POST', headers: { host: 'localhost', origin: 'http://localhost', 'content-type': 'application/json' } })
+  Object.assign(req, { method, headers: { host: 'localhost', origin: 'http://localhost', 'content-type': 'application/json' } })
   Object.assign(res, { setHeader() {}, writeHead(status) { this.status = status }, end(text) { this.value = JSON.parse(text); this.writableEnded = true } })
   const pending = route(req, res)
   req.emit('data', JSON.stringify(body)); req.emit('end')
   await pending
   return res
 }
+
+test('quota network diagnostics identify transport failures without leaking exception text', async t => {
+  const secret = 'fixture-secret-must-not-appear'
+  const error = new TypeError('fetch failed ' + secret, { cause: new AggregateError([
+    Object.assign(new Error('https://user:' + secret + '@private.example'), { code: 'ETIMEDOUT' }),
+    Object.assign(new Error(secret), { code: 'ENETUNREACH' }),
+    Object.assign(new Error(secret), { code: secret }),
+  ]) })
+  const detail = plugin.__test.quotaNetworkDetails(error)
+  assert.deepEqual(detail, { reason: 'timeout', codes: ['ETIMEDOUT', 'ENETUNREACH'] })
+  assert.equal(plugin.__test.quotaNetworkDetails({ cause: { code: 'ENOTFOUND' } }).reason, 'dns')
+  assert.equal(plugin.__test.quotaNetworkDetails({ cause: { code: 'ECONNREFUSED' } }).reason, 'connection-refused')
+  assert.equal(plugin.__test.quotaNetworkDetails({ cause: { code: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' } }).reason, 'tls')
+  const warnings = [], warn = console.warn, originalFetch = global.fetch
+  console.warn = (...args) => warnings.push(args.join(' '))
+  global.fetch = async () => { throw error }
+  t.after(() => { console.warn = warn; global.fetch = originalFetch })
+  const f = await fixture(); t.after(f.close)
+  const response = await call(f.routes.get('/statusline/api/usage'))
+  assert.equal(response.value.error, 'network', 'public error contract stays stable')
+  assert.ok(warnings.some(line => line.includes('ETIMEDOUT') && line.includes('opencode')))
+  assert.ok(warnings.every(line => !line.includes(secret) && !line.includes('private.example')))
+})
+
+test('every independent plugin route enforces Connection admission before handling a request', async t => {
+  const f = await fixture(); t.after(f.close)
+  for (const [path, handler] of f.routes) {
+    for (const [auth, expected] of [['denied', 401], ['forbidden', 403]]) {
+      const req = new EventEmitter(), res = new EventEmitter()
+      Object.assign(req, { method: 'GET', headers: { host: 'localhost', 'x-fixture-auth': auth } })
+      Object.assign(res, { writeHead(status) { this.status = status }, end(body) { this.value = JSON.parse(body); this.writableEnded = true } })
+      await handler(req, res)
+      assert.equal(res.status, expected, path)
+      assert.equal(res.value.ok, false, path)
+      assert.equal(req.listenerCount('aborted'), 0, 'rejection starts no request lifecycle')
+    }
+  }
+  assert.equal((await call(f.routes.get('/statusline/api/config'), {}, 'GET')).value.ok, true, 'admitted config reads remain available')
+})
+
+test('one invalid stored provider is skipped with a warning instead of failing the whole plugin', async t => {
+  const warnings = []
+  const original = console.warn
+  console.warn = (...args) => warnings.push(args.join(' '))
+  t.after(() => { console.warn = original })
+  // A hand-edited profile that replaces endpoints without carrying a usable parse
+  // block. The plugin must still load and every other provider must keep working.
+  // The id is unique to this test so the once-per-message warning cannot be masked
+  // by another mount in the same process.
+  const f = await fixture({ providers: [{ id: 'broken-source', endpoints: [{ url: 'https://api.deepseek.com/user/balance' }] }] })
+  t.after(f.close)
+  assert.ok(f.routes.size > 0, 'the plugin still loads with a malformed stored provider')
+  const ids = (await call(f.routes.get('/statusline/api/config'), {}, 'GET')).value.config.providers.map(provider => provider.id)
+  assert.ok(ids.includes('openrouter') && ids.includes('kimi-code'), 'the other providers keep working: ' + ids.join(','))
+  assert.ok(warnings.some(line => line.includes('broken-source')), 'and skipping it is warned about: ' + JSON.stringify(warnings))
+  // A malformed builtin override falls back to the built-in default in one pass; an unknown
+  // id is dropped. Both must be stable, because apply() normalises repeatedly
+  // (Config -> SettingsSchema -> sanitizeConfig) and a second pass used to resurrect the
+  // builtin it had just dropped.
+  const builtinFallback = plugin.__test.sanitizeConfig({ providers: [{ id: 'deepseek', endpoints: [{ url: 'https://api.deepseek.com/user/balance' }] }] })
+  const deepseek = builtinFallback.providers.find(provider => provider.id === 'deepseek')
+  assert.ok(deepseek, 'a malformed builtin override falls back to its default')
+  assert.ok(deepseek.endpoints.length > 0, 'and the fallback carries usable endpoints')
+  assert.deepEqual(plugin.__test.sanitizeConfig({ providers: builtinFallback.providers }).providers, builtinFallback.providers,
+    'sanitizeConfig is idempotent')
+  const custom = plugin.__test.sanitizeConfig({ providers: [{ id: 'broken-source', endpoints: [{ url: 'https://api.deepseek.com/user/balance' }] }] })
+  assert.ok(!custom.providers.some(provider => provider.id === 'broken-source'), 'an unknown malformed id is dropped')
+  // A JSON-valued id such as {toString:1} makes String()/join() throw; the tolerant read
+  // path must not be defeated by its own warning.
+  assert.doesNotThrow(() => plugin.__test.SettingsSchema({ providers: [{ id: { toString: 1 } }] }),
+    'a JSON-valued provider id must not defeat the tolerant read path')
+  // Every stored string field is coerced with the same safe helper: String(value) throws
+  // for {toString:1} and for null-prototype objects, and that crash would land inside
+  // apply() once the schema stops rejecting those values.
+  for (const key of ['apiKeyEnv', 'usageUrl', 'gitCwd', 'codexAccount', 'antigravityAccount']) {
+    for (const value of [{ toString: 1 }, Object.create(null)]) {
+      assert.doesNotThrow(() => plugin.__test.sanitizeConfig({ [key]: value }), key + ' must survive an unstringifiable stored value')
+    }
+  }
+  // Numeric fields coerce through a guarded reader too: Number({toString:1}) throws.
+  for (const key of ['intervalSec', 'cacheTtlMs', 'fetchTimeoutMs']) {
+    assert.doesNotThrow(() => plugin.__test.sanitizeConfig({ [key]: { toString: 1 } }), key + ' must survive an unstringifiable stored value')
+  }
+  assert.doesNotThrow(() => plugin.__test.sanitizeConfig({ providers: [{ id: 'zai', redBelow: { toString: 1 }, endpoints: [{ url: { toString: 1 }, parse: { mode: 'zai-quota' } }] }] }),
+    'provider overrides must survive unstringifiable stored values')
+})
+
+test('provider endpoints reject internal hosts in their fully-qualified and mapped spellings', () => {
+  const guard = plugin.__test.sanitizeProviderEndpointUrl
+  for (const url of [
+    'https://169.254.169.254/x', 'https://localhost/x', 'https://localhost./x', 'https://svc.local./x',
+    'https://[::ffff:169.254.169.254]/x', 'https://[::ffff:a9fe:a9fe]/x', 'https://[fd00::1]/x', 'https://10.0.0.5/x',
+  ]) {
+    assert.equal(guard(url), null, url + ' must be blocked')
+  }
+  assert.ok(guard('https://example.com./x'), 'a public host still works even when fully qualified')
+})
+
+test('the raw pre-persistence validator covers every declared field', async t => {
+  const f = await fixture(); t.after(f.close)
+  const rejected = [
+    { showGit: 'yes' }, { quotaOnStep: 1 }, { intervalSec: 'soon' }, { intervalSec: 10.5 },
+    { cacheTtlMs: 999 }, { fetchTimeoutMs: 60001 }, { quotaPercentMode: 'weird' },
+    { componentOrder: 'nope' }, { componentOrder: ['git', 'bogus'] },
+    { apiKeyEnv: 'sk-literal-secret' }, { usageUrl: 'https://example.invalid/usage' },
+    { gitCwd: 42 }, { codexAccount: 'a/b' }, { antigravityAccount: 7 },
+    { providers: 'bad' }, { providers: [{}] },
+    { providers: [{ id: 'zai', endpoints: [{ url: 'http://localhost/', parse: { mode: 'zai-quota' } }] }] },
+  ]
+  for (const patch of rejected) {
+    await assert.rejects(f.ctx.settings.update('statusline-plus', patch), 'must reject ' + JSON.stringify(patch).slice(0, 70))
+  }
+  // Nothing a rejected edit carried may reach the stored profile: the real editor validates
+  // the waterfall output but persists the original raw value, so this is the real invariant.
+  assert.equal(JSON.stringify(f.entries[0].options.config), '{}', 'no rejected edit reaches the stored profile')
+  // Valid values still pass, including the documented legacy token id.
+  await f.ctx.settings.update('statusline-plus', { componentOrder: ['git', 'tokens'], quotaPercentMode: 'left' })
+  assert.ok(JSON.stringify(f.entries[0].options.config).includes('left'), 'a valid edit is still accepted')
+})
 
 test('native DSH settings drive the plugin, reject stale edits, and clean up on unload', async t => {
   const f = await fixture(); t.after(f.close)
@@ -57,6 +181,15 @@ test('native DSH settings drive the plugin, reject stale edits, and clean up on 
   await f.ctx.settings.update('statusline-plus', { quotaOnStep: false })
   assert.equal(f.ctx.settings.describe().find(s => s.ns === 'statusline-plus').value.quotaOnStep, false)
   assert.equal(plugin.__test.SettingsSchema({}).providers.find(provider => provider.id === 'zai').apiKeyEnv, 'ZAI_API_KEY')
+  assert.equal(plugin.__test.SettingsSchema({}).usageUrl, 'https://opencode.ai/zen/go/v1/usage',
+    'the documented usageUrl default must survive the hostValidated wrapper')
+  const fresh = f.ctx.settings.describe().find(s => s.ns === 'statusline-plus').revision
+  const invalid = await call(f.routes.get('/statusline/api/config'), { revision: fresh, patch: { showGit: 'yes' } })
+  assert.equal(invalid.status, 400, 'an invalid patch is invalid input, not a revision conflict')
+  assert.equal(invalid.value.error, 'invalid-config')
+  const saved = await call(f.routes.get('/statusline/api/config'), { revision: fresh, patch: { showGit: false } })
+  assert.equal(saved.status, 200, 'a display-only patch on a fresh revision must be accepted')
+  assert.equal(saved.value.config.showGit, false)
   await f.ctx.settings.update('statusline-plus', { enabled: false })
   await Promise.resolve()
   const reply = await call(f.routes.get('/statusline/api/usage'))
@@ -102,7 +235,7 @@ test('mounted plugin publishes native offline subscription prices through the ac
   assert.equal(view.session.breakdown.input.tokensUsd, 1000)
   assert.equal(view.session.breakdown.cache.tokensUsd, 100)
   assert.equal(view.session.breakdown.output.tokensUsd, 200)
-  assert.equal(view.catalog.version, '0.87.1')
+  assert.equal(view.catalog.version, hostPiVersion())
   assert.equal(view.billingVerified, false)
   await f.fiber.dispose()
   assert.equal(f.ctx.sessionProjections.snapshot(session, ['statuslineMetrics']).values.statuslineMetrics, undefined)
@@ -312,6 +445,8 @@ test('native Coding Plan routes use provider auth and reject business failures a
   response = { usages: { limit_5h: { reset_time: '2026-10-02T00:00:00Z' } } }
   assert.equal((await call(route, { id: 'kimi-code', force: true })).value.error, 'invalid-response')
   await assert.rejects(f.ctx.settings.update('statusline-plus', { providers: [{ id: 'deepseek', apiKeyEnv: 'sk-literal-secret' }] }))
+  assert.ok(!JSON.stringify(f.entries[0].options.config).includes('sk-literal-secret'),
+    'a rejected edit leaves no literal secret in the stored profile')
 })
 
 test('native settings JSON is accepted by the installed browser schema validator', async t => {
@@ -333,4 +468,11 @@ test('native settings JSON is accepted by the installed browser schema validator
   const unchanged = f.ctx.settings.describe().find(item => item.ns === 'statusline-plus')
   assert.equal(unchanged.revision, revision)
   assert.deepEqual(unchanged.value.providers, view.value.providers)
+  assert.ok(!JSON.stringify(f.entries[0].options.config).includes('localhost'),
+    'a rejected edit leaves no internal endpoint in the stored profile')
+  // One valid endpoint plus one blocked endpoint still sanitizes to a non-null provider, so
+  // the gate must inspect every endpoint instead of trusting the sanitizer's return value.
+  await assert.rejects(f.ctx.settings.update('statusline-plus', { providers: [{ id: 'zai', apiKeyEnv: 'ZAI_API_KEY', endpoints: [{ url: 'https://api.z.ai/api/paas/v4', parse: { mode: 'zai-quota' } }, { url: 'http://169.254.169.254/' }] }] }))
+  assert.ok(!JSON.stringify(f.entries[0].options.config).includes('169.254.169.254'),
+    'a blocked endpoint is not persisted even alongside a valid one')
 })

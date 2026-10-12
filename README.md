@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="icon.svg" width="80" height="80" alt="dsh-statusline-plus logo">
+</p>
+
 # dsh-statusline-plus
 
 [![Version](https://img.shields.io/badge/version-0.1.1-blue)](https://github.com/overact/dsh-statusline-plus/releases/tag/v0.1.1)
@@ -16,9 +20,9 @@ Screenshots use the actual UI with sample data, without account or conversation 
 ## Features
 
 - **Balances and quotas:** DeepSeek, Kimi Code, Z.ai / 智谱, Antigravity, Codex, OpenCode Go and OpenRouter. Click a chip for details and refresh.
-- **DeepSeek peak hours:** status, countdown and daily timeline, plus a sidebar indicator. Unverified schedules stay unknown.
+- **DeepSeek peak hours:** status, countdown and daily timeline, plus a sidebar indicator. In a year with no calendar, a weekday inside a peak window stays unknown while weekends and hours outside the windows are still off-peak; when the official rule wording no longer matches, the schedule is still applied and the indicator warns that rules may have changed.
 - **Workspace and session:** Git branch and changes, context usage, streaming TPS, API reference cost, direct child agents and tool activity.
-- **Layout:** component switches, ordering, presets and an interactive preview. Groups wrap on narrow screens; an optional switch disables the bottom status line at widths up to 480px.
+- **Layout:** component switches, ordering, presets and an interactive preview. Groups wrap on narrow screens; an optional switch disables this plugin's bottom status line when the input area is at most 480px wide, including when sidebars narrow it.
 
 ## Installation
 
@@ -39,7 +43,7 @@ Open **DSH Web → Settings → Statusline**. Settings are saved under `statusli
 | Setting | Default | Effect |
 | --- | --- | --- |
 | `enabled` | `true` | All plugin displays and refreshes |
-| `hideBottomOnNarrow` | `false` | At viewport widths ≤480px, unmount the bottom status line and stop its client activity; restore it when wider |
+| `hideBottomOnNarrow` | `false` | At input-area widths ≤480px, unmount this plugin's bottom status line and stop its client activity; restore it when wider. Native stats remain visible |
 | `showGit`, `showContext`, `showCost`, `showActivity`, `showTools` | `true` | Individual bottom components |
 | `showTps` | `false` | Streaming speed |
 | `componentOrder` | Git, context, TPS, cost, activity, tools | Bottom component order |
@@ -49,7 +53,7 @@ Open **DSH Web → Settings → Statusline**. Settings are saved under `statusli
 | `fetchTimeoutMs` | `10000` | Request timeout; UI displays seconds |
 | `providers` | Built-in sources | Credential references, source switches and endpoint overrides |
 
-The narrow-screen switch is in **Bottom status line**. It affects this plugin's bottom components; header quotas, peak indicators and native composer stats remain available. It is available on `main`; the published v0.1.1 release asset is unchanged.
+The narrow-screen switch is in **Bottom status line**. It affects this plugin's bottom components; header quotas, peak indicators and native composer stats remain available. This switch and the other changes listed under **Unreleased** in the release notes are not yet part of a published release; the published v0.1.1 release asset is unchanged.
 
 DeepSeek reuses `DEEPSEEK_API_KEY`; Kimi uses `KIMI_API_KEY`; Z.ai and 智谱 use `ZAI_API_KEY` and `ZAI_CODING_CN_API_KEY`. Other sources use their existing Host credentials or account integrations. Configure credential references, never literal keys. Keys stay on the Host.
 
@@ -57,10 +61,10 @@ Presets change bottom components only. Reset restores display, layout and refres
 
 ## Limits
 
-- Quota refreshes reuse cached results; expiry alone does not poll. Manual refresh bypasses successful cache, while error/rate-limit backoff still applies. Missing or invalid data stays unknown.
+- Quota refreshes reuse cached results; expiry alone does not poll. Network failures retry at most three times after 15/30/60 seconds; rate-limit retries wait 60/120/240 seconds. Going offline pauses recovery; coming online, becoming visible, a new step or a manual refresh starts a fresh query cycle. Successful data remains visible during retries. Credential and invalid-response errors require correction. Manual refresh bypasses successful cache, while error/rate-limit backoff still applies. Missing or invalid data stays unknown.
 - Cost is an estimate from actual usage and the model vendor's public API prices, including cache rates where known. Subscriptions use the same reference prices. USD and CNY remain separate; missing prices stay unpriced. It excludes child sessions, inherited fork history and extra fees, and does not represent an account charge.
 - TPS distinguishes character estimates from settled output-token rates. Tool durations include approval and waiting. Subagents show direct children; stopped does not imply success.
-- Provider APIs and price catalogs may change independently. DeepSeek's calendar has a built-in 2025–2026 fallback; uncovered schedules are not guessed.
+- Provider APIs and price catalogs may change independently. DeepSeek's calendar has a built-in 2025–2026 fallback, and a fetched holiday-cn calendar wins where that year is published; outside that, a weekday inside a peak window in an uncovered year is not guessed. The official pricing page is only a change detector: if its rule sentence stops matching, pricing and the peak indicator keep using the schedule they already hold and the indicator adds a "rules may have changed" warning next to its link to the official page.
 
 <a id="简体中文"></a>
 ## 简体中文
@@ -71,9 +75,11 @@ DSH 网页端状态行：顶部显示账号余额与套餐额度，输入区显�
 
 **设置：** 打开 **DSH Web → 设置 → Statusline（状态栏）**，调整显示、排序、预设、顶部额度、账号来源及缓存。密钥仅在宿主侧解析，设置里填写凭据引用。
 
-**窄屏：** 在“底部状态行”中开启“窄屏时隐藏底部状态行”（`hideBottomOnNarrow`，默认关闭）。窗口宽度 ≤480px 时不挂载底部组件，停止相关客户端刷新与计时；变宽后自动恢复。顶部额度、峰谷指示与原生输入区统计仍可使用。此开关已加入 `main`；已发布的 v0.1.1 安装包保持不变。
+**额度恢复：** 网络失败最多自动重试 3 次，分别等待 15／30／60 秒；限流时等待 60／120／240 秒。断网时暂停，网络恢复、页面重新可见、新步骤或手动刷新会开启新一轮查询。重试期间保留已有的成功数据；凭据与响应格式错误不自动重试。
 
-**说明：** 费用按模型厂商 API 单价估算，不代表实际扣款，不含子代理与额外费用；人民币和美元分别累计。额度缓存到期本身不会轮询，失败保留上次结果，未知值不显示成零。工具耗时包含审批与等待；子代理停止不等于成功。恢复默认保留凭据引用、账号、仓库路径和各来源开关。
+**窄屏：** 在“底部状态行”中开启“窄屏时隐藏底部状态行”（`hideBottomOnNarrow`，默认关闭）。输入区域宽度 ≤480px 时不挂载本插件的底部组件，停止相关客户端刷新与计时；侧栏挤窄输入区域也会触发，变宽后自动恢复。顶部额度、峰谷指示与原生输入区统计仍可使用。此开关与发布说明中 **Unreleased** 下的其它改动尚未包含在任何已发布的版本中；已发布的 v0.1.1 安装包保持不变。
+
+**说明：** 费用按模型厂商 API 单价估算，不代表实际扣款，不含子代理与额外费用；人民币和美元分别累计。额度缓存到期本身不会轮询，失败保留上次结果，未知值不显示成零。工具耗时包含审批与等待；子代理停止不等于成功。峰谷指示：没有日历覆盖的年份，只有“峰段窗口内的工作日”保持未知（周末与窗口外仍为谷段）；官方规则措辞不再匹配时，仍按已有窗口与日历判断，并额外提示“规则可能已变更”，官方页面链接就在提示旁边。恢复默认保留凭据引用、账号、仓库路径和各来源开关。
 
 ## Development verification
 

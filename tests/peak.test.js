@@ -35,6 +35,28 @@ test('pricing and peak indicator agree on the same cached windows, holidays and 
   }
 })
 
+test('a changed or unreadable rule sentence warns without invalidating the schedule', () => {
+  const source = new PeakScheduleSource({ fetch() { throw new Error('no extra schedule query') } })
+  source.data.holidays[2027] = { published: true, off: ['2027-02-10'], work: ['2027-02-27'], names: {} }
+  const covered = ['2026-08-19T09:00:00', '2026-08-19T12:30:00', '2026-08-22T10:00:00',
+    '2026-10-02T10:00:00', '2027-02-10T10:00:00', '2027-02-27T10:00:00']
+  for (const ruleStatus of ['match', 'changed', 'unreadable']) {
+    const schedule = { ...source.snapshot(), rule: { status: ruleStatus } }
+    for (const moment of covered) {
+      const time = beijing(moment), displayed = helpers.deepseekPeakStatus(time, schedule)
+      assert.notEqual(displayed.isPeak, null, ruleStatus + ' ' + moment + ': the calendar is still known')
+      assert.equal(peakTariffAt(time, schedule), displayed.isPeak ? 'peak' : 'offPeak',
+        ruleStatus + ' ' + moment + ': a rule-sentence warning must not invalidate pricing')
+    }
+  }
+  const uncovered = beijing('2029-03-05T10:00:00')
+  for (const ruleStatus of ['match', 'changed', 'unreadable']) {
+    const schedule = { ...source.snapshot(), rule: { status: ruleStatus } }
+    assert.equal(helpers.deepseekPeakStatus(uncovered, schedule).isPeak, null, ruleStatus + ': an uncovered year stays unknown in the indicator')
+    assert.equal(peakTariffAt(uncovered, schedule), null, ruleStatus + ': an uncovered year stays unclassified in pricing')
+  }
+})
+
 test('DeepSeek peak windows include their starts and exclude their ends at second precision', () => {
   for (const [time, isPeak, nextTime] of [
     ['08:59:59', false, '09:00:00'],

@@ -2,6 +2,7 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { createPricingCatalog, loadPricingCatalog, quoteCatalogUsage } = require('../lib/model-pricing')
+const { hostPiVersion } = require('./native-pricing-fixture.cjs')
 const units = 100000000
 const cost = { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5, tiers: [{ inputTokensAbove: 272000, input: 4, output: 15, cacheRead: 0.4, cacheWrite: 5 }] }
 const catalog = () => createPricingCatalog([{ provider: 'openai', model: 'gpt-6-sol', cost }, { provider: 'openai', model: 'gpt-6.1-sol', cost: { ...cost, input: 3 } }])
@@ -10,7 +11,7 @@ test('host catalog is read entirely offline through its public exported provider
   const previous = global.fetch; t.after(() => { global.fetch = previous })
   global.fetch = () => { throw new Error('price lookup must not use network') }
   const native = await loadPricingCatalog()
-  assert.equal(native.info.version, '0.87.1')
+  assert.equal(native.info.version, hostPiVersion())
   assert.ok(native.info.generatedAt > 0)
   const card = native.resolve({ provider: 'codex', model: 'gpt-6-astra' })
   assert.equal(card.source, 'pi-ai'); assert.equal(card.cost.input, 10)
@@ -67,6 +68,20 @@ test('quotes account for disjoint caches, long prompt thresholds and malformed c
   assert.equal(quoteCatalogUsage({ cost: { input: 2, output: 10, cacheWrite: 0 } }, { inputTokens: 100, outputTokens: 10, cacheWriteTokens: 1 }, units).reason, 'cache-write-rate-unknown')
   assert.equal(quoteCatalogUsage({ cost: { input: -1, output: 10 } }, { inputTokens: 100, outputTokens: 10 }, units).reason, 'usage-overflow')
   assert.equal(quote({ inputTokens: Number.MAX_SAFE_INTEGER, outputTokens: 0 }).reason, 'usage-overflow')
+})
+
+test('a cached prompt with no catalog read rate is refused instead of silently priced at zero', () => {
+  const usage = { inputTokens: 100, outputTokens: 10, cacheReadTokens: 1000 }
+  for (const [label, cost] of [['absent', { input: 2, output: 10 }], ['zero', { input: 2, output: 10, cacheRead: 0 }]]) {
+    const result = quoteCatalogUsage({ cost }, usage, units)
+    assert.equal(result.reason, 'cache-read-rate-unknown', 'a ' + label + ' cache-read rate must refuse the quote')
+    assert.equal(result.minUnits, undefined, 'and it must not report an amount')
+  }
+  assert.equal(quoteCatalogUsage({ cost: { input: 2, output: 10 } }, { inputTokens: 100, outputTokens: 10, cacheWriteTokens: 1000 }, units).reason,
+    'cache-write-rate-unknown', 'an absent cache-write rate is refused the same way')
+  const priced = quoteCatalogUsage({ cost: { input: 2, output: 10, cacheRead: 0.2 } }, usage, units)
+  assert.equal(priced.reason, null, 'a real cache-read rate must still be priced')
+  assert.equal(priced.breakdown.cache.minUnits / units, 0.0002)
 })
 
 test('native DeepSeek rates honor the same peak/off-peak interval as the CNY fallback', () => {

@@ -156,7 +156,10 @@ test('pricing reuses the peak indicator cache offline and schedule snapshots inv
   assert.notEqual(createSessionMetricsProjection(undefined, updated).stateVersion, originalVersion)
   assert.equal(tariffAt(time, snapshot), 'offPeak', 'original snapshot stays stable')
   assert.equal(tariffAt(time, updated), 'peak')
-  assert.equal(quote({ schedule: { ...snapshot, rule: { status: 'changed' } } }).reason, 'tariff-window-unknown')
+  assert.deepEqual(cny(quote({ schedule: { ...snapshot, rule: { status: 'changed' } } })), [10.04, 10.04],
+    'a changed official rule sentence warns the user but must not leave the message unpriced')
+  assert.equal(quote({ schedule: { ...snapshot, rule: { status: 'unreadable' } } }).reason, null,
+    'an unreadable official rule sentence warns the user but must not leave the message unpriced')
   assert.equal(fetches, 0)
 })
 

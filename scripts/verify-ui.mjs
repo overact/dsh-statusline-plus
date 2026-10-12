@@ -144,6 +144,24 @@ async function verifyResponsive(page, folder) {
   await assertResources(0, 0)
   await page.locator('#fixture-header .slp-quota-with-age').waitFor()
   await page.locator('#fixture-footer .slp-peak-dot-btn').waitFor()
+  // A failed refresh recovers without activity, with exactly three retries.
+  const quota = page.locator('#fixture-header .slp-quota-trigger')
+  const quotaCount = count => page.waitForFunction(expected => window.slpResponsive.quotaRequests.length === expected, count)
+  await quotaCount(1)
+  await page.evaluate(() => { window.slpResponsive.quotaFailures = 4 })
+  await quota.click(); await quotaCount(2)
+  await page.locator('#fixture-header .slp-err').waitFor()
+  for (const [index, delay] of [15000, 30000, 60000].entries()) {
+    await page.clock.runFor(delay); await quotaCount(index + 3)
+  }
+  await page.clock.runFor(120000); await quotaCount(5)
+  const retryBodies = await page.evaluate(() => window.slpResponsive.quotaRequests.slice(2).map(request => JSON.parse(request.body)))
+  if (retryBodies.some(body => body.force)) throw new Error('Automatic retries bypassed Host backoff')
+  await page.evaluate(() => window.dispatchEvent(new Event('online')))
+  await quotaCount(6)
+  await page.locator('#fixture-header .slp-err').waitFor({ state: 'detached' })
+  if (!(await quota.innerText()).includes('20%')) throw new Error('Online recovery did not restore the quota')
+  await page.keyboard.press('Escape')
   await page.setViewportSize({ width: 481, height: 844 })
   await dock.waitFor(); await assertResources(1, 1)
   await page.setViewportSize({ width: 480, height: 844 })
@@ -158,7 +176,7 @@ async function verifyResponsive(page, folder) {
   await toggle.check(); await page.clock.runFor(700)
   await dock.waitFor({ state: 'detached' }); await assertResources(0, 2)
   await page.evaluate(() => window.slpFixtureRoot.unmount())
-  await page.waitForFunction(() => window.slpResponsive.mediaListeners === 0)
+  await page.waitForFunction(() => window.slpResponsive.observers.every(observer => observer.closed))
   await page.evaluate(() => window.remountResponsiveFixture())
   await toggle.waitFor()
   if (!await toggle.isChecked() || await dock.count()) throw new Error('Setting was not retained on remount')
@@ -167,11 +185,17 @@ async function verifyResponsive(page, folder) {
   await page.locator('.slp-set').screenshot({ path: screenshot, animations: 'disabled' })
   await page.setViewportSize({ width: 768, height: 844 })
   await dock.waitFor(); await assertResources(1, 3)
+  // A sidebar can narrow the input area without narrowing the browser viewport.
+  await page.locator('#fixture-dock').evaluate(node => { node.style.width = '480px' })
+  await dock.waitFor({ state: 'detached' }); await assertResources(0, 3)
+  if (!await page.locator('#fixture-native').isVisible()) throw new Error('Container suppression hid native stats')
+  await page.locator('#fixture-dock').evaluate(node => { node.style.width = '481px' })
+  await dock.waitFor(); await assertResources(1, 4)
   await page.evaluate(() => window.disposeResponsiveFixture())
-  await assertResources(0, 3)
-  await page.waitForFunction(() => window.slpResponsive.mediaListeners === 0)
+  await assertResources(0, 4)
+  await page.waitForFunction(() => window.slpResponsive.observers.every(observer => observer.closed))
   return { panel: 'responsive', widths: [320, 390, 480, 481, 768],
-    lifecycle: 'initial suppression/settings save/remount/resize/resource cleanup passed', screenshot: relative(root, screenshot) }
+    lifecycle: 'three retries/online recovery/container suppression/native stats/settings save/remount/resource cleanup passed', screenshot: relative(root, screenshot) }
 }
 
 let browser, folder

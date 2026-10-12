@@ -25,6 +25,7 @@
   },
   "license": "MIT",
   "author": "overact",
+  "icon": "./icon.svg",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -37,7 +38,8 @@
     "cordis.patch.yml",
     "README.md",
     "CHANGELOG.md",
-    "LICENSE"
+    "LICENSE",
+    "icon.svg"
   ],
   "scripts": {
     "check": "node --check lib/index.js && node --check lib/client.js && node --check lib/provider-presets.js && node --check lib/request-pool.js && node --check lib/tps.js && node --check lib/session-metrics.js && node --check lib/model-pricing.js && node --check lib/tool-activity.js && node --check lib/peak-schedule.js && node --check scripts/verification.mjs && node --check scripts/verify.mjs && node --check scripts/ui-fixture.mjs && node --check scripts/verify-ui.mjs && node --check scripts/screenshots.mjs",

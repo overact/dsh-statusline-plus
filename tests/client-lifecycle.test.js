@@ -24,8 +24,12 @@ function harness({ hidden = false, wallTime = Date.now(), panelLayout = null } =
     },
   }
   let scopeValue = { showGit: false }
+  let scopeRefuse = false
   const documentEvents = new Map()
+  const windowEvents = new Map()
   const scope = { getSnapshot: () => ({ mode: 'host', writable: true, value: scopeValue }), mutate: async ops => {
+    // The framework resolves false when the Host refuses the write.
+    if (scopeRefuse) return false
     mutations.push(ops)
     for (const operation of ops) {
       if (operation.op === 'unset') { scopeValue = { ...scopeValue }; delete scopeValue[operation.path[0]] }
@@ -33,7 +37,9 @@ function harness({ hidden = false, wallTime = Date.now(), panelLayout = null } =
     }
   } }
   const context = {
-    window: { __ModuleLoader__: { load: spec => { exported = spec.factory(() => React) } } },
+    window: { __ModuleLoader__: { load: spec => { exported = spec.factory(() => React) } }, navigator: { onLine: true },
+      addEventListener(name, fn) { if (!windowEvents.has(name)) windowEvents.set(name, new Set()); windowEvents.get(name).add(fn) },
+      removeEventListener(name, fn) { windowEvents.get(name)?.delete(fn) } },
     document: {
       visibilityState: hidden ? 'hidden' : 'visible',
       addEventListener(name, fn) { if (!documentEvents.has(name)) documentEvents.set(name, new Set()); documentEvents.get(name).add(fn) },
@@ -51,8 +57,8 @@ function harness({ hidden = false, wallTime = Date.now(), panelLayout = null } =
     setInterval(fn) { const token = { fn }; timers.add(token); return token },
     clearInterval(token) { timers.delete(token) },
     fetch(url, opts) {
-      return new Promise(resolve => {
-        requests.push({ url, opts, resolve: data => resolve({ json: async () => data }) })
+      return new Promise((resolve, reject) => {
+        requests.push({ url, opts, resolve: data => resolve({ json: async () => data }), reject })
         opts?.signal?.addEventListener('abort', () => resolve({ json: async () => ({ ok: false, error: 'aborted' }) }))
       })
     },
@@ -70,8 +76,10 @@ function harness({ hidden = false, wallTime = Date.now(), panelLayout = null } =
   vm.runInNewContext(source, context)
   exported.setScope(scope)
   return {
-    ...exported, requests, mutations, timers, sources, timeouts, documentEvents,
+    ...exported, requests, mutations, timers, sources, timeouts, documentEvents, windowEvents,
+    setOnline(value) { context.window.navigator.onLine = value; windowEvents.get(value ? 'online' : 'offline')?.forEach(fn => fn()) },
     setVisible(value) { context.document.visibilityState = value ? 'visible' : 'hidden'; documentEvents.get('visibilitychange')?.forEach(fn => fn()) },
+    setScopeRefuse(value) { scopeRefuse = value },
     tick() { timers.forEach(timer => timer.fn()) },
     setConfig(value) { scopeValue = value; exported.publishConfig(value) },
     renderComponent(component, props = {}) { cursor = 0; const result = component(props); while (pending.length) pending.shift()(); return result },
@@ -85,6 +93,106 @@ function harness({ hidden = false, wallTime = Date.now(), panelLayout = null } =
 const config = { enabled: true, showQuota: true, intervalSec: 60 }
 const resource = { kind: 'provider', id: 'openrouter', key: 'provider:openrouter', onStep: true }
 const flush = () => new Promise(resolve => setImmediate(resolve))
+
+test('network failures retry at 15/30/60 seconds and stop after three retries', async () => {
+  const h = harness(); h.render(resource, config)
+  for (const [index, delay] of [15000, 30000, 60000].entries()) {
+    h.requests[index].resolve({ ok: false, error: 'network' }); await flush()
+    h.advance(delay - 1); assert.equal(h.requests.length, index + 1)
+    h.advance(1); assert.equal(h.requests.length, index + 2)
+    assert.equal(JSON.parse(h.requests[index + 1].opts.body).force, false, 'automatic retries respect Host backoff')
+  }
+  h.requests[3].resolve({ ok: false, error: 'network' }); await flush()
+  h.advance(300000); assert.equal(h.requests.length, 4)
+  assert.equal(h.timeouts.size, 0)
+  h.unmount()
+  assert.equal(h.windowEvents.get('online').size, 0)
+  assert.equal(h.windowEvents.get('offline').size, 0)
+})
+
+test('an automatic retry restores quota and preserves the last good data while waiting', async () => {
+  const h = harness(); h.render(resource, config)
+  const original = { remaining: 5, fetchedAt: 1700000000000 }
+  h.requests[0].resolve({ ok: true, data: original }); await flush()
+  h.render(resource, config).refresh()
+  h.requests[1].resolve({ ok: false, error: 'network' }); await flush()
+  assert.equal(h.render(resource, config).data, original)
+  assert.equal(h.render(resource, config).staleError, 'network')
+  h.advance(15000)
+  h.requests[2].resolve({ ok: true, data: { remaining: 4, fetchedAt: 1700000015000 } }); await flush()
+  assert.equal(h.render(resource, config).data.remaining, 4)
+  assert.equal(h.render(resource, config).staleError, null)
+  h.advance(300000); assert.equal(h.requests.length, 3)
+  h.unmount()
+})
+
+test('a failed browser fetch uses the network recovery path instead of a raw exception message', async () => {
+  const h = harness(); h.render(resource, config)
+  h.requests[0].reject(new TypeError('Failed to fetch')); await flush()
+  assert.equal(h.render(resource, config).error, 'network')
+  h.advance(15000); assert.equal(h.requests.length, 2)
+  h.unmount()
+})
+
+test('credential and malformed-response failures do not start automatic retries', async () => {
+  for (const error of ['auth', 'no-credential', 'account-required', 'invalid-response', 'disabled']) {
+    const h = harness(); h.render(resource, config)
+    h.requests[0].resolve({ ok: false, error }); await flush()
+    h.setOnline(true); assert.equal(h.requests.length, 1, 'online does not repair ' + error)
+    h.advance(300000); assert.equal(h.requests.length, 1, error)
+    assert.equal(h.timeouts.size, 0, error); h.unmount()
+  }
+})
+
+test('rate-limit retry waits at least sixty seconds and never forces the Host cache', async () => {
+  const h = harness(); h.render(resource, config)
+  h.requests[0].resolve({ ok: false, error: 'rate-limit' }); await flush()
+  h.advance(59999); assert.equal(h.requests.length, 1)
+  h.advance(1); assert.equal(h.requests.length, 2)
+  assert.equal(JSON.parse(h.requests[1].opts.body).force, false)
+  h.requests[1].resolve({ ok: false, error: 'rate-limit' }); await flush()
+  h.advance(119999); assert.equal(h.requests.length, 2)
+  h.advance(1); assert.equal(h.requests.length, 3)
+  h.unmount(); assert.equal(h.timeouts.size, 0)
+})
+
+test('offline pauses queries and coming online restores a failed quota without a new step', async () => {
+  const h = harness(); h.setOnline(false); h.render(resource, config)
+  assert.equal(h.requests.length, 0)
+  assert.equal(h.render(resource, config).error, 'network')
+  h.setOnline(true); assert.equal(h.requests.length, 1)
+  h.requests[0].resolve({ ok: false, error: 'network' }); await flush()
+  h.setOnline(false); assert.equal(h.timeouts.size, 0)
+  h.advance(120000); assert.equal(h.requests.length, 1)
+  h.setOnline(true); assert.equal(h.requests.length, 2)
+  h.requests[1].resolve({ ok: true, data: { remaining: 8 } }); await flush()
+  assert.equal(h.render(resource, config).data.remaining, 8)
+  h.setOnline(true); assert.equal(h.requests.length, 2, 'online events do not refetch healthy quotas')
+  h.unmount()
+})
+
+test('hiding cancels retry timers and becoming visible resumes a failed quota', async () => {
+  const h = harness(); h.render(resource, config)
+  h.requests[0].resolve({ ok: false, error: 'network' }); await flush()
+  h.setVisible(false); h.render(resource, config)
+  assert.equal(h.timeouts.size, 0)
+  h.advance(120000); assert.equal(h.requests.length, 1)
+  h.setVisible(true); h.render(resource, config)
+  assert.equal(h.requests.length, 2)
+  h.unmount(); assert.equal(h.requests[1].opts.signal.aborted, true)
+})
+
+test('switching quota sources cancels scheduled recovery and ignores late results', async () => {
+  const h = harness(); h.render(resource, config)
+  h.requests[0].resolve({ ok: false, error: 'network' }); await flush()
+  const other = { ...resource, key: 'provider:other', id: 'other' }
+  h.render(other, config)
+  assert.equal(h.timeouts.size, 0)
+  h.requests[1].resolve({ ok: true, data: { remaining: 7 } }); await flush()
+  h.advance(120000); assert.equal(h.requests.length, 2)
+  assert.equal(h.render(other, config).data.remaining, 7)
+  h.unmount()
+})
 
 test('quota freshness retains the actual fetch time and never fabricates a missing timestamp', () => {
   const h = harness(), now = 1700000000000
@@ -700,6 +808,22 @@ test('disabled and hidden quota hooks start no requests or timers', () => {
   }
 })
 
+test('a visibility change that happens while the quota gate is off is not lost', () => {
+  const h = harness({ hidden: true })
+  // Before the config arrives the gate is off, so no listener exists yet.
+  h.render(resource, undefined)
+  assert.equal(h.documentEvents.get('visibilitychange')?.size ?? 0, 0, 'no listener exists while the gate is off')
+  assert.equal(h.requests.length, 0)
+  // The tab becomes visible during that window. Nobody is listening, so the only
+  // way to observe it is to read the live document when the gate opens.
+  h.setVisible(true)
+  assert.equal(h.documentEvents.get('visibilitychange')?.size ?? 0, 0, 'the tab switch really was unobserved')
+  h.render(resource, config)
+  assert.equal(h.requests.length, 1, 'the gate must open on the first render after the config arrives')
+  assert.equal(h.documentEvents.get('visibilitychange').size, 1, 'and it must now listen for later changes')
+  h.unmount()
+})
+
 test('TPS push is session-isolated, polling-free and closed when hidden/disabled/unmounted', () => {
   const h = harness()
   h.renderLive('one')
@@ -834,6 +958,34 @@ test('client settings submit only changed fields through native mutation', async
   assert.deepEqual(JSON.parse(JSON.stringify(h.mutations)), [[{ op: 'set', path: ['showGit'], value: false }]])
 })
 
+test('a Host refusal is reported instead of being saved as success', async () => {
+  const h = harness()
+  h.setScopeRefuse(true)
+  const refused = await h.apiSetConfig({ showGit: true })
+  // mutate() resolves false on refusal; reporting ok:true here both lied to the user and
+  // let the settings panel clear the still-unsaved edit from its dirty set.
+  assert.equal(refused.ok, false, 'a refused write must not report success')
+  assert.ok(refused.error, 'and it must carry a reason')
+  h.setScopeRefuse(false)
+  assert.equal((await h.apiSetConfig({ showGit: true })).ok, true, 'a later accepted write still succeeds')
+})
+
+test('a refused defaults reset preserves preferences and reports failure', async () => {
+  const h = harness()
+  h.setConfig({ ...config, hideBottomOnNarrow: true })
+  h.setScopeRefuse(true)
+  h.renderComponent(h.SettingsPage)
+  const button = () => descendants(h.renderComponent(h.SettingsPage), node => node.props?.name === 'reset')[0]
+  button().props.onClick(); button().props.onClick(); await flush(); await flush()
+  const view = h.renderComponent(h.SettingsPage)
+  assert.doesNotMatch(textContent(view), /Defaults restored/)
+  assert.match(textContent(view), /Save failed/)
+  assert.ok(descendants(view, node => /host rejected/i.test(node.props?.title || '')).length)
+  assert.equal(descendants(view, node => node.props?.name === 'hideBottomOnNarrow')[0].props.checked, true)
+  assert.equal(h.mutations.length, 0)
+  h.unmount()
+})
+
 test('missing OpenCode windows stay unknown and paths display only their last two segments', () => {
   const h = harness()
   assert.equal(h.normalizeWindows({ windows: {} }, 0).length, 0)
@@ -841,7 +993,7 @@ test('missing OpenCode windows stay unknown and paths display only their last tw
   const windows = h.normalizeWindows({ windows: { rolling: { percent: 0 } } }, 0)
   assert.equal(windows.length, 1)
   assert.equal(windows[0].pct, 0)
-  assert.equal(h.formatPathSegs('/home/user/projects/statusline/', 2), 'projects/statusline')
+  assert.equal(h.formatPathSegs('/workspace/projects/statusline/', 2), 'projects/statusline')
   assert.equal(h.formatPathSegs('C:\\projects\\statusline', 2), 'projects/statusline')
 })
 
@@ -993,7 +1145,7 @@ test('provider settings save credential references without accepting literal key
   let settings = h.renderComponent(h.SettingsPage)
   const credential = descendants(settings, node => node.type === 'input' && node.props?.value === 'DEEPSEEK_API_KEY')[0]
   assert.equal(credential.props.pattern, '[A-Za-z_][A-Za-z0-9_]*')
-  credential.props.onChange({ target: { value: 'sk-example-not-a-reference' } })
+  credential.props.onChange({ target: { value: 'literal-key-not-a-reference' } })
   h.advance(700); await flush()
   assert.equal(h.mutations.length, 0)
   credential.props.onChange({ target: { value: 'MY_DEEPSEEK_KEY' } })

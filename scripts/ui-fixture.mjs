@@ -57,7 +57,7 @@ export async function mountResponsiveFixture(page) {
   await page.evaluate(() => {
     window.slpFixtureRoot.unmount()
     document.getElementById('shell').style.cssText = 'position:static;height:auto;overflow:visible'
-    document.getElementById('root').style.cssText = 'position:static;padding:12px'
+    document.getElementById('root').style.cssText = 'position:static'
     const { React, ReactDOM, slpComponents: components } = window
     const defaults = { enabled: true, hideBottomOnNarrow: false, showGit: true, showTps: true,
       showContext: false, showCost: false, showActivity: false, showTools: false, showCwd: false,
@@ -65,14 +65,14 @@ export async function mountResponsiveFixture(page) {
       cacheTtlMs: 60000, fetchTimeoutMs: 10000 }
     let config = { ...defaults, hideBottomOnNarrow: true }
     const listeners = new Set(), registrations = new Map(), cleanups = []
-    window.slpResponsive = { sources: [], gitRequests: [], mutations: [], mediaListeners: 0 }
+    window.slpResponsive = { sources: [], gitRequests: [], quotaRequests: [], quotaFailures: 0, mutations: [], observers: [] }
     const activity = window.slpResponsive
-    const matchMedia = window.matchMedia.bind(window)
-    window.matchMedia = query => {
-      const media = matchMedia(query), add = media.addEventListener.bind(media), remove = media.removeEventListener.bind(media)
-      media.addEventListener = (name, fn) => { if (name === 'change') activity.mediaListeners++; add(name, fn) }
-      media.removeEventListener = (name, fn) => { if (name === 'change') activity.mediaListeners--; remove(name, fn) }
-      return media
+    const NativeObserver = window.ResizeObserver
+    window.ResizeObserver = class {
+      constructor(callback) { this.native = new NativeObserver(callback); activity.observers.push(this) }
+      observe(node) { this.closed = false; this.native.observe(node) }
+      unobserve(node) { this.native.unobserve(node) }
+      disconnect() { this.closed = true; this.native.disconnect() }
     }
     window.EventSource = class {
       constructor(url) { this.url = url; activity.sources.push(this) }
@@ -85,9 +85,11 @@ export async function mountResponsiveFixture(page) {
           request.aborted = true; resolve({ json: async () => ({ ok: false, error: 'aborted' }) })
         }))
       }
-      if (url === '/statusline/api/usage') return { json: async () => ({ ok: true, data: {
-        primary: { usedPercent: 20, windowMinutes: 300 }, fetchedAt: Date.now(),
-      } }) }
+      if (url === '/statusline/api/usage') {
+        activity.quotaRequests.push({ at: Date.now(), body: options.body })
+        if (activity.quotaFailures > 0) { activity.quotaFailures--; return { json: async () => ({ ok: false, error: 'network' }) } }
+        return { json: async () => ({ ok: true, data: { windows: { rolling: { percent: 20 } }, fetchedAt: Date.now() } }) }
+      }
       if (url === '/statusline/api/peak-schedule') return { json: async () => ({ ok: false }) }
       throw new Error('Unexpected responsive fixture request: ' + url)
     }
@@ -110,8 +112,11 @@ export async function mountResponsiveFixture(page) {
     function App() {
       return React.createElement(React.Fragment, null,
         React.createElement('div', { id: 'fixture-header' }, React.createElement(registrations.get('conversation.session.header.actions'), sessionProps)),
-        React.createElement('div', { id: 'fixture-native' }, 'Native composer stats'),
-        React.createElement('div', { id: 'fixture-dock' }, React.createElement(registrations.get('conversation.composer.dock'), sessionProps)),
+        React.createElement('div', { id: 'fixture-dock' },
+          React.createElement('div', { 'data-composer-card': true, style: { width: '100%', height: '1px' } }),
+          React.createElement('div', { 'data-composer-dock': true, style: { display: 'inline-flex' } },
+            React.createElement('div', { id: 'fixture-native', 'data-composer-stat': 'usage' }, 'Native composer stats'),
+            React.createElement('div', { 'data-slot': 'conversation.composer.dock' }, React.createElement(registrations.get('conversation.composer.dock'), sessionProps)))),
         React.createElement('div', { id: 'fixture-footer' }, React.createElement(registrations.get('sidebar.footer.action'))),
         React.createElement(registrations.get('settings.section')))
     }

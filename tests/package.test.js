@@ -14,4 +14,14 @@ test('source checkout contains every declared bundle and module entry', () => {
     assert.ok(!relative(root, target).startsWith('..'), 'Package entry must stay inside the checkout')
     assert.ok(statSync(target).isFile(), 'Missing distributed entry: ' + file)
   }
+  if (pkg.icon) {
+    assert.equal(typeof pkg.icon, 'string')
+    const iconTarget = resolve(root, pkg.icon)
+    assert.ok(!relative(root, iconTarget).startsWith('..'), 'Icon must stay inside the checkout')
+    const stat = statSync(iconTarget)
+    assert.ok(stat.isFile(), 'Declared icon file must exist: ' + pkg.icon)
+    assert.ok(stat.size <= 256 * 1024, 'Declared icon must not exceed 256 KiB')
+    const content = readFileSync(iconTarget, 'utf8')
+    assert.match(content, /<svg[\s\S]*<\/svg>/i, 'Declared icon must contain valid SVG markup')
+  }
 })
