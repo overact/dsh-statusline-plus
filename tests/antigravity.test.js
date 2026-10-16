@@ -1,6 +1,9 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
+const { mkdtempSync, rmSync, writeFileSync } = require('node:fs')
+const { tmpdir } = require('node:os')
+const { join } = require('node:path')
 process.env.SLP_TEST = '1'
 const { __test: api } = require('../lib/index')
 const { RequestPool } = require('../lib/request-pool')
@@ -75,4 +78,35 @@ test('deadline retains successful accounts and cancels slow account work', async
 test('caller cancellation propagates rather than returning partial quota', async () => {
   const controller = new AbortController(); controller.abort(new Error('fixture-cancel'))
   await assert.rejects(api.collectAntigravityQuotas(credentials, async () => quota(), controller.signal), /fixture-cancel/)
+})
+
+// CPA 把 priority 落盘成 JSON 字符串；回归覆盖 "显示层不认字符串" 导致的全部压成 0。
+test('priority accepts the string values CPA writes to auth files', () => {
+  assert.equal(api.parsePriority({ priority: '100' }), 100)
+  assert.equal(api.parsePriority({ priority: '50' }), 50)
+  assert.equal(api.parsePriority({ priority: 100 }), 100)
+  assert.equal(api.parsePriority({ priority: '-1' }), -1)
+  assert.equal(api.parsePriority({ priority: '10.5' }), 10.5)
+  assert.equal(api.parsePriority({ priority: ' 20 ' }), 20)
+  assert.equal(api.parsePriority({ attributes: { priority: '7' } }), 7)
+  for (const value of [{}, { priority: '' }, { priority: '  ' }, { priority: 'n/a' }, { priority: null }, { priority: NaN }, { priority: Infinity }, { priority: true }, { priority: {} }, undefined]) {
+    assert.equal(api.parsePriority(value), 0)
+  }
+})
+
+test('readAllCredentials keeps CPA string priorities and orders accounts by them', t => {
+  const root = mkdtempSync(join(tmpdir(), 'slp-agy-priority-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  // 文件名排序与优先级排序刻意相反：旧的 number-only 逻辑会退化成 a-low 打头。
+  const fixtures = [
+    ['antigravity-a-low.json', 'a-low@example.invalid', '10'],
+    ['antigravity-b-high.json', 'b-high@example.invalid', '100'],
+    ['antigravity-c-mid.json', 'c-mid@example.invalid', '50'],
+  ]
+  for (const [name, email, priority] of fixtures) {
+    writeFileSync(join(root, name), JSON.stringify({ email, priority, refresh_token: 'fixture-not-real', access_token: 'fixture-not-real' }))
+  }
+  const creds = api.readAllCredentials('antigravity', root)
+  assert.deepEqual(creds.map(c => c.email), ['b-high@example.invalid', 'c-mid@example.invalid', 'a-low@example.invalid'])
+  assert.deepEqual(creds.map(c => c.priority), [100, 50, 10])
 })
