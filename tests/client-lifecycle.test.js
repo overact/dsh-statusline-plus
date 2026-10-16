@@ -72,7 +72,7 @@ function harness({ hidden = false, wallTime = Date.now(), panelLayout = null } =
       disconnect() { this.nodes.clear() }
     }
   }
-  const source = fs.readFileSync(require.resolve('../lib/client'), 'utf8').replace('return module.exports', 'return { ContextProjection, ContextRow, componentOrder, reorderComponent, layoutPreset, matchingPreset, dockComponents, LayoutEditor, LayoutPreview, ToolActivityRow, toolElapsed, quotaRefreshOnStep, TpsRow, useLiveTps, useQuotaResource, normalizeWindows, formatPathSegs, fmtResetHours, codexWindowLabel, isCodexModel, isAntigravityModel, providerMatchesModel, fmtMoney, ProviderQuotaLine, CodexQuotaLine, AntigravityQuotaLine, OpenCodeQuotaLine, parseSeconds, PeakPanel, PeakFooterDot, deepseekPeakStatus, HeaderChip, SettingsPage, DeepseekPeakChip, ActivityRow, childActivityRows, childElapsed, CostRow, estimateCost, quotaFreshness, QuotaChip, publishConfig, apiSetConfig, setScope: function (scope) { settingsScope = scope } }')
+  const source = fs.readFileSync(require.resolve('../lib/client'), 'utf8').replace('return module.exports', 'return { ContextProjection, ContextRow, componentOrder, reorderComponent, layoutPreset, matchingPreset, dockComponents, LayoutEditor, LayoutPreview, ToolActivityRow, toolElapsed, quotaRefreshOnStep, TpsRow, useLiveTps, useQuotaResource, normalizeWindows, formatPathSegs, fmtResetHours, codexWindowLabel, isCodexModel, isAntigravityModel, providerMatchesModel, fmtMoney, ProviderQuotaLine, CodexQuotaLine, AntigravityQuotaLine, OpenCodeQuotaLine, parseSeconds, PeakPanel, PeakFooterDot, deepseekPeakStatus, HeaderChip, SettingsPage, DeepseekPeakChip, ActivityRow, childActivityRows, childElapsed, CostRow, estimateCost, quotaFreshness, QuotaChip, quotaState, fmtRetryIn, contextUsage, ContextPanel, STR, publishConfig, apiSetConfig, setScope: function (scope) { settingsScope = scope } }')
   vm.runInNewContext(source, context)
   exported.setScope(scope)
   return {
@@ -427,7 +427,9 @@ test('tools show bounded real calls, freeze settled durations and clean up hidde
   assert.equal(h.timers.size, 0, 'collapsed count needs no elapsed clock')
   view.children[0].props.onClick(); view = h.renderComponent(h.ToolActivityRow, props)
   assert.equal(h.timers.size, 1)
-  assert.equal(view.children[1].children[1].length, 12)
+  const list = view.children[1].children[1]
+  assert.equal(list.props.className, 'slp-panel-scroll', 'only the list scrolls; heading and hint stay put')
+  assert.equal(list.children[0].length, 12)
   assert.match(textContent(view), /not exact execution time/)
   assert.equal(h.toolElapsed(data.tools[3], now + 30000), 10)
   h.setVisible(false); assert.equal(h.renderComponent(h.ToolActivityRow, props), null)
@@ -1389,7 +1391,10 @@ test('CTX retains used tokens and capacity without repeating the native percenta
   const view = h.renderComponent(projected.type, projected.props)
   assert.equal(textContent(view).replace(/\s+/g, ' ').trim(), 'CTX 12.3K / 1M')
   assert.doesNotMatch(textContent(view), /%/)
-  assert.equal(view.children[1].props.title, '12345 / 1000000 tokens')
+  const trigger = view.children[0]
+  assert.equal(trigger.type, 'button')
+  assert.equal(trigger.props['aria-expanded'], false)
+  assert.equal(trigger.children[1].props.title, '12345 / 1000000 tokens')
   h.unmount()
 })
 
@@ -1617,5 +1622,136 @@ test('unmatched billing providers leave the header empty, including while the mo
   assert.equal(h.renderComponent(h.HeaderChip, { sessionId: 'fixture' }), null)
   h.requests[0].resolve({ ok: true, data: { provider: 'anthropic', model: 'claude' } }); await flush()
   assert.equal(h.renderComponent(h.HeaderChip, { sessionId: 'fixture' }), null)
+  h.unmount()
+})
+
+test('zh and en string tables define the same keys', () => {
+  const h = harness()
+  assert.deepEqual(Object.keys(h.STR.zh).sort(), Object.keys(h.STR.en).sort())
+})
+
+test('quota state is one machine: loading, fresh, stale, retrying with countdown, exhausted, error', () => {
+  const h = harness(), now = 1700000000000, data = { fetchedAt: now }
+  const state = props => h.quotaState(props, now)
+  assert.equal(state({}).state, 'loading')
+  assert.equal(state({ data }).state, 'fresh')
+  assert.equal(state({ data, staleError: 'network' }).state, 'stale')
+  assert.deepEqual({ ...state({ data, staleError: 'network', retryAt: now + 14500, retryAttempt: 2 }) },
+    { state: 'retrying', reason: 'network', retryable: true, retryInSec: 15, attempt: 2 })
+  assert.equal(state({ data, staleError: 'network', retryExhausted: true }).state, 'exhausted')
+  assert.equal(state({ error: 'network', retryAt: now + 30000, retryAttempt: 1 }).state, 'retrying')
+  assert.equal(state({ error: 'network', retryExhausted: true }).state, 'exhausted')
+  const auth = state({ error: 'auth' })
+  assert.equal(auth.state, 'error'); assert.equal(auth.retryable, false)
+  assert.equal(state({ data, retryAt: now + 5000 }).state, 'fresh', 'a stale countdown never outlives a success')
+  assert.equal(h.fmtRetryIn(15), '15s'); assert.equal(h.fmtRetryIn(90), '1m30s'); assert.equal(h.fmtRetryIn(240), '4m')
+})
+
+test('the quota hook exposes each scheduled retry and clears the countdown when it runs', async () => {
+  const now = 1700000000000, h = harness({ wallTime: now }); h.render(resource, config)
+  h.requests[0].resolve({ ok: false, error: 'network' }); await flush()
+  let result = h.render(resource, config)
+  assert.equal(result.retryAt, now + 15000); assert.equal(result.retryAttempt, 1)
+  h.advance(15000)
+  result = h.render(resource, config)
+  assert.equal(result.retryAt, null, 'no countdown while the retry request is in flight')
+  h.requests[1].resolve({ ok: false, error: 'network' }); await flush()
+  result = h.render(resource, config)
+  assert.equal(result.retryAt, now + 15000 + 30000); assert.equal(result.retryAttempt, 2)
+  result.refresh()
+  assert.equal(h.render(resource, config).retryAt, null, 'a manual refresh replaces the countdown')
+  h.requests[2].resolve({ ok: true, data: { remaining: 3 } }); await flush()
+  result = h.render(resource, config)
+  assert.equal(result.retryAt, null); assert.equal(result.retryExhausted, false)
+  h.unmount()
+})
+
+test('a failed chip shows the reason and a live countdown; the clock stops when hidden', async () => {
+  const now = 1700000000000, h = harness({ wallTime: now })
+  const props = { resource, config, stepCount: 0 }
+  h.renderComponent(h.QuotaChip, props)
+  h.requests[0].resolve({ ok: false, error: 'network' }); await flush()
+  let view = h.renderComponent(h.QuotaChip, props)
+  let chip = h.ProviderQuotaLine(view.children[0].props).children[0]
+  assert.equal(chip.type, 'button')
+  assert.equal(chip.props['data-state'], 'retrying')
+  assert.match(textContent(chip), /network error.*retry in 15s/)
+  assert.match(chip.props.title, /Automatic retry 1\/3 in 15s.*click to retry/)
+  assert.equal(h.timers.size, 1, 'one per-second countdown clock')
+  h.advance(5000); view = h.renderComponent(h.QuotaChip, props)
+  assert.match(textContent(h.ProviderQuotaLine(view.children[0].props).children[0]), /retry in 10s/)
+  h.setVisible(false); h.renderComponent(h.QuotaChip, props)
+  assert.equal(h.timers.size, 0, 'hidden pages run no countdown')
+  h.unmount()
+})
+
+test('quota details state the failure and the next step; screen readers get the stale reason', () => {
+  const h = harness(), now = 1700000000000
+  const props = { data: { primary: { usedPercent: 20, windowMinutes: 300 }, fetchedAt: now - 1000 }, staleError: 'timeout',
+    retryAt: now + 30000, retryAttempt: 2, ttlMs: 60000, now, refresh() {} }
+  let view = h.renderComponent(h.CodexQuotaLine, props)
+  assert.equal(view.children[0].props['data-state'], 'retrying')
+  assert.ok(descendants(view.children[0], node => node.props?.className === 'slp-sr' && /timeout/.test(textContent(node))).length)
+  view.children[0].props.onClick(); view = h.renderComponent(h.CodexQuotaLine, props)
+  const note = descendants(view.children[1], node => node.props?.className === 'slp-panel-status')[0]
+  assert.equal(textContent(note), 'timeout · Automatic retry 2/3 in 30s')
+  assert.ok(descendants(view.children[1], node => node.props?.className === 'slp-panel-scroll').length, 'body scrolls between fixed title and footer')
+  view = h.renderComponent(h.CodexQuotaLine, { ...props, retryAt: null, retryExhausted: true })
+  assert.match(textContent(descendants(view.children[1], node => node.props?.className === 'slp-panel-status')[0]), /exhausted/)
+  view = h.renderComponent(h.CodexQuotaLine, { ...props, staleError: null, retryAt: null })
+  assert.equal(descendants(view.children[1], node => node.props?.className === 'slp-panel-status').length, 0, 'fresh data adds no note')
+})
+
+test('loading chips say loading; credential errors get a short reason, not a generic one', () => {
+  const h = harness()
+  for (const name of ['CodexQuotaLine', 'AntigravityQuotaLine', 'ProviderQuotaLine', 'OpenCodeQuotaLine']) {
+    const loading = h[name]({ provider: { label: 'Test' }, data: null, error: null, refresh() {} }).children[0]
+    assert.equal(loading.props.title, 'Loading quota…', name)
+    assert.equal(loading.props['data-state'], 'loading')
+    const auth = h[name]({ provider: { label: 'Test' }, error: 'auth', refresh() {} }).children[0]
+    assert.match(textContent(auth), /auth failed/, name)
+    assert.equal(auth.props['data-state'], 'error')
+  }
+})
+
+test('an expired quota cache reads as normal age; only a failed refresh warns', () => {
+  const h = harness(), now = 1700000000000
+  const expired = h.quotaFreshness({ fetchedAt: now - 120000 }, 60000, null, now)
+  assert.equal(expired.stale, true); assert.equal(expired.failed, false)
+  assert.equal(expired.label, 'Updated 2m ago')
+  assert.match(expired.title, /Cache expired/)
+  const failed = h.quotaFreshness({ fetchedAt: now - 120000 }, 60000, 'network', now)
+  assert.equal(failed.failed, true); assert.equal(failed.label, 'Refresh failed · updated 2m ago')
+})
+
+test('context usage accepts only complete, valid session buckets', () => {
+  const h = harness()
+  const usage = h.contextUsage({ uncachedInputTokens: 10000, cacheReadTokens: 80000, cacheWriteTokens: 10000, outputTokens: 4000 })
+  assert.equal(usage.total, 104000); assert.equal(usage.cacheHitPct, 80)
+  assert.equal(h.contextUsage(null), null)
+  assert.equal(h.contextUsage({ projectedTokens: 1, contextWindow: 2 }), null, 'another projection shape is not usage')
+  assert.equal(h.contextUsage({ uncachedInputTokens: 1, cacheReadTokens: -1, cacheWriteTokens: 0, outputTokens: 0 }), null)
+  assert.equal(h.contextUsage({ uncachedInputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 5 }).cacheHitPct, null)
+})
+
+test('CTX details show occupancy, remaining room and the cache read/write split', () => {
+  const h = harness()
+  const usage = { uncachedInputTokens: 10000, cacheReadTokens: 80000, cacheWriteTokens: 10000, outputTokens: 4000 }
+  const useProjection = key => key === 'contextPressure' ? { projectedTokens: 850000, contextWindow: 1000000 } : key === 'tokenUsage' ? usage : null
+  const projected = h.renderComponent(h.ContextProjection, { useProjection })
+  let view = h.renderComponent(projected.type, projected.props)
+  view.children[0].props.onClick()
+  view = h.renderComponent(projected.type, projected.props)
+  const panel = view.children[1]
+  assert.equal(panel.type, h.ContextPanel)
+  const rendered = panel.type(panel.props), text = textContent(rendered)
+  assert.match(text, /85% used/); assert.match(text, /150K left/)
+  assert.match(text, /Uncached input 10K/); assert.match(text, /Cache read 80K/); assert.match(text, /Cache write 10K/); assert.match(text, /Output 4K/)
+  assert.match(text, /Input cache hit 80%/)
+  const meter = descendants(rendered, node => node.props?.role === 'meter')[0]
+  assert.equal(meter.props['aria-valuenow'], 85)
+  assert.equal(descendants(rendered, node => node.props?.className === 'slp-context-big slp-context-pct d').length, 1, 'past 80% uses the danger tone')
+  const bare = textContent(h.ContextPanel({ ...panel.props, usage: null }))
+  assert.doesNotMatch(bare, /Cache read|Session token totals/, 'no usage projection: no breakdown, nothing invented')
   h.unmount()
 })

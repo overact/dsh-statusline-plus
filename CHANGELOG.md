@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Click CTX for context details: occupancy bar and percentage, remaining room, and the session's uncached input / cache read / cache write / output tokens with the input cache-hit rate (from the Host's `tokenUsage` projection; hidden when the Host does not provide it).
+- Give every quota chip one state: loading, fresh, stale (last good data), retrying with a live countdown and attempt number, exhausted (click to retry), or error with a short reason (auth failed, not set up, choose account). Error chips are no longer dimmed like loading chips, loading chips say "Loading quota…", and quota details state the failure and the next step.
+- An expired quota cache now reads as a normal age ("Updated 2m ago"); only a failed refresh shows the warning colour and "Refresh failed".
+- Long quota and tool lists scroll inside their panels with an edge fade, keeping the title and footer in place. Escape from inside a panel returns focus to its trigger; reduced-motion preferences disable panel animations and transitions.
 - Give quota requests a plugin-owned HTTP connection pool with a 5-second address-attempt window, without changing Host defaults. Update quotas as soon as a query succeeds; the window does not delay refreshes. Release the pool when the plugin unloads.
 - Allow Codex quota requests up to 15 seconds overall so a slower connection can still complete TLS and return usage.
 - Resume exhausted quota recovery when the visible page regains focus; keep the three-retry limit and successful data, and explain network failures and exhausted retries in quota chips.
