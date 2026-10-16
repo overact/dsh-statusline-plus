@@ -1763,11 +1763,18 @@ test('Antigravity chip falls back to Claude/GPT windows and never shows a bare q
   const chip = view.children[0]
   assert.match(textContent(chip), /10%.*60%/)
   assert.doesNotMatch(textContent(chip), /\?/)
-  assert.match(chip.props.title, /Claude\/GPT quota only/)
+  assert.match(chip.props.title, /5 hours: 10% used · this week: 60% used/)
+  assert.doesNotMatch(chip.props.title, /third-party|Claude|GPT/)
   chip.props.onClick()
   view = h.renderComponent(h.AntigravityQuotaLine, { data, mode: 'used', refresh() {} })
   const panel = h.renderComponent(view.children[1].type, view.children[1].props)
   assert.deepEqual(descendants(panel, node => node.props?.className === 'slp-bar-pct').map(textContent), ['10%', '60%'])
+  assert.deepEqual(descendants(panel, node => node.props?.className === 'slp-bar-label').map(textContent), ['5 hours', 'this week'])
+  // With the Gemini group present, the other group carries its qualifier.
+  const both = { ...data, gemini5h: { usedPercent: 1, remainingPercent: 99 }, geminiWeekly: { usedPercent: 2, remainingPercent: 98 } }
+  view = h.renderComponent(h.AntigravityQuotaLine, { data: both, mode: 'used', refresh() {} })
+  const bothPanel = h.renderComponent(view.children[1].type, view.children[1].props)
+  assert.deepEqual(descendants(bothPanel, node => node.props?.className === 'slp-bar-label').map(textContent), ['5 hours', 'this week', 'third-party 5 hours', 'third-party this week'])
   h.unmount()
   const empty = harness()
   const blank = empty.renderComponent(empty.AntigravityQuotaLine, { data: { gemini5h: null }, mode: 'used', refresh() {} })
