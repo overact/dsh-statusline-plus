@@ -495,3 +495,54 @@ test('native settings JSON is accepted by the installed browser schema validator
   assert.ok(!JSON.stringify(f.entries[0].options.config).includes('169.254.169.254'),
     'a blocked endpoint is not persisted even alongside a valid one')
 })
+
+test('account quota routes keep their stable error codes and Codex result shape', async t => {
+  const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = require('node:fs')
+  const { tmpdir } = require('node:os')
+  const home = mkdtempSync(join(tmpdir(), 'slp-home-')), previousHome = process.env.HOME, previousFetch = global.fetch
+  const warn = console.warn
+  console.warn = () => {}
+  process.env.HOME = home
+  t.after(() => { process.env.HOME = previousHome; global.fetch = previousFetch; console.warn = warn; rmSync(home, { recursive: true, force: true }) })
+  global.fetch = async () => { throw new Error('no request expected without credentials') }
+
+  const empty = await fixture(); t.after(empty.close)
+  assert.deepEqual((await call(empty.routes.get('/statusline/api/codex-quota'))).value, { ok: false, error: 'no-credential' })
+  assert.deepEqual((await call(empty.routes.get('/statusline/api/antigravity-quota'))).value, { ok: false, error: 'no-credential' })
+  assert.deepEqual((await call(empty.routes.get('/statusline/api/provider-quota'), {})).value, { ok: false, error: 'not-found' })
+  assert.deepEqual((await call(empty.routes.get('/statusline/api/provider-quota'), { id: '   ' })).value, { ok: false, error: 'not-found' })
+  assert.deepEqual((await call(empty.routes.get('/statusline/api/provider-quota'), { id: 'no-such-source' })).value, { ok: false, error: 'not-found' })
+
+  mkdirSync(join(home, '.cli-proxy-api'))
+  writeFileSync(join(home, '.cli-proxy-api', 'codex-fixture.json'), JSON.stringify({ access_token: 'not.a-real.token' }))
+  const requests = []
+  global.fetch = async (url, options) => {
+    requests.push({ url, auth: options.headers.Authorization })
+    return new Response(JSON.stringify({ plan_type: 'plus', active_limit: 'none', rate_limit: {
+      primary_window: { used_percent: 12.5, limit_window_seconds: 18000, reset_after_seconds: '600', reset_at: 1790000000 },
+      secondary_window: { used_percent: '40', limit_window_seconds: 604800, reset_after_seconds: null } },
+    credits: { has_credits: 'True', balance: '3.5', unlimited: 0 } }))
+  }
+  const codex = await fixture(); t.after(codex.close)
+  const reply = (await call(codex.routes.get('/statusline/api/codex-quota'))).value
+  assert.equal(requests[0].url, 'https://chatgpt.com/backend-api/wham/usage')
+  assert.equal(requests[0].auth, 'Bearer not.a-real.token')
+  assert.equal(reply.ok, true)
+  assert.equal(typeof reply.data.fetchedAt, 'number')
+  delete reply.data.fetchedAt
+  assert.deepEqual(reply.data, { planType: 'plus', activeLimit: 'none',
+    primary: { usedPercent: 12.5, windowMinutes: 300, resetAt: 1790000000, resetAfterSeconds: 600 },
+    secondary: { usedPercent: 40, windowMinutes: 10080 },
+    credits: { hasCredits: true, balance: 3.5, unlimited: false } })
+  // A selected account must name an existing file of that prefix; there is no fallback.
+  await codex.ctx.settings.update('statusline-plus', { codexAccount: 'codex-other.json' })
+  assert.deepEqual((await call(codex.routes.get('/statusline/api/codex-quota'))).value, { ok: false, error: 'no-credential' })
+  await codex.ctx.settings.update('statusline-plus', { codexAccount: 'codex-fixture.json' })
+  assert.equal((await call(codex.routes.get('/statusline/api/codex-quota'))).value.ok, true)
+  assert.equal(requests.length, 2)
+
+  global.fetch = async () => { throw new Error('fixture transport failure') }
+  const failing = await fixture(); t.after(failing.close)
+  assert.deepEqual((await call(failing.routes.get('/statusline/api/codex-quota'))).value, { ok: false, error: 'network' },
+    'an unexpected error message never reaches the browser')
+})
