@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Internal: the Host side is split from one 2,300-line `lib/index.js` into focused modules (settings, Git state, session log, one module per quota source, shared HTTP deadlines and route guards); dead code and duplicated helpers removed. Wire formats, settings keys and the UI are unchanged.
+- Token-speed tracking returns immediately per streamed chunk when it is turned off (the default).
+- `npm run check` syntax-checks every `lib/` and `scripts/` file instead of a hand-kept list.
+
 - Antigravity: summaries that carry only the Claude/GPT group (no Gemini group, seen since 2026-10) now show its 5-hour and weekly windows in the chip, the details and account availability, instead of `Antigravity ?`. A single group reads plainly as "5 hours / this week"; the "third-party" qualifier appears only beside a Gemini group; a summary with only the weekly window no longer reads as an invalid response. A chip with no usable window says "unknown" rather than "?".
 - Antigravity: account order follows the priority CPA writes as a string (`"100"`), instead of collapsing every account to priority 0.
 - Click CTX for context details: occupancy bar and percentage, remaining room, and the session's uncached input / cache read / cache write / output tokens with the input cache-hit rate (from the Host's `tokenUsage` projection; hidden when the Host does not provide it).
