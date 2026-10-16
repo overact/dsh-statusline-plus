@@ -214,3 +214,17 @@ test('SSE keeps only the latest snapshot under backpressure and cleans up on dis
   assert.equal(tracker.subscribers, 0)
   assert.equal(res.listenerCount('drain'), 0)
 })
+
+test('a disabled tracker ignores frames and session events without reading them', () => {
+  let enabled = false
+  const tracker = new TpsTracker({ enabled: () => enabled })
+  const hostile = { get session() { throw new Error('frame read while disabled') } }
+  tracker.onFrame({ agent: hostile, frame: { type: 'start', attemptId: 'a' } })
+  tracker.onSession(hostile, { type: 'assistant/message', data: {} })
+  start(tracker); chunk(tracker, 0, 1000, 'abc'); settle(tracker, { outputTokens: 10 })
+  assert.equal(tracker.states.size, 0)
+  assert.equal(tracker.read('one').phase, 'idle')
+  enabled = true
+  start(tracker)
+  assert.equal(tracker.read('one').phase, 'streaming')
+})
