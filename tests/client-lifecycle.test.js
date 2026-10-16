@@ -451,6 +451,17 @@ test('tools show bounded real calls, freeze settled durations and clean up hidde
   h.unmount()
 })
 
+test('tools read a native status keyed by the session- prefixed id', () => {
+  const h = harness({ wallTime: 1700000000000 })
+  const data = { activeCount: 1, tools: [{ callId: 'c', name: 'bash', status: 'running', startedAt: 1700000000000, endedAt: null }], truncated: false }
+  const id = '11111111-2222-3333-4444-555555555555'
+  const props = { sessionId: id, useProjection: () => data, useSessionStatus: select => select(new Map([['session-' + id, { running: true }]])) }
+  assert.equal(h.renderComponent(h.ToolActivityRow, props).children[0].children[0], 'Tools 1')
+  props.useSessionStatus = select => select(new Map([['session-' + id, { running: false }]]))
+  assert.equal(h.renderComponent(h.ToolActivityRow, props), null)
+  h.unmount()
+})
+
 test('ordering normalizes stale/duplicate ids and is shared by preview and actual construction', () => {
   const h = harness(), order = ['tools', 'cost', 'tools', 'removed']
   assert.deepEqual(JSON.parse(JSON.stringify(h.componentOrder(order))), ['tools', 'cost', 'git', 'context', 'tps', 'activity'])
