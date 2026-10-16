@@ -1755,3 +1755,23 @@ test('CTX details show occupancy, remaining room and the cache read/write split'
   assert.doesNotMatch(bare, /Cache read|Session token totals/, 'no usage projection: no breakdown, nothing invented')
   h.unmount()
 })
+
+test('Antigravity chip falls back to Claude/GPT windows and never shows a bare question mark', () => {
+  const h = harness()
+  const data = { email: 'u@example.invalid', gemini5h: null, geminiWeekly: null, thirdParty: { usedPercent: 10, remainingPercent: 90 }, thirdPartyWeekly: { usedPercent: 60, remainingPercent: 40 } }
+  let view = h.renderComponent(h.AntigravityQuotaLine, { data, mode: 'used', refresh() {} })
+  const chip = view.children[0]
+  assert.match(textContent(chip), /10%.*60%/)
+  assert.doesNotMatch(textContent(chip), /\?/)
+  assert.match(chip.props.title, /Claude\/GPT quota only/)
+  chip.props.onClick()
+  view = h.renderComponent(h.AntigravityQuotaLine, { data, mode: 'used', refresh() {} })
+  const panel = h.renderComponent(view.children[1].type, view.children[1].props)
+  assert.deepEqual(descendants(panel, node => node.props?.className === 'slp-bar-pct').map(textContent), ['10%', '60%'])
+  h.unmount()
+  const empty = harness()
+  const blank = empty.renderComponent(empty.AntigravityQuotaLine, { data: { gemini5h: null }, mode: 'used', refresh() {} })
+  assert.match(textContent(blank), /Antigravity unknown/)
+  assert.doesNotMatch(textContent(blank), /\?/)
+  empty.unmount()
+})

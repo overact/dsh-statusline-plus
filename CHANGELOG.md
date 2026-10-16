@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Antigravity: summaries that carry only the Claude/GPT group (no Gemini group, seen since 2026-10) now show its 5-hour and weekly windows in the chip, the details and account availability, instead of `Antigravity ?`; a summary with only the weekly window no longer reads as an invalid response. A chip with no usable window says "unknown" rather than "?".
+- Antigravity: account order follows the priority CPA writes as a string (`"100"`), instead of collapsing every account to priority 0.
 - Click CTX for context details: occupancy bar and percentage, remaining room, and the session's uncached input / cache read / cache write / output tokens with the input cache-hit rate (from the Host's `tokenUsage` projection; hidden when the Host does not provide it).
 - Give every quota chip one state: loading, fresh, stale (last good data), retrying with a live countdown and attempt number, exhausted (click to retry), or error with a short reason (auth failed, not set up, choose account). Error chips are no longer dimmed like loading chips, loading chips say "Loading quota…", and quota details state the failure and the next step.
 - An expired quota cache now reads as a normal age ("Updated 2m ago"); only a failed refresh shows the warning colour and "Refresh failed".

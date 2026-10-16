@@ -110,3 +110,27 @@ test('readAllCredentials keeps CPA string priorities and orders accounts by them
   assert.deepEqual(creds.map(c => c.email), ['b-high@example.invalid', 'c-mid@example.invalid', 'a-low@example.invalid'])
   assert.deepEqual(creds.map(c => c.priority), [100, 50, 10])
 })
+
+// Since 2026-10 some summaries carry only the Claude/GPT group (no Gemini group);
+// shape copied from a live response, values replaced.
+const thirdPartyOnly = { groups: [{ displayName: 'Claude and GPT models', buckets: [
+  { bucketId: '3p-weekly', window: 'weekly', displayName: 'Weekly Limit Remaining', remainingFraction: 0.4 },
+  { bucketId: '3p-5h', window: '5h', displayName: 'Five Hour Limit Remaining', remainingFraction: 0.9 },
+] }] }
+
+test('a Claude/GPT-only summary keeps both of its windows', () => {
+  const result = api.parseAntigravityQuotaSummary(0, { fileName: 'a.json' }, thirdPartyOnly)
+  assert.equal(result.gemini5h, null); assert.equal(result.geminiWeekly, null)
+  assert.equal(result.thirdParty.remainingPercent, 90)
+  assert.equal(result.thirdPartyWeekly.remainingPercent, 40)
+})
+
+test('account status falls back to Claude/GPT windows only when Gemini is absent', async () => {
+  const third = fraction => ({ fetchedAt: 1, gemini5h: null, geminiWeekly: null, thirdParty: { remainingFraction: 1 }, thirdPartyWeekly: { remainingFraction: fraction } })
+  const result = await api.collectAntigravityQuotas(credentials.slice(0, 2), async cred => cred.priority === 100 ? third(0) : third(0.5))
+  assert.deepEqual(result.accounts.map(a => a.status), ['exhausted', 'available'])
+  assert.equal(result.selectedFileName, credentials[1].fileName)
+  // With Gemini present, Claude/GPT exhaustion does not decide availability.
+  const mixed = await api.collectAntigravityQuotas(credentials.slice(0, 1), async () => ({ ...quota(), thirdPartyWeekly: { remainingFraction: 0 } }))
+  assert.equal(mixed.accounts[0].status, 'available')
+})
