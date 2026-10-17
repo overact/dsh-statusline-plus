@@ -428,9 +428,10 @@ test('tools show bounded real calls, freeze settled durations and clean up hidde
   view.children[0].props.onClick(); view = h.renderComponent(h.ToolActivityRow, props)
   assert.equal(h.timers.size, 1)
   const list = view.children[1].children[1]
-  assert.equal(list.props.className, 'slp-panel-scroll', 'only the list scrolls; heading and hint stay put')
+  assert.equal(list.props.className, 'slp-panel-scroll', 'only the list scrolls; the heading stays put')
   assert.equal(list.children[0].length, 12)
-  assert.match(textContent(view), /not exact execution time/)
+  assert.match(view.children[0].props.title, /not exact execution time/, 'timing caveat lives in the trigger tooltip')
+  assert.doesNotMatch(textContent(view), /not exact execution time/)
   assert.equal(h.toolElapsed(data.tools[3], now + 30000), 10)
   h.setVisible(false); assert.equal(h.renderComponent(h.ToolActivityRow, props), null)
   assert.equal(h.timers.size, 0)
@@ -593,6 +594,13 @@ test('cost UI shows native USD amounts, separate currencies, source freshness an
   assert.match(tip, /Host pi-ai 0\.87\.1.*catalog generated/)
   assert.match(tip, /same reference rates for subscriptions/)
   assert.equal(h.requests.length, 0, 'cost rendering never queries prices online')
+  assert.doesNotMatch(textContent(view), /per hour/, 'no request span: no hourly rate')
+  data.activeFrom = 0; data.activeTo = 4 * 60000
+  view = h.renderComponent(h.CostRow, props)
+  assert.doesNotMatch(textContent(view), /per hour/, 'spans under five minutes swing too much to show')
+  data.activeTo = 30 * 60000; data.session = { ...data.session, amountUsd: null, minUsd: 0.2, maxUsd: 0.3, amountCny: 1 }
+  view = h.renderComponent(h.CostRow, props)
+  assert.match(textContent(view), /≈¥2\.00 \+ \$0\.50 per hour/, 'both currencies, range midpoint, over the request span')
   h.unmount()
 })
 
@@ -827,8 +835,11 @@ test('OpenCode quota click both opens details and bypasses the cache immediately
 })
 
 test('TPS distinguishes current estimate, retained old rate and settled average', () => {
-  const h = harness(); h.renderTps('one')
-  h.sources[0].emit({ sessionId: 'one', phase: 'streaming', tokensPerSecond: 42, estimated: true })
+  const h = harness()
+  assert.equal(h.renderTps('one'), null, 'a new session shows no TPS placeholder before any reading')
+  h.sources[0].emit({ sessionId: 'one', phase: 'unavailable', tokensPerSecond: null })
+  assert.equal(h.renderTps('one'), null, 'a reconnect without a prior rate stays hidden')
+  h.advance(100); h.sources[0].emit({ sessionId: 'one', phase: 'streaming', tokensPerSecond: 42, estimated: true })
   assert.equal(h.renderTps('one').children[0], 'TPS ≈42 tok/s')
   h.advance(100); h.sources[0].emit({ sessionId: 'one', phase: 'streaming', tokensPerSecond: null })
   assert.equal(h.renderTps('one').children[0], 'TPS last ≈42 tok/s')
@@ -1759,6 +1770,12 @@ test('CTX details show occupancy, remaining room and the cache read/write split'
   assert.match(text, /85% used/); assert.match(text, /150K left/)
   assert.match(text, /Uncached input 10K/); assert.match(text, /Cache read 80K/); assert.match(text, /Cache write 10K/); assert.match(text, /Output 4K/)
   assert.match(text, /Input cache hit 80%/)
+  assert.doesNotMatch(text, /Compacted/, 'no compaction yet: no row')
+  assert.match(textContent(h.ContextPanel({ ...panel.props, compactions: 2 })), /Compacted 2×/)
+  assert.doesNotMatch(text, /Estimated from the latest request/, 'the estimate caveat sits behind the heading hint')
+  const noWrite = textContent(h.ContextPanel({ ...panel.props, usage: h.contextUsage({ ...usage, cacheWriteTokens: 0 }) }))
+  assert.doesNotMatch(noWrite, /Cache write/, 'providers without cache writes get no empty row')
+  assert.match(noWrite, /Cache read 80K/)
   const meter = descendants(rendered, node => node.props?.role === 'meter')[0]
   assert.equal(meter.props['aria-valuenow'], 85)
   assert.equal(descendants(rendered, node => node.props?.className === 'slp-context-big slp-context-pct d').length, 1, 'past 80% uses the danger tone')

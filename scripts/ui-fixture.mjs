@@ -75,7 +75,12 @@ export async function mountResponsiveFixture(page) {
       disconnect() { this.closed = true; this.native.disconnect() }
     }
     window.EventSource = class {
-      constructor(url) { this.url = url; activity.sources.push(this) }
+      constructor(url) {
+        this.url = url; activity.sources.push(this)
+        // TPS renders only after a reading, so each stream delivers one sample.
+        const sessionId = decodeURIComponent(url.split('sessionId=')[1] || '')
+        queueMicrotask(() => { if (!this.closed && this.onmessage) this.onmessage({ data: JSON.stringify({ sessionId, phase: 'completed', tokensPerSecond: 42, estimated: false }) }) })
+      }
       close() { this.closed = true }
     }
     window.fetch = async (url, options = {}) => {

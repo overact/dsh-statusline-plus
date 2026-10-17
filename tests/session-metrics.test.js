@@ -286,6 +286,23 @@ test('fold extracts usage and source metadata without reading or retaining any m
   assert.doesNotMatch(JSON.stringify(f.state), /content|texts|text-delta|stream|message/)
 })
 
+test('request span covers first dispatch to latest settlement and only successful compactions count', () => {
+  const f = fold()
+  assert.equal(f.view.activeFrom, null); assert.equal(f.view.activeTo, null); assert.equal(f.view.compactions, 0)
+  f.request(); f.message()
+  assert.equal(f.view.activeFrom, PEAK); assert.equal(f.view.activeTo, PEAK + 1000)
+  const settled = f.view
+  f.message()
+  assert.equal(f.view, settled, 'a repeated settlement with the same times keeps the published view')
+  f.event('step/end', { turn: 1, step: 1 }); f.event('step/start', { turn: 1, step: 2 }, PEAK + 60000)
+  f.message(1, 2, usage, route, PEAK + 90000)
+  assert.equal(f.view.activeFrom, PEAK); assert.equal(f.view.activeTo, PEAK + 90000)
+  f.event('compaction/start', { compactionId: 'c1', turn: null })
+  f.event('compaction/end', { compactionId: 'c1', turn: null })
+  f.event('compaction/end', { compactionId: 'c2', turn: null, error: 'summary failed' })
+  assert.equal(f.view.compactions, 1, 'a failed compaction is not counted')
+})
+
 test('fork-inherited events are excluded and checkpoint continuation preserves only own-session totals', () => {
   const f = fold(4)
   f.event('turn/start', { turn: 1 }); f.event('step/start', { turn: 1, step: 1 })

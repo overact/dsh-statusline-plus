@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Visual pass: every panel shares one shell (10px radius, hairline border, a softer two-layer shadow, 10×12px inset, 12px body and 13px titles) and a quicker ease-out entrance. Quota reset times are no longer amber; CTX keeps its green / amber / red pressure colour. Progress tracks are visible on light and dark surfaces.
+- DSH 0.2.1 renders the native activity and usage pills straight into the composer dock with their own 8px inline padding, which doubled the spacing (32px) beside the shared 16px gap. The pills' inline padding is dropped while this row is present, so every item is 16px apart.
+- TPS stays out of the bottom row until the session has a real reading, instead of showing `TPS —` before the native components appear.
+- Cost details show the average spend per hour over the session's request span (first dispatch to latest reply, at least five minutes). Context details show how many times this session was compacted, once it has been.
+- Details panels are shorter: the context estimate note moves behind an ⓘ next to the title, the tool timing note stays in the trigger tooltip only, and the cache-write row is hidden when the provider reports none. The session-metrics fold marker is bumped so checkpoints refold with the new span and compaction fields.
+
 - Internal: the Host side is split from one 2,300-line `lib/index.js` into focused modules (settings, Git state, session log, one module per quota source, shared HTTP deadlines and route guards); dead code and duplicated helpers removed. Wire formats, settings keys and the UI are unchanged.
 - Token-speed tracking returns immediately per streamed chunk when it is turned off (the default).
 - `npm run check` syntax-checks every `lib/` and `scripts/` file instead of a hand-kept list.
