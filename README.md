@@ -1,6 +1,6 @@
 # <img src="icon.svg" width="32" height="32" alt=""> dsh-statusline-plus
 
-[![Version](https://img.shields.io/badge/version-0.1.2-blue)](https://github.com/overact/dsh-statusline-plus/releases/latest)
+[![Version](https://img.shields.io/badge/version-0.1.3-blue)](https://github.com/overact/dsh-statusline-plus/releases/latest)
 [![Verify](https://github.com/overact/dsh-statusline-plus/actions/workflows/verify.yml/badge.svg)](https://github.com/overact/dsh-statusline-plus/actions/workflows/verify.yml)
 
 [English](#english) | [简体中文](#简体中文)
