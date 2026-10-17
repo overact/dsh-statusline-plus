@@ -37,7 +37,7 @@ Screenshots use the actual UI with sample data, without account or conversation 
 
 ## Installation
 
-Requires DSH **>=0.2.0-rc.2 and <0.3.0** (including 0.2.1 prereleases); tested on **0.2.0-rc.2** and **0.2.1-rc.1**. Install the latest release:
+Requires DSH **0.2.0-rc.2 or later**, with no upper bound, so a DSH upgrade never disables the plugin; tested on **0.2.0-rc.2** and **0.2.1-rc.2**. Install the latest release:
 
 ```sh
 dsh plugin --profile web add https://github.com/overact/dsh-statusline-plus/releases/latest/download/dsh-statusline-plus.tgz
@@ -112,7 +112,7 @@ DSH 网页端状态行：顶部显示账号余额与套餐额度，输入区显�
 
 **截图：** [额度与峰谷提示](docs/images/header-quotas.png)、[余额详情](docs/images/quota-panel.png)、[峰谷详情](docs/images/peak-panel.png)、[会话指标](docs/images/bottom-bar.png)、[设置选项](docs/images/settings.png)。截图使用英文界面与演示数据，不包含真实账号或对话数据。
 
-**安装：** 需要 DSH >=0.2.0-rc.2 且 <0.3.0（含 0.2.1 预发布版），已在 0.2.0-rc.2 与 0.2.1-rc.1 上测试，使用上面的安装命令；插件自带预构建文件和注册配置。启用 HMR 后，插件启停与设置实时生效；本地源码目录纳入监听时也可热加载，之后刷新浏览器。安装或升级提示 `restart-required` 时，才需等待无活跃会话后重启。旧版手动安装请先移除 `@local/dsh-statusline-plus` 注册行和依赖，避免重复。
+**安装：** 需要 DSH 0.2.0-rc.2 或更高版本，不设上限，升级 DSH 不会让插件被跳过；已在 0.2.0-rc.2 与 0.2.1-rc.2 上测试，使用上面的安装命令；插件自带预构建文件和注册配置。启用 HMR 后，插件启停与设置实时生效；本地源码目录纳入监听时也可热加载，之后刷新浏览器。安装或升级提示 `restart-required` 时，才需等待无活跃会话后重启。旧版手动安装请先移除 `@local/dsh-statusline-plus` 注册行和依赖，避免重复。
 
 **设置：** 打开 **DSH 网页端 → 设置 → 状态栏**，调整显示、排序、预设、顶部额度、账号来源及缓存。密钥仅在宿主侧解析，设置里填写凭据引用。
 

@@ -1,5 +1,11 @@
 # Release notes
 
+## 0.1.4
+
+- Declare DSH compatibility by lower bound only: `engines.dsh` and the `@deepseek-ai/dsh-home-paths` peer are now `>=0.2.0-rc.2`. DSH skips a plugin at startup when its declared range excludes the running version, so the old `<0.3.0-0` cap would have disabled the status line on the first 0.3.0 build. DSH evaluates the range with prereleases included, so 0.2.1 and later alpha/rc builds match without the extra `||` clause.
+- Tested on DSH 0.2.1-rc.2; CI still runs the suite on 0.2.0-rc.2, the oldest supported version.
+- No runtime behaviour changes from v0.1.3.
+
 ## 0.1.3
 
 - Accept DSH 0.2.1 prereleases (alpha, rc) in the declared compatibility and `dsh-home-paths` peer range. The old `>=0.2.0-rc.2 <0.3.0-0` silently excluded them under npm's prerelease rule; the range now adds `|| >=0.2.1-alpha.1 <0.3.0-0`.
