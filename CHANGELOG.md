@@ -1,5 +1,10 @@
 # Release notes
 
+## Unreleased
+
+- Accept DSH 0.2.1 prereleases (alpha, rc) in the declared compatibility and `dsh-home-paths` peer range. The old `>=0.2.0-rc.2 <0.3.0-0` silently excluded them under npm's prerelease rule; the range now adds `|| >=0.2.1-alpha.1 <0.3.0-0`.
+- Test against DSH 0.2.1-rc.1 by default, and keep a CI run on 0.2.0-rc.2, the oldest supported version.
+
 ## 0.1.2
 
 Each release now also carries a version-free `dsh-statusline-plus.tgz`, so `releases/latest/download/dsh-statusline-plus.tgz` always installs the newest release; versioned assets remain for pinned installs.

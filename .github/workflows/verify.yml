@@ -31,6 +31,11 @@ jobs:
         run: npm install --ignore-scripts --no-audit --no-fund --no-package-lock
       - name: Syntax and full test suite
         run: npm run verify:all -- --ui none
+      - name: Test suite on the oldest supported DSH
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund --no-package-lock --no-save @deepseek-ai/dsh@0.2.0-rc.2
+          npm test
+          npm install --ignore-scripts --no-audit --no-fund --no-package-lock
       - name: Select UI coverage
         id: ui
         env:
