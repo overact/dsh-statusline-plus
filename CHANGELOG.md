@@ -1,6 +1,8 @@
 # Release notes
 
-## Unreleased
+## 0.1.2
+
+Source version on `main`; no release asset has been published for it yet, so the v0.1.1 tarball remains the installable release.
 
 - Visual pass: every panel shares one shell (10px radius, hairline border, a softer two-layer shadow, 10×12px inset, 12px body and 13px titles) and a quicker ease-out entrance. Quota reset times are no longer amber; CTX keeps its green / amber / red pressure colour. Progress tracks are visible on light and dark surfaces.
 - DSH 0.2.1 renders the native activity and usage pills straight into the composer dock with their own 8px inline padding, which doubled the spacing (32px) beside the shared 16px gap. The pills' inline padding is dropped while this row is present, so every item is 16px apart.
