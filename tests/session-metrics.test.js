@@ -126,6 +126,26 @@ test('Go V4.1 Flash uses the same vendor reference and request-time peak discoun
   }
 })
 
+test('gateway-prefixed usage settles at the same reference price with and without a host catalog', () => {
+  const catalog = createPricingCatalog([
+    { provider: 'deepseek', model: 'deepseek-flash', cost: { input: 0.3, output: 1.2, cacheRead: 0.006, cacheWrite: 0 } },
+  ])
+  for (const source of [catalog, undefined]) {
+    for (const time of [PEAK, OFF_PEAK]) {
+      const direct = fold(0, source)
+      direct.request(1, 1, route, time); direct.message(1, 1, usage, route, time + 1000)
+      for (const model of ['workbuddy-ai/deepseek-v4.1-flash', 'custom/deepseek-flash', 'proxy/deepseek/deepseek-v4.1-flash']) {
+        const f = fold(0, source), selection = { provider: 'magpie-workbuddy', model }
+        f.request(1, 1, selection, time); f.message(1, 1, usage, selection, time + 1000)
+        assert.deepEqual(f.view.session, direct.view.session)
+        assert.equal(f.view.session.unpricedMessages, 0)
+        assert.deepEqual(f.state.request.route, selection, 'pricing normalization must not rewrite the request route')
+      }
+    }
+    assert.equal(quote({ catalog: source, route: { provider: 'deepseek', model: 'workbuddy-ai/deepseek-v4.1-flash-sg' } }).reason, 'unsupported-model')
+  }
+})
+
 test('verified DeepSeek Flash/Pro prices apply to disjoint input, cache reads and output buckets', () => {
   assert.deepEqual(cny(quote()), [10.04, 10.04])
   assert.deepEqual(cny(quote({ startedAt: OFF_PEAK, observedAt: OFF_PEAK + 1000 })), [5.02, 5.02])

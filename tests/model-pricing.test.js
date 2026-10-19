@@ -54,6 +54,24 @@ test('native prices precede snapshots and subscriptions/custom routes use exact 
   assert.equal(createPricingCatalog([{ provider: 'zai', model: 'glm-5.3-highspeed', cost: { input: 0, output: 0 } }]).resolve({ provider: 'zai', model: 'glm-5.3-highspeed' }), null)
 })
 
+test('gateway namespaces do not change the model reference card or its exact version', () => {
+  const direct = { input: 0.3, output: 1.2, cacheRead: 0.006, cacheWrite: 0 }
+  const c = createPricingCatalog([
+    { provider: 'deepseek', model: 'deepseek-flash', cost: direct },
+    { provider: 'openai', model: 'gpt-6-sol', cost },
+  ])
+  const flash = c.resolve({ provider: 'deepseek', model: 'deepseek-v4.1-flash' })
+  for (const prefix of ['workbuddy-ai/', 'custom-gateway/', 'openai/', 'magpie/workbuddy-ai/']) {
+    assert.equal(c.resolve({ provider: 'magpie-workbuddy', model: prefix + 'deepseek-v4.1-flash' }), flash)
+    assert.equal(c.resolve({ provider: 'anything', model: prefix + 'gpt-6-sol' }).cost, cost)
+    assert.equal(c.resolve({ provider: 'anything', model: prefix + 'gpt-6.1-sol' }).source, 'fallback')
+    for (const unknown of ['deepseek-v4-flash', 'deepseek-v4.1-flash-sg', 'gpt-6-sol-fast', 'unknown', '']) {
+      assert.equal(c.resolve({ provider: 'deepseek', model: prefix + unknown }), null)
+    }
+  }
+  assert.equal(c.resolve({ provider: 'custom', model: 'WORKBUDDY-AI/DEEPSEEK-V4.1-FLASH' }), flash)
+})
+
 test('quotes account for disjoint caches, long prompt thresholds and malformed catalog rates', () => {
   const card = catalog().resolve({ provider: 'codex', model: 'gpt-6-sol' })
   const quote = usage => quoteCatalogUsage(card, usage, units)

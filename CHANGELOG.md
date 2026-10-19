@@ -1,5 +1,9 @@
 # Release notes
 
+## Unreleased
+
+- Match reference prices by the model ID after gateway/provider namespaces, including Magpie's `workbuddy-ai/deepseek-v4.1-flash`. Apply the same rule to the offline DeepSeek fallback and invalidate old session checkpoints so they are repriced. Routing IDs, display names and actual account billing are unchanged; unknown model versions remain unpriced.
+
 ## 0.1.4
 
 - Declare DSH compatibility by lower bound only: `engines.dsh` and the `@deepseek-ai/dsh-home-paths` peer are now `>=0.2.0-rc.2`. DSH skips a plugin at startup when its declared range excludes the running version, so the old `<0.3.0-0` cap would have disabled the status line on the first 0.3.0 build. DSH evaluates the range with prereleases included, so 0.2.1 and later alpha/rc builds match without the extra `||` clause.
