@@ -1,6 +1,6 @@
 # <img src="icon.svg" width="32" height="32" alt=""> dsh-statusline-plus
 
-[![Version](https://img.shields.io/badge/version-0.1.3-blue)](https://github.com/overact/dsh-statusline-plus/releases/latest)
+[![Version](https://img.shields.io/badge/version-0.1.5-blue)](https://github.com/overact/dsh-statusline-plus/releases/latest)
 [![Verify](https://github.com/overact/dsh-statusline-plus/actions/workflows/verify.yml/badge.svg)](https://github.com/overact/dsh-statusline-plus/actions/workflows/verify.yml)
 
 [English](#english) | [简体中文](#简体中文)
@@ -70,7 +70,7 @@ Open **DSH Web → Settings → Statusline**. Settings are saved under `statusli
 
 The narrow-screen switch is in **Bottom status line**. It affects this plugin's bottom components; header quotas, peak indicators and native composer stats remain available.
 
-DeepSeek reuses `DEEPSEEK_API_KEY`; Kimi uses `KIMI_API_KEY`; Z.ai and Zhipu use `ZAI_API_KEY` and `ZAI_CODING_CN_API_KEY`. Other sources use their existing Host credentials or account integrations. Configure credential references, never literal keys. Keys stay on the Host.
+DeepSeek reuses `DEEPSEEK_API_KEY` for API-key models (`deepseek`, `deepseek-official`). Models on DSH's signed-in `deepseek-account` provider show the account's topped-up and granted wallet balances through the Host `deepseekAccount` service instead, so they need no API key. Kimi uses `KIMI_API_KEY`; Z.ai and Zhipu use `ZAI_API_KEY` and `ZAI_CODING_CN_API_KEY`. Other sources use their existing Host credentials or account integrations. Configure credential references, never literal keys. Keys stay on the Host.
 
 Presets change bottom components only. Reset restores display, layout and refresh preferences while retaining credential references, account files, repository paths and per-source switches.
 
@@ -114,7 +114,7 @@ DSH 网页端状态行：顶部显示账号余额与套餐额度，输入区显�
 
 **安装：** 需要 DSH 0.2.0-rc.2 或更高版本，不设上限，升级 DSH 不会让插件被跳过；已在 0.2.0-rc.2 与 0.2.1-rc.2 上测试，使用上面的安装命令；插件自带预构建文件和注册配置。启用 HMR 后，插件启停与设置实时生效；本地源码目录纳入监听时也可热加载，之后刷新浏览器。安装或升级提示 `restart-required` 时，才需等待无活跃会话后重启。旧版手动安装请先移除 `@local/dsh-statusline-plus` 注册行和依赖，避免重复。
 
-**设置：** 打开 **DSH 网页端 → 设置 → 状态栏**，调整显示、排序、预设、顶部额度、账号来源及缓存。密钥仅在宿主侧解析，设置里填写凭据引用。
+**设置：** 打开 **DSH 网页端 → 设置 → 状态栏**，调整显示、排序、预设、顶部额度、账号来源及缓存。密钥仅在宿主侧解析，设置里填写凭据引用。DeepSeek 有两种计费方式：`deepseek`／`deepseek-official` 使用 `DEEPSEEK_API_KEY` 查询按量余额；使用 DSH 登录账号（`deepseek-account`）时，状态栏通过宿主 `deepseekAccount` 服务读取登录账号的充值余额与赠送余额，不需要 API Key。
 
 **额度恢复：** 额度请求使用插件自有连接池，每个地址的连接尝试窗口为 5 秒，完整请求仍受总超时限制（Codex 为 15 秒）；宿主网络默认值不变。查询成功即更新显示，不必等满 5 秒。网络失败每轮最多自动重试 3 次，分别等待 15／30／60 秒；限流时等待 60／120／240 秒。断网时暂停，网络恢复、页面重新可见、新步骤或手动刷新会开启新一轮查询；当前重试轮结束后，页面重新获得焦点也可恢复查询。重试期间保留已有的成功数据，并提示网络异常及重试已用完；凭据与响应格式错误不自动重试。
 

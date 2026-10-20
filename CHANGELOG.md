@@ -1,7 +1,10 @@
 # Release notes
 
-## Unreleased
+## 0.1.5
 
+- Show the balance of DSH's signed-in DeepSeek account (`deepseek-account`) in the header. The source now matches that billing provider and reads topped-up plus granted wallets through the Host `deepseekAccount` service, so no `DEEPSEEK_API_KEY` is needed. API-key models (`deepseek`, `deepseek-official`) keep using `/user/balance`, and the two balances never share a cache entry. A signed-out account reports "DeepSeek account not signed in"; the DeepSeek peak indicator now recognises the account provider too. Older stored profiles that still list only the previous `providerExact` aliases keep working through a client-side fallback.
+- Quota responses now carry the Host response time, and the browser converts `fetchedAt` into its own clock. A Host clock that is seconds or minutes ahead no longer freezes the details age at 0s until the clocks catch up; cached responses keep their real age, and an absent or absurd timestamp hides the label instead of showing "Update time unknown". Opening details no longer forces a refresh: the footer shows the last successful fetch age and ticks once per second, while the explicit Refresh button still forces a query. The same behaviour applies to every quota source.
+- Gift credit in a balance chip reads `¥51.43+3.23` (no repeated currency symbol), zero gift credit is omitted, and a zero-balance currency wallet is hidden when another wallet is funded.
 - Match reference prices by the model ID after gateway/provider namespaces, including Magpie's `workbuddy-ai/deepseek-v4.1-flash`. Apply the same rule to the offline DeepSeek fallback and invalidate old session checkpoints so they are repriced. Routing IDs, display names and actual account billing are unchanged; unknown model versions remain unpriced.
 
 ## 0.1.4
