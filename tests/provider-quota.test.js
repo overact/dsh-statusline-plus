@@ -3,6 +3,7 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { parseDeepSeekBalance, parseKimiWindows, parseZaiWindows } = require('../lib/provider-presets.js')
+const { accountWalletsToBalance, fetchDeepseekAccountBalance } = require('../lib/quota-deepseek-account.js')
 
 process.env.SLP_TEST = '1'
 const { __test } = require('../lib/index.js')
@@ -65,6 +66,72 @@ test('DeepSeek discards malformed amounts instead of coercing null or booleans t
   for (const payload of [null, {}, deepseek([]), deepseek([{ currency: 'CNY', total_balance: true }])]) {
     assert.equal(parseDeepSeekBalance(payload), null)
   }
+})
+
+test('DeepSeek account wallets keep topped-up and granted balances per currency', () => {
+  const now = 1700000000000
+  assert.deepEqual(accountWalletsToBalance(
+    [{ currency: 'CNY', balance: '57.9300000000000000' }],
+    [{ currency: 'CNY', balance: '2.00' }, { currency: 'USD', balance: '0E-16' }],
+    now), {
+    style: 'balance', currency: 'CNY', fetchedAt: now,
+    balances: [
+      { currency: 'CNY', remaining: 59.93, toppedUp: 57.93, granted: 2 },
+      { currency: 'USD', remaining: 0, granted: 0 },
+    ],
+  })
+  assert.deepEqual(accountWalletsToBalance([{ currency: 'CNY', balance: '0' }], [], now), {
+    style: 'balance', currency: 'CNY', fetchedAt: now,
+    balances: [{ currency: 'CNY', remaining: 0, toppedUp: 0 }],
+  })
+  assert.deepEqual(accountWalletsToBalance([], [{ currency: 'USD', balance: 1.5 }], now), {
+    style: 'balance', currency: 'USD', fetchedAt: now,
+    balances: [{ currency: 'USD', remaining: 1.5, granted: 1.5 }],
+  })
+  assert.deepEqual(accountWalletsToBalance([{ currency: 'USD', balance: '0' }, { currency: 'CNY', balance: '1.5' }], [], now).balances, [
+    { currency: 'CNY', remaining: 1.5, toppedUp: 1.5 },
+    { currency: 'USD', remaining: 0, toppedUp: 0 },
+  ], 'the funded currency leads the chip')
+})
+
+test('DeepSeek account wallets discard malformed amounts and unknown currencies', () => {
+  for (const [wallets, bonus] of [
+    [[], []],
+    [[{ currency: 'EUR', balance: '1' }], []],
+    [[{ currency: 'CNY', balance: '' }], [{ currency: 'USD', balance: 'NaN' }]],
+    [[null], [{ currency: 'CNY', balance: true }]],
+    [null, null],
+  ]) {
+    assert.equal(accountWalletsToBalance(wallets, bonus), null)
+  }
+})
+
+test('DeepSeek account quota maps signed-out and unavailable outcomes to stable codes', async () => {
+  await assert.rejects(fetchDeepseekAccountBalance(undefined, {}), { message: 'no-account' })
+  await assert.rejects(fetchDeepseekAccountBalance({}, {}), { message: 'no-account' })
+  await assert.rejects(fetchDeepseekAccountBalance({ getBalance: async () => null }, {}), { message: 'signed-out' })
+  await assert.rejects(fetchDeepseekAccountBalance({ getBalance: async () => ({ status: 'failed' }) }, {}), { message: 'network' })
+  await assert.rejects(fetchDeepseekAccountBalance({ getBalance: async () => { throw new Error('fixture') } }, {}), { message: 'network' })
+  await assert.rejects(fetchDeepseekAccountBalance(
+    { getBalance: async () => ({ status: 'ready', value: [], bonusWallets: [] }) }, {}), { message: 'invalid-response' })
+})
+
+test('DeepSeek account quota forwards the caller metadata and returns the mapped wallets', async () => {
+  const client = { version: '0.2.1-rc.2', locale: 'zh-CN', timezoneOffsetSeconds: 36000 }
+  const seen = []
+  const account = { getBalance: async metadata => {
+    seen.push(metadata)
+    return {
+      status: 'ready',
+      value: [{ currency: 'CNY', balance: '57.93' }],
+      bonusWallets: [{ currency: 'CNY', balance: '2.00' }],
+    }
+  } }
+  const result = await fetchDeepseekAccountBalance(account, client)
+  assert.deepEqual(seen, [client])
+  assert.equal(result.style, 'balance')
+  assert.deepEqual(result.balances, [{ currency: 'CNY', remaining: 59.93, toppedUp: 57.93, granted: 2 }])
+  assert.ok(Number.isFinite(result.fetchedAt))
 })
 
 test('Kimi official usage fractions produce correctly labeled 5h, weekly and monthly windows', () => {
@@ -212,6 +279,7 @@ test('sanitizeConfig adds official account presets with credential references an
   }
   assert.ok(providers.find(item => item.id === 'zhipu').match.providerExact.includes('zai-coding-cn'))
   assert.ok(providers.find(item => item.id === 'deepseek').match.providerExact.includes('deepseek-official'))
+  assert.ok(providers.find(item => item.id === 'deepseek').match.providerExact.includes('deepseek-account'))
 })
 
 test('sanitizeConfig merges partial preset overrides and keeps explicit custom providers first', () => {

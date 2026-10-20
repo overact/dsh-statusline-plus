@@ -99,6 +99,33 @@ test('quota routes share a plugin-owned dispatcher and release it on unmount', a
   assert.equal(requests.at(-1).dispatcher.destroyed, false)
 })
 
+test('DeepSeek account models read the signed-in Platform wallets through the account service', async t => {
+  const f = await fixture(); t.after(f.close)
+  const seen = []
+  let outcome = {
+    status: 'ready',
+    value: [{ currency: 'CNY', balance: '57.93' }],
+    bonusWallets: [{ currency: 'CNY', balance: '2.00' }],
+  }
+  f.ctx.provide('deepseekAccount', { getBalance: async client => { seen.push(client); return outcome } })
+  const metadata = { version: '0.2.1-rc.2', locale: 'zh-CN', timezoneOffsetSeconds: 36000 }
+  const response = await call(f.routes.get('/statusline/api/provider-quota'), { id: 'deepseek', provider: 'deepseek-account', account: metadata })
+  assert.equal(response.value.ok, true)
+  assert.deepEqual(response.value.data.balances, [{ currency: 'CNY', remaining: 59.93, toppedUp: 57.93, granted: 2 }])
+  assert.ok(Number.isFinite(response.value.data.fetchedAt), 'the balance carries a fetch time for the details footer')
+  assert.ok(Number.isFinite(response.value.serverNow), 'the response carries the Host clock for client normalisation')
+  assert.deepEqual(seen, [metadata], 'the client identity reaches the account provider unchanged')
+  outcome = null
+  const signedOut = await call(f.routes.get('/statusline/api/provider-quota'), { id: 'deepseek', provider: 'deepseek-account', force: true })
+  assert.deepEqual(signedOut.value, { ok: false, error: 'signed-out' })
+})
+
+test('DeepSeek account models report an absent account service without asking for an API key', async t => {
+  const f = await fixture(); t.after(f.close)
+  const response = await call(f.routes.get('/statusline/api/provider-quota'), { id: 'deepseek', provider: 'deepseek-account' })
+  assert.deepEqual(response.value, { ok: false, error: 'no-account' })
+})
+
 test('one invalid stored provider is skipped with a warning instead of failing the whole plugin', async t => {
   const warnings = []
   const original = console.warn
@@ -411,7 +438,7 @@ test('native provider defaults upgrade old profiles and DeepSeek returns only no
   const snapshot = f.ctx.settings.describe().find(item => item.ns === 'statusline-plus').value
   const deepseek = snapshot.providers.find(provider => provider.id === 'deepseek')
   assert.equal(deepseek.apiKeyEnv, 'DEEPSEEK_API_KEY')
-  assert.deepEqual(deepseek.match.providerExact, ['deepseek-official', 'deepseek'])
+  assert.deepEqual(deepseek.match.providerExact, ['deepseek-official', 'deepseek', 'deepseek-account'])
   assert.ok(snapshot.providers.find(provider => provider.id === 'kimi-code'))
   assert.equal(snapshot.providers.find(provider => provider.id === 'openrouter').enabled, false)
   const previous = global.fetch; t.after(() => { global.fetch = previous })
