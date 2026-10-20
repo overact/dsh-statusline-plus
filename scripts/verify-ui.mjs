@@ -149,7 +149,10 @@ async function verifyResponsive(page, folder) {
   const quotaCount = count => page.waitForFunction(expected => window.slpResponsive.quotaRequests.length === expected, count)
   await quotaCount(1)
   await page.evaluate(() => { window.slpResponsive.quotaFailures = 4 })
-  await quota.click(); await quotaCount(2)
+  // Opening details no longer bypasses the cache; the explicit Refresh button does.
+  await quota.click()
+  await page.locator('.slp-panel .slp-link-btn').first().click()
+  await quotaCount(2)
   await page.locator('#fixture-header .slp-err').waitFor()
   for (const [index, delay] of [15000, 30000, 60000].entries()) {
     await page.clock.runFor(delay); await quotaCount(index + 3)

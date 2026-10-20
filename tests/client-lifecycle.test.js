@@ -220,14 +220,22 @@ test('switching quota sources cancels scheduled recovery and ignores late result
   h.unmount()
 })
 
-test('quota freshness retains the actual fetch time and never fabricates a missing timestamp', () => {
+test('quota freshness retains the actual fetch time, tolerates clock skew and hides a missing timestamp', () => {
   const h = harness(), now = 1700000000000
   assert.match(h.quotaFreshness({ fetchedAt: now - 30000 }, 60000, null, now).label, /30s/)
   assert.equal(h.quotaFreshness({ fetchedAt: now - 60000 }, 60000, null, now).stale, true)
   assert.match(h.quotaFreshness({ fetchedAt: now - 1000 }, 60000, 'network', now).title, /Refresh failed/)
-  for (const fetchedAt of [undefined, null, 0, NaN, now + 10000]) {
-    assert.match(h.quotaFreshness({ fetchedAt }, 60000, null, now).label, /unknown/)
+  // The Host and the browser may be different machines: a slightly future
+  // timestamp is a valid fetch time, not "unknown".
+  assert.equal(h.quotaFreshness({ fetchedAt: now + 10000 }, 60000, null, now).label, 'Updated 0s ago')
+  for (const fetchedAt of [undefined, null, 0, NaN, now + 2 * 86400000]) {
+    const state = h.quotaFreshness({ fetchedAt }, 60000, null, now)
+    assert.equal(state.label, null, 'a missing or absurd timestamp is hidden instead of guessing')
+    assert.equal(state.title, null)
   }
+  const failed = h.quotaFreshness({}, 60000, 'network', now)
+  assert.equal(failed.label, null)
+  assert.equal(failed.failed, true)
 })
 
 test('manual quota refresh failure retains the last successful data and its original timestamp', async () => {
@@ -677,21 +685,35 @@ test('cost panel fits clipping containers at its final animation size and follow
   assert.equal(layout.observers[0].nodes.size, 0, 'closed panels release resize observations')
 })
 
-test('each provider balance and subscription quota trigger refreshes immediately', () => {
+test('opening quota details keeps the last fetch time; the panel Refresh button forces a query', () => {
   for (const [name, data] of [
     ['ProviderQuotaLine', { style: 'balance', remaining: 12, currency: 'CNY' }],
+    ['ProviderQuotaLine', { style: 'windows', windows: [{ label: '5h', usedPercent: 23 }] }],
     ['CodexQuotaLine', { primary: { usedPercent: 20, windowMinutes: 300 } }],
     ['AntigravityQuotaLine', { gemini5h: { usedPercent: 20, remainingPercent: 80 } }],
+    ['OpenCodeQuotaLine', { windows: { rolling: { percent: 20 } } }],
   ]) {
     const h = harness(); let calls = 0
-    const view = h.renderComponent(h[name], { provider: { label: 'Test' }, data, refresh() { calls++ } })
+    const props = { provider: { label: 'Test' }, data, refresh() { calls++ } }
+    let view = h.renderComponent(h[name], props)
     view.children[0].props.onClick()
-    assert.equal(calls, 1, name)
+    assert.equal(calls, 0, name + ' opening does not reset the fetch time')
+    view = h.renderComponent(h[name], props)
+    const panel = view.children[1]
+    assert.ok(panel, name + ' opens details')
+    const body = typeof panel.type === 'function' ? panel.type(panel.props) : panel
+    const foot = descendants(body, node => node.type?.name === 'PanelFoot')[0]
+    assert.ok(foot, name + ' has a details footer')
+    const rendered = foot.type(foot.props)
+    const refresh = descendants(rendered, node => node.type === 'button' && node.props?.className === 'slp-link-btn')[0]
+    assert.ok(refresh, name + ' has an explicit Refresh button')
+    refresh.props.onClick({ stopPropagation() {} })
+    assert.equal(calls, 1, name + ' Refresh forces a query')
     h.unmount()
   }
 })
 
-test('every quota chip opens details on click and refreshes only when opening', () => {
+test('every quota chip opens details on click without refreshing or bypassing the cache', () => {
   for (const [name, data] of [
     ['ProviderQuotaLine', { style: 'windows', windows: [{ label: '5h', usedPercent: 23 }] }],
     ['ProviderQuotaLine', { style: 'balance', remaining: 12, currency: 'CNY' }],
@@ -709,7 +731,7 @@ test('every quota chip opens details on click and refreshes only when opening', 
     assert.ok(render().children[1], name + ' opens details')
     stale.props.onClick()
     assert.equal(render().children[1], null, name + ' closes even from a handler of an older render')
-    assert.equal(calls, 1, name + ' closing does not bypass the cache')
+    assert.equal(calls, 0, name + ' opening or closing never bypasses the cache')
     h.unmount()
   }
 })
@@ -819,7 +841,7 @@ test('details footer marks a failed refresh as stale and offers a real refresh b
   const button = rendered.children[1]
   assert.equal(button.type, 'button')
   button.props.onClick({ stopPropagation() {} })
-  assert.equal(calls, 2)
+  assert.equal(calls, 1, 'only the explicit Refresh button forces a query')
   h.unmount()
 })
 
@@ -829,8 +851,13 @@ test('OpenCode quota click both opens details and bypasses the cache immediately
   h.requests[0].resolve({ ok: true, data: { fetchedAt: Date.now(), windows: { rolling: { percent: 20 } } } }); await flush()
   const line = () => h.OpenCodeQuotaLine(h.renderComponent(h.QuotaChip, props).children[0].props)
   line().children[0].props.onClick()
-  assert.equal(JSON.parse(h.requests[1].opts.body).force, true)
+  assert.equal(h.requests.length, 1, 'opening details does not bypass the cache')
   assert.ok(line().children[1], 'details are opened without waiting for the refresh')
+  const panel = line().children[1]
+  const foot = descendants(panel, node => node.type?.name === 'PanelFoot')[0]
+  const refresh = descendants(foot.type(foot.props), node => node.type === 'button' && node.props?.className === 'slp-link-btn')[0]
+  refresh.props.onClick({ stopPropagation() {} })
+  assert.equal(JSON.parse(h.requests[1].opts.body).force, true)
   h.unmount()
 })
 
@@ -964,6 +991,51 @@ test('one selected source refreshes on steps without polling and aborts on unmou
   assert.equal(h.timers.size, 0)
 })
 
+test('DeepSeek account models request the signed-in balance without borrowing the API-key source', async () => {
+  const h = harness()
+  h.render({ kind: 'provider', id: 'deepseek', key: 'provider:deepseek', modelProvider: 'deepseek-account', onStep: true }, config)
+  assert.equal(h.requests.length, 1)
+  const body = JSON.parse(h.requests[0].opts.body)
+  assert.equal(body.id, 'deepseek')
+  assert.equal(body.provider, 'deepseek-account')
+  assert.equal(body.account.locale, 'en-US')
+  assert.equal(typeof body.account.timezoneOffsetSeconds, 'number')
+  assert.equal(Object.hasOwn(body.account, 'version'), false, 'the harness boot graph has no release to send')
+  h.requests[0].resolve({ ok: true, data: { style: 'balance', balances: [{ currency: 'CNY', remaining: 57.93 }] } }); await flush()
+  assert.equal(h.render({ kind: 'provider', id: 'deepseek', key: 'provider:deepseek', modelProvider: 'deepseek-account', onStep: true }, config).data.balances[0].remaining, 57.93)
+  h.unmount()
+})
+
+test('DeepSeek account failures explain the sign-in instead of a missing API key', () => {
+  const h = harness()
+  const line = error => h.renderComponent(h.ProviderQuotaLine, {
+    provider: { id: 'deepseek', label: 'DeepSeek' }, error, refresh: function () {}, now: Date.now(),
+  })
+  assert.match(textContent(line('signed-out')), /signed out/i)
+  assert.match(textContent(line('no-account')), /account unavailable/i)
+  h.unmount()
+})
+
+test('quota timestamps are normalised from the Host clock into the browser clock', async () => {
+  const wallTime = 1700000000000, h = harness({ wallTime })
+  h.render(resource, config)
+  // The Host is five minutes ahead; a fresh response must still read as just fetched.
+  h.requests[0].resolve({ ok: true, serverNow: wallTime + 300000, data: { fetchedAt: wallTime + 300000, remaining: 5 } })
+  await flush()
+  assert.equal(h.render(resource, config).data.fetchedAt, wallTime)
+  // A cached Host response keeps its real age after the conversion.
+  h.render(resource, config, 1)
+  h.requests[1].resolve({ ok: true, serverNow: wallTime + 360000, data: { fetchedAt: wallTime + 300000, remaining: 4 } })
+  await flush()
+  assert.equal(h.render(resource, config, 1).data.fetchedAt, wallTime - 60000)
+  // An older Host without serverNow keeps the raw timestamp.
+  h.render(resource, config, 2)
+  h.requests[2].resolve({ ok: true, data: { fetchedAt: 1234, remaining: 3 } })
+  await flush()
+  assert.equal(h.render(resource, config, 2).data.fetchedAt, 1234)
+  h.unmount()
+})
+
 test('display-only edits neither refetch quota nor start timers', async () => {
   const h = harness()
   h.render(resource, config)
@@ -1073,7 +1145,7 @@ function descendants(node, predicate) {
 test('built-in exact matches use only the billing provider and custom rules retain their behavior', () => {
   const h = harness()
   for (const [id, aliases, model] of [
-    ['deepseek', ['deepseek'], 'deepseek-chat'],
+    ['deepseek', ['deepseek', 'deepseek-account'], 'deepseek-chat'],
     ['kimi-code', ['kimi-code', 'kimi-for-coding'], 'kimi-k2.5'],
     ['zai', ['zai', 'zai-coding'], 'glm-5'],
     ['zhipu', ['zhipu', 'zai-coding-cn'], 'glm-5'],
@@ -1088,6 +1160,8 @@ test('built-in exact matches use only the billing provider and custom rules reta
   assert.equal(h.providerMatchesModel({ match: { providerSub: ['DS'] } }, { provider: 'custom-ds', model: 'other' }), true)
   assert.equal(h.providerMatchesModel({ match: { providerSub: ['deepseek'] } }, { provider: 'custom', model: 'deepseek-chat' }), true)
   assert.equal(h.providerMatchesModel({ match: { modelPrefix: ['GLM-'] } }, { provider: 'custom', model: 'glm-5' }), true)
+  assert.equal(h.providerMatchesModel({ id: 'deepseek', match: { providerExact: ['deepseek'] } }, { provider: 'deepseek-account', model: 'deepseek-flash' }), true,
+    'an old stored match list must not hide the signed-in account provider')
   h.unmount()
 })
 
@@ -1112,16 +1186,18 @@ test('DeepSeek chip renders every currency, balance components and account avail
   let refreshes = 0
   const chip = h.ProviderQuotaLine({ provider, data, refresh: () => refreshes++ }).children[0]
   assert.match(textContent(chip), /DeepSeek/)
-  assert.match(textContent(chip), /¥12\.34/)
+  assert.match(textContent(chip), /¥10\.00\+2\.34/, 'the chip shows paid balance plus gift without repeating the symbol')
   assert.match(textContent(chip), /\$0\.50/)
-  assert.match(chip.props.title, /\(CNY\).*granted balance ¥2\.34.*topped-up balance ¥10\.00/)
+  assert.doesNotMatch(textContent(chip), /\$0\.50\+/, 'a zero grant gets no plus suffix')
+  assert.doesNotMatch(textContent(chip), /¥12\.34/, 'the chip does not re-add the two components into the leading amount')
+  assert.match(chip.props.title, /\(CNY\).*topped-up balance ¥10\.00.*granted balance 2\.34/)
   assert.match(chip.props.title, /account available/)
   assert.doesNotMatch(chip.props.title, /used|limit/)
   const amounts = descendants(chip, node => node.props?.className === 'slp-seg-label')
   assert.equal(amounts.length, 2)
   assert.equal(amounts[0].props.style.color, undefined)
   assert.equal(amounts[1].props.style.color, 'var(--dsw-alias-state-error-primary)')
-  chip.props.onClick(); assert.equal(refreshes, 1)
+  chip.props.onClick(); assert.equal(refreshes, 0, 'opening details keeps the last fetch time')
   const unavailable = h.ProviderQuotaLine({ provider, data: { ...data, isAvailable: false }, refresh() {} }).children[0]
   assert.match(unavailable.props.title, /account currently unavailable/)
   for (const amount of descendants(unavailable, node => node.props?.className === 'slp-seg-label')) {
@@ -1130,6 +1206,54 @@ test('DeepSeek chip renders every currency, balance components and account avail
   const unknown = h.ProviderQuotaLine({ provider, data: { style: 'balance', remaining: null, used: undefined }, refresh() {} })
   assert.match(textContent(unknown), /DeepSeek.*—/)
   assert.doesNotMatch(textContent(unknown), /\$0/)
+  h.unmount()
+})
+
+test('balance details keep topped-up and granted amounts on separate lines', () => {
+  const h = harness()
+  const props = {
+    provider: { id: 'deepseek', label: 'DeepSeek' },
+    data: { style: 'balance', currency: 'CNY', fetchedAt: Date.now(), balances: [
+      { currency: 'CNY', remaining: 54.69, toppedUp: 51.43, granted: 3.26 },
+    ] },
+    refresh() {}, now: Date.now(),
+  }
+  let view = h.renderComponent(h.ProviderQuotaLine, props)
+  const trigger = descendants(view, node => node.type === 'button' && node.props?.onClick)[0]
+  trigger.props.onClick()
+  view = h.renderComponent(h.ProviderQuotaLine, props)
+  const notes = descendants(view, node => node.props?.className === 'slp-panel-note').map(textContent)
+  assert.ok(notes.some(text => /topped-up balance ¥51\.43/.test(text)), 'recharged balance is its own line')
+  assert.ok(notes.some(text => /granted balance 3\.26/.test(text)), 'granted balance is its own line')
+  assert.equal(notes.filter(text => /topped-up balance.*granted balance/.test(text)).length, 0, 'the two components are not joined into one note')
+  assert.match(textContent(view), /¥54\.69 CNY · total/, 'the large amount is labelled as the total')
+  h.unmount()
+})
+
+test('balance chips hide zero gift credit and zero currency wallets', () => {
+  const h = harness()
+  const provider = { id: 'deepseek', label: 'DeepSeek' }
+  const data = { style: 'balance', currency: 'CNY', fetchedAt: Date.now(), balances: [
+    { currency: 'USD', remaining: 0, toppedUp: 0, granted: 0 },
+    { currency: 'CNY', remaining: 12.34, toppedUp: 12.34, granted: 0 },
+  ] }
+  const chip = h.ProviderQuotaLine({ provider, data, refresh() {} }).children[0]
+  const chipText = textContent(chip)
+  assert.match(chipText, /¥12\.34/)
+  assert.doesNotMatch(chipText, /\$0\.00|USD/, 'a zero currency is hidden when another wallet is funded')
+  assert.doesNotMatch(chipText, /\+/, 'a zero gift adds no plus suffix')
+  assert.doesNotMatch(chip.props.title, /granted balance|USD/, 'zero gift and zero currency stay out of the tooltip')
+  let view = h.renderComponent(h.ProviderQuotaLine, { provider, data, refresh() {}, now: Date.now() })
+  const trigger = descendants(view, node => node.type === 'button' && node.props?.onClick)[0]
+  trigger.props.onClick()
+  view = h.renderComponent(h.ProviderQuotaLine, { provider, data, refresh() {}, now: Date.now() })
+  const notes = descendants(view, node => node.props?.className === 'slp-panel-note').map(textContent)
+  assert.ok(notes.some(text => /topped-up balance ¥12\.34/.test(text)), 'the funded wallet remains')
+  assert.ok(!notes.some(text => /granted balance/.test(text)), 'a zero gift has no detail line')
+  const empty = h.ProviderQuotaLine({ provider, data: { style: 'balance', currency: 'CNY', balances: [
+    { currency: 'USD', remaining: 0, toppedUp: 0, granted: 0 },
+  ] }, refresh() {} }).children[0]
+  assert.match(textContent(empty), /\$0\.00/, 'an all-zero wallet still shows a real zero')
   h.unmount()
 })
 
