@@ -27,6 +27,32 @@ test('empty upstream summary never invokes the obsolete models fallback', async 
   assert.ok(urls[0].endsWith('retrieveUserQuotaSummary'))
 })
 
+// Google keys the summary on the client identity: a bare `antigravity` UA is
+// treated as a legacy client and loses the whole Gemini group, leaving only an
+// untouched Claude/GPT pool at 100%. The chip must keep the measured Gemini pair.
+test('quota summary requests identify as the Antigravity Hub client', async t => {
+  const before = global.fetch; t.after(() => { global.fetch = before })
+  let sentHeaders
+  const reset = secondsFromNow => new Date(Date.now() + secondsFromNow * 1000).toISOString()
+  global.fetch = async (url, init) => {
+    sentHeaders = init.headers
+    return new Response(JSON.stringify({ groups: [
+      { displayName: 'Gemini Models', buckets: [
+        { bucketId: 'gemini-weekly', window: 'weekly', remainingFraction: 0.99, resetTime: reset(86400) },
+        { bucketId: 'gemini-5h', window: '5h', remainingFraction: 0.96, resetTime: reset(3600) },
+      ] },
+      { displayName: 'Claude and GPT models', buckets: [
+        { bucketId: '3p-weekly', window: 'weekly', remainingFraction: 1, resetTime: reset(86400) },
+        { bucketId: '3p-5h', window: '5h', remainingFraction: 1, resetTime: reset(3600) },
+      ] },
+    ] }), { status: 200 })
+  }
+  const result = await api.fetchAntigravityQuotaForCred({ accessToken: 'fixture-not-real', fileName: 'a.json' }, Date.now())
+  assert.match(sentHeaders['User-Agent'], /^antigravity\/hub\/\d+\.\d+\.\d+ (linux|darwin|windows)\/(amd64|arm64)$/)
+  assert.equal(result.gemini5h.remainingPercent, 96)
+  assert.equal(result.geminiWeekly.remainingPercent, 99)
+})
+
 test('fallback preserves the successful account identity and priority', async () => {
   const result = await api.collectAntigravityQuotas(credentials.slice(0, 2), async cred => {
     if (cred.priority === 100) throw new Error('auth')
