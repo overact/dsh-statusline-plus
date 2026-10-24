@@ -1,5 +1,10 @@
 # Release notes
 
+## 0.1.6
+
+- Antigravity quota now identifies as the Antigravity Hub client when it asks Google for the subscription summary. Google keys that response on the caller's `User-Agent`: the previous bare `antigravity` identity was treated as a legacy client and returned only the Claude/GPT group, so an account that uses Gemini looked like an untouched pool frozen at 100% remaining (or 0% used). The Hub identity returns both groups, including measured Gemini five-hour and weekly windows. Each CPA account is still read independently and keeps its own priority and status.
+- Kimi Code keeps the more-consumed reading when the `usages` ratio pools and the legacy `usage`/`limits` counts describe the same window. The ratio pools can lag an exhausted quota (upstream reports `used_ratio: 0` while requests already fail with 403); a pair is matched by cadence and reset time, and the higher used percentage wins instead of claiming untouched quota.
+
 ## 0.1.5
 
 - Show the balance of DSH's signed-in DeepSeek account (`deepseek-account`) in the header. The source now matches that billing provider and reads topped-up plus granted wallets through the Host `deepseekAccount` service, so no `DEEPSEEK_API_KEY` is needed. API-key models (`deepseek`, `deepseek-official`) keep using `/user/balance`, and the two balances never share a cache entry. A signed-out account reports "DeepSeek account not signed in"; the DeepSeek peak indicator now recognises the account provider too. Older stored profiles that still list only the previous `providerExact` aliases keep working through a client-side fallback.
