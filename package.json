@@ -48,6 +48,8 @@
     "verify:all": "node scripts/verify.mjs --all",
     "verify:ui": "node scripts/verify-ui.mjs",
     "screenshots": "node scripts/screenshots.mjs",
+    "dev:runtime": "node scripts/dev-runtime.mjs",
+    "release:check": "node scripts/release-check.mjs",
     "ui:install": "npm --prefix tools/ui ci --ignore-scripts"
   },
   "engines": {

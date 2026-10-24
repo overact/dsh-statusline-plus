@@ -93,6 +93,17 @@ npm run screenshots
 
 Use explicit paths for the current edit. `--style-only` is for CSS only; `--ui none` skips browser checks; `--plan` previews the selection. Run `verify:all` once at the completed stage. `npm run check` and `npm test` are also available; `DSH_PACKAGE_DIR` selects an installed DSH runtime for integration tests.
 
+Two maintenance checks cover the development profile and releases:
+
+```sh
+npm run dev:runtime     # does the active profile HMR-watch this checkout's lib/?
+npm run release:check   # version, README badge, CHANGELOG, tag, assets and latest
+```
+
+`dev:runtime` reads the active profile's `cordis.patch.yml` (`DSH_PROFILE_DIR` overrides `~/.dsh/profiles/web`) and reports whether host-side edits hot-reload; run it before advising a restart. `release:check` verifies the current package version against the README badge, changelog, git tag, GitHub Release assets and `releases/latest`; use `--offline` to skip the GitHub checks.
+
+Quota protocol notes (client identity, percentage semantics and known provider inconsistencies) are in [`docs/QUOTA_SOURCES.md`](docs/QUOTA_SOURCES.md).
+
 Browser checks use real React and the client bundle with offline fixtures. Coverage includes cost, Subagents and responsive settings/resource cleanup. Install browser tooling only if missing:
 
 ```sh
