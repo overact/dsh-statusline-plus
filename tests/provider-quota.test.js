@@ -151,6 +151,29 @@ test('Kimi official usage fractions produce correctly labeled 5h, weekly and mon
   ])
 })
 
+test('Kimi keeps the more-consumed view when ratio pools and legacy counts disagree', () => {
+  const now = Date.parse('2026-09-24T01:00:00Z')
+  assert.deepEqual(parseKimiWindows({
+    usage: { limit: '100', used: '100', resetTime: '2026-09-24T02:09:07.465054Z' },
+    limits: [{ window: { duration: 300, timeUnit: 'TIME_UNIT_MINUTE' },
+      detail: { limit: '100', remaining: '100', resetTime: '2026-09-21T01:09:07.465054Z' } }],
+    // Kimi issue #3951: ratio pools can lag the counts and report 0 while the
+    // weekly quota is exhausted and requests already fail with 403.
+    usages: {
+      limit_5h: { used_ratio: 0, reset_time: '2026-09-21T01:09:06Z' },
+      limit_7d: { used_ratio: 0, reset_time: '2026-09-24T02:09:06Z' },
+    },
+  }, now), [
+    { label: '5h', usedPercent: 0, resetInSec: 0 },
+    { label: '7d', usedPercent: 100, resetInSec: 4146 },
+  ])
+  // The ratio view still wins when it reports more usage than the counts.
+  assert.deepEqual(parseKimiWindows({
+    usage: { limit: '100', used: '10', resetTime: RESET },
+    usages: { limit_7d: { used_ratio: 0.8, reset_time: RESET } },
+  }, NOW), [{ label: '7d', usedPercent: 80, resetInSec: 3600 }])
+})
+
 test('Kimi accepts empty/full windows and does not invent missing windows or reset times', () => {
   assert.deepEqual(parseKimiWindows({ usages: {
     limit_5h: { used_ratio: 0, reset_time: 'not-a-date' },
