@@ -10,21 +10,7 @@ A responsive statusline for DeepSeek Harness (`dsh web`). Account quotas appear 
 
 ## Screenshots
 
-**Header quotas and DeepSeek peak indicator**
-
-<p><img src="docs/images/header-quotas.png" width="680" alt="Sample DeepSeek balance, Kimi Code subscription usage, DeepSeek peak countdown and sidebar indicator"></p>
-
-| Balance details | Peak indicator |
-| --- | --- |
-| <img src="docs/images/quota-panel.png" width="312" alt="DeepSeek balance details with separate CNY and USD balances and manual refresh"> | <img src="docs/images/peak-panel.png" width="312" alt="DeepSeek peak status, countdown, daily timeline and official rules link"> |
-
-**Session metrics**
-
-<p><img src="docs/images/bottom-bar.png" width="680" alt="Bottom status line: Git, context, TPS, cost, Subagents and tools"></p>
-
-| Reference cost | Subagent activity |
-| --- | --- |
-| <img src="docs/images/cost-panel.png" width="312" alt="Token and reference-cost breakdown"> | <img src="docs/images/subagents-panel.png" width="312" alt="Subagent activity"> |
+<p><img src="docs/images/overview.png" width="680" alt="Header quotas, session metrics and detail panels: DeepSeek balance, Kimi Code usage, peak countdown, API reference cost and subagent activity"></p>
 
 Screenshots use the actual UI with sample data, without account or conversation data.
 
@@ -123,7 +109,7 @@ An optional authorized, read-only live check requires an existing session: `npm 
 
 DSH 网页端状态行：顶部显示账号余额与套餐额度，输入区显示 Git、上下文、TPS、API 参考金额、子代理和工具活动。支持 DeepSeek、Kimi Code、Z.ai／智谱、Antigravity、Codex、OpenCode Go、OpenRouter，以及 DeepSeek 峰谷时段指示。
 
-**截图：** [额度与峰谷提示](docs/images/header-quotas.png)、[余额详情](docs/images/quota-panel.png)、[峰谷详情](docs/images/peak-panel.png)、[会话指标](docs/images/bottom-bar.png)、[设置选项](docs/images/settings.png)。截图使用英文界面与演示数据，不包含真实账号或对话数据。
+**截图：** [总览（额度、峰谷、会话指标与详情面板）](docs/images/overview.png)、[设置选项](docs/images/settings.png)。截图使用英文界面与演示数据，不包含真实账号或对话数据。
 
 **安装：** 需要 DSH 0.2.0-rc.2 或更高版本，不设上限，升级 DSH 不会让插件被跳过；已在 0.2.0-rc.2 与 0.2.1-rc.2 上测试，使用上面的安装命令；插件自带预构建文件和注册配置。启用 HMR 后，插件启停与设置实时生效；本地源码目录纳入监听时也可热加载，之后刷新浏览器。安装或升级提示 `restart-required` 时，才需等待无活跃会话后重启。旧版手动安装请先移除 `@local/dsh-statusline-plus` 注册行和依赖，避免重复。
 

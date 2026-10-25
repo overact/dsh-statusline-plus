@@ -121,8 +121,34 @@ try {
   })
   await page.locator('.slp-peak-panel').screenshot({ path: join(folder, 'peak-panel.png') })
   await page.evaluate(() => window.closeDemo())
+  // One README hero instead of five separate captures: header + bottom bar on
+  // top, then the four detail panels in a labelled 2x2 grid.
+  const imageUrl = async name => 'data:image/png;base64,' + (await readFile(join(folder, name))).toString('base64')
+  const overview = await browser.newPage({ viewport: { width: 700, height: 1200 }, deviceScaleFactor: 2 })
+  try {
+    await overview.setContent(`<!doctype html><html><head><style>
+      *{box-sizing:border-box}body{margin:0;background:#fff}
+      #overview{width:680px;background:#fff;font:12px Arial,sans-serif;color:#626870}
+      #overview img{display:block;width:100%}
+      .label{font-size:11px;font-weight:600;letter-spacing:.2px;margin:0 0 4px 2px}
+      .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px 16px}
+    </style></head><body><div id="overview">
+      <img src="${await imageUrl('header-quotas.png')}">
+      <div style="height:14px"></div>
+      <img src="${await imageUrl('bottom-bar.png')}">
+      <div style="height:22px"></div>
+      <div class="grid">
+        <div><div class="label">Balance details</div><img src="${await imageUrl('quota-panel.png')}"></div>
+        <div><div class="label">Peak indicator</div><img src="${await imageUrl('peak-panel.png')}"></div>
+        <div><div class="label">API reference cost</div><img src="${await imageUrl('cost-panel.png')}"></div>
+        <div><div class="label">Subagent activity</div><img src="${await imageUrl('subagents-panel.png')}"></div>
+      </div>
+    </div></body></html>`)
+    await overview.waitForFunction(() => Array.from(document.images).every(img => img.complete && img.naturalWidth > 0))
+    await overview.locator('#overview').screenshot({ path: join(folder, 'overview.png'), animations: 'disabled' })
+  } finally { await overview.close() }
   if (errors.length) throw new Error(errors.join('; '))
-  console.log(JSON.stringify({ ok: true, files: ['bottom-bar', 'cost-panel', 'subagents-panel', 'settings', 'header-quotas', 'quota-panel', 'peak-panel'].map(name => `docs/images/${name}.png`), data: 'public demo only' }))
+  console.log(JSON.stringify({ ok: true, files: ['overview', 'bottom-bar', 'cost-panel', 'subagents-panel', 'settings', 'header-quotas', 'quota-panel', 'peak-panel'].map(name => `docs/images/${name}.png`), data: 'public demo only' }))
 } catch (error) {
   console.log(JSON.stringify({ ok: false, error: excerpt(error.message) })); process.exitCode = 1
 } finally { await browser?.close() }
