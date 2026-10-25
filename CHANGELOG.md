@@ -1,6 +1,6 @@
 # Release notes
 
-## Unreleased
+## 0.1.7
 
 - Quota fetchers now read the local Magpie gateway (`GET http://127.0.0.1:3425/v1/magpie/quotas`) when it is reachable, and fall back to the CPA files otherwise. Antigravity maps Magpie's `Gemini · 5 hours / 7 days` and `Claude & GPT · 5 hours / 7 days` windows; Codex maps Magpie's `5 hours / 7 days` windows to primary/secondary. A new `quotaSource` setting (`auto` | `magpie` | `cpa`, default `auto`) pins one source for deployments that run both gateways or only CPA; an explicitly selected `codexAccount` / `antigravityAccount` keeps `auto` on CPA for that provider. `MAGPIE_GATEWAY_URL` overrides the default loopback address.
 - The header quota chip now resolves the subscription from the model ID namespace first (`antigravity/...`, `codex/...`, `opencode/...`) and the provider name second. When that subscription has no usable data (`no-credential`, `auth`, `invalid-response`, `not-found`), it tries the other enabled subscription kinds before showing "Subscription not found" instead of hiding the chip. A new `quotaShowAll` switch (default off) shows every enabled subscription chip side by side for gateways where model names do not identify the subscription.
