@@ -545,6 +545,7 @@ test('account quota routes keep their stable error codes and Codex result shape'
   const requests = []
   global.fetch = async (url, options) => {
     requests.push({ url, auth: options.headers.Authorization })
+    if (String(url).includes('/v1/magpie/quotas')) return new Response(JSON.stringify({ data: [] }), { status: 200 })
     return new Response(JSON.stringify({ plan_type: 'plus', active_limit: 'none', rate_limit: {
       primary_window: { used_percent: 12.5, limit_window_seconds: 18000, reset_after_seconds: '600', reset_at: 1790000000 },
       secondary_window: { used_percent: '40', limit_window_seconds: 604800, reset_after_seconds: null } },
@@ -552,8 +553,9 @@ test('account quota routes keep their stable error codes and Codex result shape'
   }
   const codex = await fixture(); t.after(codex.close)
   const reply = (await call(codex.routes.get('/statusline/api/codex-quota'))).value
-  assert.equal(requests[0].url, 'https://chatgpt.com/backend-api/wham/usage')
-  assert.equal(requests[0].auth, 'Bearer not.a-real.token')
+  const whamRequests = requests.filter(request => request.url === 'https://chatgpt.com/backend-api/wham/usage')
+  assert.equal(whamRequests[0].auth, 'Bearer not.a-real.token')
+  assert.ok(requests.some(request => String(request.url).includes('/v1/magpie/quotas')))
   assert.equal(reply.ok, true)
   assert.equal(typeof reply.data.fetchedAt, 'number')
   delete reply.data.fetchedAt
@@ -566,7 +568,7 @@ test('account quota routes keep their stable error codes and Codex result shape'
   assert.deepEqual((await call(codex.routes.get('/statusline/api/codex-quota'))).value, { ok: false, error: 'no-credential' })
   await codex.ctx.settings.update('statusline-plus', { codexAccount: 'codex-fixture.json' })
   assert.equal((await call(codex.routes.get('/statusline/api/codex-quota'))).value.ok, true)
-  assert.equal(requests.length, 2)
+  assert.equal(requests.filter(request => request.url === 'https://chatgpt.com/backend-api/wham/usage').length, 2)
 
   global.fetch = async () => { throw new Error('fixture transport failure') }
   const failing = await fixture(); t.after(failing.close)

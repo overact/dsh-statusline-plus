@@ -5,8 +5,8 @@ notice; the parser and its tests are authoritative for the current shape. This
 page records the semantics that are easy to get wrong, plus how to verify a
 live response without leaking credentials.
 
-Last verified: 2026-10-24 (Antigravity against `agy` 1.4.7; the rest from the
-live probes described below).
+Last verified: 2026-10-25 (Antigravity against `agy` 1.4.7 and the live Magpie
+gateway; the rest from the live probes described below).
 
 ## Where the code lives
 
@@ -14,6 +14,7 @@ live probes described below).
 | --- | --- | --- |
 | Antigravity | `lib/quota-antigravity.js` | `tests/antigravity.test.js`, `tests/statusline.test.js` |
 | Codex | `lib/quota-codex.js` | `tests/dsh-integration.test.js` |
+| Magpie (fallback) | `lib/quota-magpie.js` | `tests/magpie-quota.test.js` |
 | Kimi Code, Z.ai / Zhipu | `lib/quota-providers.js` | `lib/provider-presets.js`, `tests/provider-quota.test.js` |
 | OpenCode Go | `lib/quota-providers.js` (`fetchUsage`) | `tests/dsh-integration.test.js` |
 | OpenRouter, custom providers | `lib/quota-providers.js` | `tests/provider-quota.test.js` |
@@ -61,6 +62,42 @@ live probes described below).
   `used_percent` is already a used percentage (0–100). Window length decides
   the chip label; do not assume primary is always the 5-hour window.
 - `credits` is separate from the rate-limit windows.
+
+## Magpie (preferred source)
+
+- Request: `GET http://127.0.0.1:3425/v1/magpie/quotas` (loopback, no auth).
+  `MAGPIE_GATEWAY_URL` overrides the base URL.
+- Response: `{ "data": [ { "provider": "antigravity" | "codex", "user",
+  "plan", "windows": [ { "name", "used", "remaining", "resetsAt" } ] } ] }`.
+- `windows[].used` is already a percentage (0–100), unlike Antigravity's
+  `remainingFraction` (0–1); `remaining` is the complement. `resetsAt` is ISO.
+- Antigravity names: `Gemini · 5 hours`, `Gemini · 7 days`,
+  `Claude & GPT · 5 hours`, `Claude & GPT · 7 days`. Starter accounts may list
+  per-model rows alongside the aggregate pair; the parser only takes the
+  aggregate names above.
+- Codex names: `5 hours`, `7 days`; the parser sorts by the length parsed from
+  the name, maps the shortest window to `primary` and the longest to
+  `secondary`.
+- Selection: `quotaSource` (`auto` | `magpie` | `cpa`, default `auto`).
+  `auto` reads Magpie when it is reachable and has the provider, otherwise CPA.
+  Pin `cpa` or `magpie` when both gateways run and the statusline should ignore
+  the other one. An explicitly selected CPA account (`codexAccount` /
+  `antigravityAccount`) keeps `auto` on CPA for that provider; `magpie` ignores
+  the account fields.
+- A stopped Magpie fails fast (2.5 s loopback deadline), so the CPA path is
+  still reachable when Magpie is not running.
+
+## Subscription selection
+
+- The header chip picks a subscription from the model ID namespace first
+  (`antigravity/`, `codex/`, `opencode/`), then from the provider name
+  (`antigravity-sub`, `codex-sub`, `magpie-*`, ...).
+- If that subscription returns `no-credential`, `auth`, `invalid-response` or
+  `not-found`, the client tries the other enabled subscription kinds. If none
+  has usable data, it renders "Subscription not found" instead of hiding the
+  chip.
+- `quotaShowAll` (default off) bypasses selection and renders every enabled
+  subscription chip (Codex, Antigravity, OpenCode) side by side.
 
 ## Kimi Code
 

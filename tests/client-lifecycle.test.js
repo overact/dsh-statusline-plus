@@ -72,7 +72,7 @@ function harness({ hidden = false, wallTime = Date.now(), panelLayout = null } =
       disconnect() { this.nodes.clear() }
     }
   }
-  const source = fs.readFileSync(require.resolve('../lib/client'), 'utf8').replace('return module.exports', 'return { ContextProjection, ContextRow, componentOrder, reorderComponent, layoutPreset, matchingPreset, dockComponents, LayoutEditor, LayoutPreview, ToolActivityRow, toolElapsed, quotaRefreshOnStep, TpsRow, useLiveTps, useQuotaResource, normalizeWindows, formatPathSegs, fmtResetHours, codexWindowLabel, isCodexModel, isAntigravityModel, providerMatchesModel, fmtMoney, ProviderQuotaLine, CodexQuotaLine, AntigravityQuotaLine, OpenCodeQuotaLine, parseSeconds, PeakPanel, PeakFooterDot, deepseekPeakStatus, HeaderChip, SettingsPage, DeepseekPeakChip, ActivityRow, childActivityRows, childElapsed, CostRow, estimateCost, quotaFreshness, QuotaChip, quotaState, fmtRetryIn, contextUsage, ContextPanel, STR, publishConfig, apiSetConfig, setScope: function (scope) { settingsScope = scope } }')
+  const source = fs.readFileSync(require.resolve('../lib/client'), 'utf8').replace('return module.exports', 'return { ContextProjection, ContextRow, componentOrder, reorderComponent, layoutPreset, matchingPreset, dockComponents, LayoutEditor, LayoutPreview, ToolActivityRow, toolElapsed, quotaRefreshOnStep, TpsRow, useLiveTps, useQuotaResource, normalizeWindows, formatPathSegs, fmtResetHours, codexWindowLabel, isCodexModel, isAntigravityModel, primarySubscriptionKind, looksLikeSubscription, providerMatchesModel, fmtMoney, ProviderQuotaLine, CodexQuotaLine, AntigravityQuotaLine, OpenCodeQuotaLine, parseSeconds, PeakPanel, PeakFooterDot, deepseekPeakStatus, HeaderChip, SettingsPage, DeepseekPeakChip, ActivityRow, childActivityRows, childElapsed, CostRow, estimateCost, quotaFreshness, QuotaChip, quotaState, fmtRetryIn, contextUsage, ContextPanel, STR, publishConfig, apiSetConfig, setScope: function (scope) { settingsScope = scope } }')
   vm.runInNewContext(source, context)
   exported.setScope(scope)
   return {
@@ -792,6 +792,18 @@ test('QuotaChip passes the saved percentage mode, defaulting to used', () => {
   const base = { resource: { kind: 'codex', key: 'codex' }, stepCount: 0 }
   assert.equal(h.renderComponent(h.QuotaChip, { ...base, config }).children[0].props.mode, 'used')
   assert.equal(h.renderComponent(h.QuotaChip, { ...base, config: { ...config, quotaPercentMode: 'left' } }).children[0].props.mode, 'left')
+  h.unmount()
+})
+
+test('QuotaChip reports a missing subscription so the fallback chain can advance', async () => {
+  const h = harness()
+  let calls = 0
+  h.renderComponent(h.QuotaChip, { resource: { kind: 'antigravity', key: 'antigravity' }, config, stepCount: 0,
+    onUnavailable: () => { calls++ } })
+  h.requests[0].resolve({ ok: false, error: 'no-credential' }); await flush()
+  h.renderComponent(h.QuotaChip, { resource: { kind: 'antigravity', key: 'antigravity' }, config, stepCount: 0,
+    onUnavailable: () => { calls++ } })
+  assert.equal(calls, 1)
   h.unmount()
 })
 
@@ -1590,9 +1602,10 @@ test('shared refresh preference reaches every selected source, including manual 
       h.requests[0].resolve({ ok: true, data: { provider, model: provider === 'codex' ? 'gpt-5.6' : 'deepseek-flash' } }); await flush()
       view = h.renderComponent(h.HeaderChip, props)
     }
-    assert.equal(view.type, h.QuotaChip)
-    assert.equal(view.props.resource.onStep, false, provider || 'manual OpenCode')
-    assert.equal(view.props.resource.cacheOnStep, true, provider || 'manual OpenCode')
+    const resource = view.type.name === 'FallbackQuotaChip' ? view.props.resources[0] : view.props.resource
+    assert.ok(view.type === h.QuotaChip || view.type.name === 'FallbackQuotaChip')
+    assert.equal(resource.onStep, false, provider || 'manual OpenCode')
+    assert.equal(resource.cacheOnStep, true, provider || 'manual OpenCode')
     h.unmount()
   }
 })
@@ -1607,7 +1620,7 @@ test('every selected source uses cached automatic step refresh and preserves for
       h.requests[0].resolve({ ok: true, data: { provider, model: 'fixture-model' } }); await flush()
       view = h.renderComponent(h.HeaderChip, { sessionId: 'fixture' })
     }
-    const selected = view.props.resource
+    const selected = view.type.name === 'FallbackQuotaChip' ? view.props.resources[0] : view.props.resource
     assert.equal(selected.cacheOnStep, true)
     const lifecycle = harness()
     lifecycle.render(selected, config, 0)
@@ -1760,6 +1773,27 @@ test('OpenCode disabled preference blocks automatic and manual selection', async
     assert.equal(view, null, 'no matching source shows nothing instead of a placeholder')
     h.unmount()
   }
+})
+
+test('subscription kind prefers the model namespace over a neutral provider', () => {
+  const h = harness()
+  assert.equal(h.primarySubscriptionKind({ provider: 'magpie-workbuddy', model: 'antigravity/gemini-3.8-flash' }), 'antigravity')
+  assert.equal(h.primarySubscriptionKind({ provider: 'magpie-workbuddy', model: 'codex/gpt-6-astra' }), 'codex')
+  assert.equal(h.primarySubscriptionKind({ provider: 'codex-sub', model: 'gpt-5.6' }), 'codex')
+  assert.equal(h.primarySubscriptionKind({ provider: 'antigravity-sub', model: 'gemini-3.8-flash' }), 'antigravity')
+  assert.equal(h.primarySubscriptionKind({ provider: 'deepseek', model: 'deepseek-v4.1-flash' }), null)
+  assert.equal(h.looksLikeSubscription({ provider: 'magpie-workbuddy', model: 'workbuddy-ai/deepseek-v4.1-flash' }), true)
+  assert.equal(h.looksLikeSubscription({ provider: 'deepseek', model: 'deepseek-v4.1-flash' }), false)
+  h.unmount()
+})
+
+test('quotaShowAll renders every enabled subscription chip', () => {
+  const h = harness()
+  h.setConfig({ ...config, quotaShowAll: true, showDeepseekPeak: false, showCodexQuota: true, showAntigravityQuota: true, showOpenCodeQuota: true })
+  const view = h.renderComponent(h.HeaderChip, { sessionId: 'fixture' })
+  assert.equal(view.props.className, 'slp-header-group')
+  assert.deepEqual(Array.from(view.children[0], child => child.props.resource.kind), ['codex', 'antigravity', 'opencode'])
+  h.unmount()
 })
 
 test('unmatched billing providers leave the header empty, including while the model resolves', async () => {

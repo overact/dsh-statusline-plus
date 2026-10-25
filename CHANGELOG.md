@@ -1,5 +1,10 @@
 # Release notes
 
+## Unreleased
+
+- Quota fetchers now read the local Magpie gateway (`GET http://127.0.0.1:3425/v1/magpie/quotas`) when it is reachable, and fall back to the CPA files otherwise. Antigravity maps Magpie's `Gemini · 5 hours / 7 days` and `Claude & GPT · 5 hours / 7 days` windows; Codex maps Magpie's `5 hours / 7 days` windows to primary/secondary. A new `quotaSource` setting (`auto` | `magpie` | `cpa`, default `auto`) pins one source for deployments that run both gateways or only CPA; an explicitly selected `codexAccount` / `antigravityAccount` keeps `auto` on CPA for that provider. `MAGPIE_GATEWAY_URL` overrides the default loopback address.
+- The header quota chip now resolves the subscription from the model ID namespace first (`antigravity/...`, `codex/...`, `opencode/...`) and the provider name second. When that subscription has no usable data (`no-credential`, `auth`, `invalid-response`, `not-found`), it tries the other enabled subscription kinds before showing "Subscription not found" instead of hiding the chip. A new `quotaShowAll` switch (default off) shows every enabled subscription chip side by side for gateways where model names do not identify the subscription.
+
 ## 0.1.6
 
 - Antigravity quota now identifies as the Antigravity Hub client when it asks Google for the subscription summary. Google keys that response on the caller's `User-Agent`: the previous bare `antigravity` identity was treated as a legacy client and returned only the Claude/GPT group, so an account that uses Gemini looked like an untouched pool frozen at 100% remaining (or 0% used). The Hub identity returns both groups, including measured Gemini five-hour and weekly windows. Each CPA account is still read independently and keeps its own priority and status.

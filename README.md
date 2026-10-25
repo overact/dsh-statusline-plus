@@ -66,6 +66,8 @@ Open **DSH Web → Settings → Statusline**. Settings are saved under `statusli
 | `showDeepseekPeak`, `deepseekPeakCountdown`, `showPeakDot` | `true` | DeepSeek peak indicators and countdown |
 | `cacheTtlMs` | `60000` | Quota result reuse; UI displays seconds, effective minimum 15s |
 | `fetchTimeoutMs` | `10000` | Request timeout; UI displays seconds |
+| `quotaSource` | `auto` | Quota source: `auto` reads a live Magpie gateway first, then CPA; `magpie`/`cpa` pin one source |
+| `quotaShowAll` | `false` | Show every enabled subscription chip (Codex / Antigravity / OpenCode) instead of selecting one from the model |
 | `providers` | Built-in sources | Credential references, source switches and endpoint overrides |
 
 The narrow-screen switch is in **Bottom status line**. It affects this plugin's bottom components; header quotas, peak indicators and native composer stats remain available.
