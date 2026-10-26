@@ -1,5 +1,11 @@
 # Release notes
 
+## Unreleased
+
+- A model's header quota chip no longer switches to another subscription kind. If the model's own subscription has no usable data (`no-credential`, `auth`, `invalid-response`, `not-found`), the chip shows "Subscription not found" and keeps the short reason in the tooltip; a Gemini model can no longer display Codex quota. Transient failures still retry the same subscription.
+- Antigravity quota reads the local Magpie gateway with an 8-second deadline instead of 2.5 seconds. The first Antigravity read after a Magpie restart renews three accounts and can take over 3 seconds; the old deadline timed out, fell through to the stale CPA mirror and surfaced its `auth` failure as a missing subscription.
+- In `quotaSource=auto`, a transient Magpie failure is no longer replaced by the CPA mirror's `auth` error. The retryable failure is kept so the chip recovers by itself when the gateway catches up.
+
 ## 0.1.7
 
 - Quota fetchers now read the local Magpie gateway (`GET http://127.0.0.1:3425/v1/magpie/quotas`) when it is reachable, and fall back to the CPA files otherwise. Antigravity maps Magpie's `Gemini · 5 hours / 7 days` and `Claude & GPT · 5 hours / 7 days` windows; Codex maps Magpie's `5 hours / 7 days` windows to primary/secondary. A new `quotaSource` setting (`auto` | `magpie` | `cpa`, default `auto`) pins one source for deployments that run both gateways or only CPA; an explicitly selected `codexAccount` / `antigravityAccount` keeps `auto` on CPA for that provider. `MAGPIE_GATEWAY_URL` overrides the default loopback address.

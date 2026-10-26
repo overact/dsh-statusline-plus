@@ -795,15 +795,28 @@ test('QuotaChip passes the saved percentage mode, defaulting to used', () => {
   h.unmount()
 })
 
-test('QuotaChip reports a missing subscription so the fallback chain can advance', async () => {
+test('QuotaChip shows the absent subscription instead of advancing to another source', async () => {
   const h = harness()
-  let calls = 0
-  h.renderComponent(h.QuotaChip, { resource: { kind: 'antigravity', key: 'antigravity' }, config, stepCount: 0,
-    onUnavailable: () => { calls++ } })
+  h.renderComponent(h.QuotaChip, { resource: { kind: 'antigravity', key: 'antigravity' }, config, stepCount: 0, subscriptionOnly: true })
   h.requests[0].resolve({ ok: false, error: 'no-credential' }); await flush()
-  h.renderComponent(h.QuotaChip, { resource: { kind: 'antigravity', key: 'antigravity' }, config, stepCount: 0,
-    onUnavailable: () => { calls++ } })
-  assert.equal(calls, 1)
+  const view = h.renderComponent(h.QuotaChip, { resource: { kind: 'antigravity', key: 'antigravity' }, config, stepCount: 0, subscriptionOnly: true })
+  assert.equal(textContent(view), 'Subscription not found')
+  assert.match(view.children[0].props.title, /not set up/)
+  assert.equal(h.requests.length, 1, 'no request for another subscription kind')
+  h.unmount()
+})
+
+test('a failing model subscription is reported instead of borrowing another subscription', async () => {
+  const h = harness()
+  h.setConfig({ ...config, quotaAuto: true, showCodexQuota: true, showAntigravityQuota: true, showOpenCodeQuota: true, providers: [] })
+  const props = { sessionId: 'fixture' }
+  h.renderComponent(h.HeaderChip, props)
+  h.requests[0].resolve({ ok: true, data: { provider: 'magpie-workbuddy', model: 'antigravity/gemini-3.8-flash' } }); await flush()
+  const view = h.renderComponent(h.HeaderChip, props)
+  assert.equal(view.type, h.QuotaChip, 'one model renders one subscription chip, not a fallback list')
+  assert.equal(view.props.subscriptionOnly, true)
+  assert.equal(view.props.resource.kind, 'antigravity')
+  assert.equal(view.props.resources, undefined, 'enabled Codex/OpenCode sources are not queued behind it')
   h.unmount()
 })
 
@@ -1602,8 +1615,8 @@ test('shared refresh preference reaches every selected source, including manual 
       h.requests[0].resolve({ ok: true, data: { provider, model: provider === 'codex' ? 'gpt-5.6' : 'deepseek-flash' } }); await flush()
       view = h.renderComponent(h.HeaderChip, props)
     }
-    const resource = view.type.name === 'FallbackQuotaChip' ? view.props.resources[0] : view.props.resource
-    assert.ok(view.type === h.QuotaChip || view.type.name === 'FallbackQuotaChip')
+    const resource = view.props.resource
+    assert.ok(view.type === h.QuotaChip)
     assert.equal(resource.onStep, false, provider || 'manual OpenCode')
     assert.equal(resource.cacheOnStep, true, provider || 'manual OpenCode')
     h.unmount()
@@ -1620,7 +1633,7 @@ test('every selected source uses cached automatic step refresh and preserves for
       h.requests[0].resolve({ ok: true, data: { provider, model: 'fixture-model' } }); await flush()
       view = h.renderComponent(h.HeaderChip, { sessionId: 'fixture' })
     }
-    const selected = view.type.name === 'FallbackQuotaChip' ? view.props.resources[0] : view.props.resource
+    const selected = view.props.resource
     assert.equal(selected.cacheOnStep, true)
     const lifecycle = harness()
     lifecycle.render(selected, config, 0)

@@ -5,7 +5,7 @@ notice; the parser and its tests are authoritative for the current shape. This
 page records the semantics that are easy to get wrong, plus how to verify a
 live response without leaking credentials.
 
-Last verified: 2026-10-25 (Antigravity against `agy` 1.4.7 and the live Magpie
+Last verified: 2026-10-26 (Antigravity against `agy` 1.4.7 and the live Magpie
 gateway; the rest from the live probes described below).
 
 ## Where the code lives
@@ -84,18 +84,28 @@ gateway; the rest from the live probes described below).
   the other one. An explicitly selected CPA account (`codexAccount` /
   `antigravityAccount`) keeps `auto` on CPA for that provider; `magpie` ignores
   the account fields.
-- A stopped Magpie fails fast (2.5 s loopback deadline), so the CPA path is
-  still reachable when Magpie is not running.
+- A stopped Magpie refuses the loopback connection immediately, so the CPA path
+  is still reachable when Magpie is not running. The 8-second deadline covers a
+  gateway that is busy refreshing: the first Antigravity read after a restart
+  renews all three accounts and has been observed taking over 3 seconds.
+- Do not read a CPA fallback failure as the live state. When Magpie is reachable
+  but slow, the CPA mirror can only answer `auth` (its saved access tokens have
+  expired and `ANTIGRAVITY_OAUTH_CLIENT_SECRET` is not set). The fetcher keeps
+  Magpie's retryable failure in that case instead of turning it into a
+  permanent "subscription missing" state.
 
 ## Subscription selection
 
 - The header chip picks a subscription from the model ID namespace first
   (`antigravity/`, `codex/`, `opencode/`), then from the provider name
   (`antigravity-sub`, `codex-sub`, `magpie-*`, ...).
-- If that subscription returns `no-credential`, `auth`, `invalid-response` or
-  `not-found`, the client tries the other enabled subscription kinds. If none
-  has usable data, it renders "Subscription not found" instead of hiding the
-  chip.
+- One model shows one subscription. If that subscription returns
+  `no-credential`, `auth`, `invalid-response` or `not-found`, the chip says
+  "Subscription not found" (the short reason stays in the tooltip); it never
+  borrows another enabled subscription's numbers. A Gemini model therefore
+  cannot silently display Codex quota.
+- Transient failures (`network`, `timeout`, `rate-limit`) keep the retrying chip
+  for the same subscription; they do not switch sources either.
 - `quotaShowAll` (default off) bypasses selection and renders every enabled
   subscription chip (Codex, Antigravity, OpenCode) side by side.
 

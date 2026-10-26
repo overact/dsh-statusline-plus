@@ -137,6 +137,21 @@ test('readAllCredentials keeps CPA string priorities and orders accounts by them
   assert.deepEqual(creds.map(c => c.priority), [100, 50, 10])
 })
 
+// The CPA files only mirror Magpie. When their access token has expired and no
+// OAuth client secret is configured, their only answer is `auth`; a retryable
+// Magpie failure is the truer state and must not become a permanent absence.
+test('a retryable Magpie failure survives a stale CPA mirror auth error', () => {
+  for (const code of ['network', 'rate-limit', 'timeout']) {
+    const live = new Error(code)
+    assert.equal(api.preferredQuotaError(live, new Error('auth')), live, code)
+  }
+  const auth = new Error('auth')
+  assert.equal(api.preferredQuotaError(new Error('invalid-response'), auth).message, 'auth')
+  const mirrorRate = new Error('rate-limit')
+  assert.equal(api.preferredQuotaError(new Error('network'), mirrorRate), mirrorRate, 'a mirror rate limit stays actionable')
+  assert.equal(api.preferredQuotaError(null, auth).message, 'auth')
+})
+
 // Since 2026-10 some summaries carry only the Claude/GPT group (no Gemini group);
 // shape copied from a live response, values replaced.
 const thirdPartyOnly = { groups: [{ displayName: 'Claude and GPT models', buckets: [
