@@ -702,7 +702,7 @@ async function installRouteHarness(options = {}) {
     },
     subprocess: options.subprocess || fakeSubprocess(),
     credentials: null,
-    sessionProjections: { register() { return () => {} } },
+    sessionProjections: options.sessionProjections || { register() { return () => {} } },
     settings: { installSection(owner, name, schema, initial, hooks) {
       hooks.setSource(() => initial); hooks.onChange()
     } },
@@ -754,6 +754,19 @@ test('Git route reuses completed snapshots briefly, scopes them by session and b
     await request('one', true); assert.equal(calls.length, 8, 'manual refresh bypasses the snapshot')
     await request('two'); assert.equal(calls.length, 12, 'another session has its own scope')
   } finally { routes.disposePlugin() }
+})
+
+test('releases 0.2.2 session-projection handles with the plugin scope', async () => {
+  const released = []
+  const sessionProjections = {
+    register() {
+      return Promise.resolve({ async dispose() { released.push('handle') } })
+    },
+  }
+  const routes = await installRouteHarness({ sessionProjections })
+  assert.deepEqual(released, [], 'registration is awaited before routes are served')
+  routes.disposePlugin()
+  assert.deepEqual(released, ['handle', 'handle'])
 })
 
 test('route guards reject wrong methods, cross-origin requests, and non-JSON bodies', async () => {
