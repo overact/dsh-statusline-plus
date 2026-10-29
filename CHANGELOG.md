@@ -1,6 +1,6 @@
 # Release notes
 
-## Unreleased
+## 0.1.8
 
 - A model's header quota chip no longer switches to another subscription kind. If the model's own subscription has no usable data (`no-credential`, `auth`, `invalid-response`, `not-found`), the chip shows "Subscription not found" and keeps the short reason in the tooltip; a Gemini model can no longer display Codex quota. Transient failures still retry the same subscription.
 - Antigravity quota reads the local Magpie gateway with an 8-second deadline instead of 2.5 seconds. The first Antigravity read after a Magpie restart renews three accounts and can take over 3 seconds; the old deadline timed out, fell through to the stale CPA mirror and surfaced its `auth` failure as a missing subscription.
