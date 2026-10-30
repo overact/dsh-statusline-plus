@@ -2,8 +2,9 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { readFileSync } = require('node:fs')
-const { join } = require('node:path')
+const { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } = require('node:fs')
+const { tmpdir } = require('node:os')
+const { dirname, join } = require('node:path')
 
 const {
   PACKAGE_NAME, compareVersions, enginesAllow, readInstalled, resolveInstall, hostVersion,
@@ -176,7 +177,8 @@ test('the overlay install runs pnpm in the profile directory', async () => {
   assert.equal(result.exitCode, 0)
   assert.match(result.output, /0\.1\.10/)
   assert.equal(subprocess.runs.length, 1)
-  assert.deepEqual(subprocess.runs[0].argv, ['add', 'dsh-statusline-plus@0.1.10'])
+  // argv[0] is the executable: the host runs a command line, not a shell.
+  assert.deepEqual(subprocess.runs[0].argv, ['/usr/bin/pnpm', 'add', 'dsh-statusline-plus@0.1.10'])
   assert.equal(subprocess.runs[0].cwd, '/profiles/web')
 })
 
@@ -225,3 +227,57 @@ test('a failing HMR lookup or reconcile falls back instead of failing the instal
   assert.equal(outcome.applied, false)
   assert.match(outcome.reason, /boom/)
 })
+
+test('the running host CLI is preferred, because a desktop build has no pnpm on PATH', async () => {
+  const previous = process.argv[1]
+  const root = mkdtempSync(join(tmpdir(), 'slp-cli-'))
+  const entry = join(root, '@deepseek-ai', 'dsh', 'lib', 'bin.js')
+  mkdirSync(dirname(entry), { recursive: true })
+  writeFileSync(entry, '// dsh entry\n')
+  process.argv[1] = entry
+  try {
+    const subprocess = fakeSubprocess()
+    const result = await applyUpdate({ version: '0.1.10', profileDir: '/profiles/desktop', profile: 'desktop', subprocess })
+    assert.equal(result.exitCode, 0)
+    assert.equal(result.manager, 'dsh plugin')
+    assert.deepEqual(subprocess.runs[0].argv, [
+      process.execPath,
+      entry,
+      'plugin', '--profile', 'desktop', 'add', 'dsh-statusline-plus@0.1.10',
+    ])
+  } finally {
+    process.argv[1] = previous
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('a CLI that cannot start falls through to pnpm', async () => {
+  const previous = process.argv[1]
+  const root = mkdtempSync(join(tmpdir(), 'slp-cli-'))
+  const entry = join(root, '@deepseek-ai', 'dsh', 'lib', 'bin.js')
+  mkdirSync(dirname(entry), { recursive: true })
+  writeFileSync(entry, '// dsh entry\n')
+  process.argv[1] = entry
+  try {
+    const runs = []
+    const subprocess = {
+      resolveExecutable: async name => (name === 'pnpm' ? '/usr/bin/pnpm' : null),
+      spawn: options => {
+        runs.push(options)
+        if (runs.length === 1) throw new Error('spawn ENOENT')
+        return {
+          done: Promise.resolve({ exitCode: 0, signal: null }),
+          collected: { stdout: { readFrom: () => ({ text: '' }) }, stderr: { readFrom: () => ({ text: '' }) } },
+        }
+      },
+    }
+    const result = await applyUpdate({ version: '0.1.10', profileDir: '/profiles/desktop', profile: 'desktop', subprocess })
+    assert.equal(result.exitCode, 0)
+    assert.equal(result.manager, 'pnpm')
+    assert.equal(runs.length, 2)
+  } finally {
+    process.argv[1] = previous
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+

@@ -1,5 +1,11 @@
 # Release notes
 
+## 0.1.12
+
+- The update button installs through the running host's own CLI (`dsh plugin --profile <name> add <pkg>@<version>`) before falling back to `pnpm` or `npx`. A desktop build carries its package manager inside DSH and has no `pnpm` on PATH, so the previous command could not run there at all.
+- Fixed the installer command line: its first argument was the `add` verb rather than the executable, so every install failed with a spawn error instead of reaching a package manager.
+- When no installer can start, the button now shows the exact `dsh plugin` command to run instead of a generic hint.
+
 ## 0.1.11
 
 - The update button installs on one click. The previous two-step confirm was friction on an action that names its target and can be retried, and the release page already told you what 0.1.10 would do.
