@@ -1325,3 +1325,30 @@ test('OpenCode quota panel in QuotaChip opens and auto-hides on click outside', 
     restore()
   }
 })
+
+test('the version route reports the registry update and refuses to touch a linked checkout', async () => {
+  const routes = await installRouteHarness()
+  const version = routes.get('/statusline/api/version')
+  assert.equal(typeof version, 'function', 'the version route is registered')
+  const previous = global.fetch
+  global.fetch = async () => ({ ok: true, status: 200, json: async () => ({ version: '9.9.9', engines: { dsh: '>=0.2.0-rc.2' } }) })
+  try {
+    const read = await callRoute(version, 'GET', {})
+    assert.equal(read.response.status, 200)
+    const body = JSON.parse(read.response.body)
+    assert.equal(body.ok, true)
+    assert.equal(body.data.latest, '9.9.9')
+    assert.equal(body.data.updateAvailable, true)
+    assert.equal(body.data.installed, require('../package.json').version)
+    // Tests run from the source tree, so the copy is linked and not replaceable.
+    assert.equal(body.data.install.linked, true)
+    const apply = await callRoute(version, 'POST', { 'content-type': 'application/json' }, JSON.stringify({ version: '9.9.9' }))
+    assert.equal(apply.response.status, 409)
+    assert.equal(JSON.parse(apply.response.body).error, 'linked-install')
+    const invalid = await callRoute(version, 'POST', { 'content-type': 'application/json' }, JSON.stringify({ version: 'not-a-version' }))
+    assert.equal(invalid.response.status, 400)
+    assert.equal(JSON.parse(invalid.response.body).error, 'invalid-version')
+  } finally {
+    global.fetch = previous
+  }
+})

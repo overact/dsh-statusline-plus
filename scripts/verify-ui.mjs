@@ -119,7 +119,7 @@ async function verifySubagents(page, folder, live, count) {
     await page.clock.runFor(15000); await expect('Subagents 1/2')
     await page.evaluate(() => window.setChildRunning(1, false)); await expect('Subagents 2/2')
     await page.clock.runFor(5000)
-    await page.waitForFunction(() => document.querySelector('.slp-activity .slp-activity-trigger')?.style.opacity === '0.5')
+    await page.waitForFunction(() => document.querySelector('.slp-activity .slp-activity-trigger')?.style.opacity === '0.6')
     await page.clock.runFor(10000)
     await page.waitForFunction(() => !document.querySelector('.slp-activity .slp-activity-trigger'))
     await page.evaluate(() => window.setChildRunning(0, true)); await expect('Subagents 1/2')
@@ -187,6 +187,19 @@ async function verifyResponsive(page, folder) {
   await toggle.waitFor()
   if (!await toggle.isChecked() || await dock.count()) throw new Error('Setting was not retained on remount')
   await assertResources(0, 2)
+  // The update affordance: named after the new version, armed on the first
+  // click, installed on the second, and it stops offering once the bytes are on
+  // disk. The fixture records the request instead of running pnpm.
+  const updateButton = page.locator('.slp-update')
+  await updateButton.waitFor()
+  if (!(await updateButton.innerText()).includes('9.9.9')) throw new Error('Update button did not name the new version')
+  await updateButton.click()
+  if (!(await updateButton.innerText()).includes('Confirm')) throw new Error('Update was not armed before installing')
+  await updateButton.click()
+  await page.waitForFunction(() => document.querySelector('.slp-update')?.textContent?.includes('Restart'))
+  const updateBodies = await page.evaluate(() => window.slpResponsive.updateRequests)
+  if (updateBodies.length !== 1 || updateBodies[0].version !== '9.9.9') throw new Error('Update request was not sent exactly once')
+  if (!await updateButton.isDisabled()) throw new Error('Update stayed clickable after the install')
   const screenshot = join(folder, 'responsive-settings.png')
   await page.locator('.slp-set').screenshot({ path: screenshot, animations: 'disabled' })
   await page.setViewportSize({ width: 768, height: 844 })

@@ -1,5 +1,12 @@
 # Release notes
 
+## 0.1.10
+
+- Every hover and state change now runs on one motion ladder (70ms press, 120ms hover/state, 180ms panel) instead of snapping, and buttons press with a 2% scale. Radius, opacity and border steps collapsed to a small ladder: buttons and inputs 8px, panels 10px; dim text 0.6, disabled 0.4.
+- Panels and tooltips drop the hard 1px border and the fixed black double shadow for a hairline ring plus a diffuse shadow that follows the theme. The tooltip waits 300ms and fades in, and the settings page paints skeleton rows while the form loads.
+- The cost breakdown uses the theme accent plus neutral steps instead of four hard-coded hues, so input, cache and output stay distinguishable in light and dark themes.
+- The settings page offers a self-update button when the registry publishes a newer version: the tooltip shows the installed and latest versions, the first click arms it and the second installs it, and it hides itself when there is nothing to install. The check reads npm directly (one request a minute at most, cached on the Host), skips a linked development checkout, and never offers a version the running DSH would refuse. The install is an in-place `pnpm add` overlay, so the button ends on "restart to apply" instead of unloading the plugin mid-request.
+
 ## 0.1.9
 
 - Settings edits auto-save again on current DSH: the write precondition no longer requires the config form's removed `mode` field, so the Host accepts writes instead of the panel failing with "Settings are not writable on this connection". A successful save shows its "Saved" time in green.

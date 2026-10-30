@@ -65,7 +65,7 @@ export async function mountResponsiveFixture(page) {
       cacheTtlMs: 60000, fetchTimeoutMs: 10000 }
     let config = { ...defaults, hideBottomOnNarrow: true }
     const listeners = new Set(), registrations = new Map(), cleanups = []
-    window.slpResponsive = { sources: [], gitRequests: [], quotaRequests: [], quotaFailures: 0, mutations: [], observers: [] }
+    window.slpResponsive = { sources: [], gitRequests: [], quotaRequests: [], quotaFailures: 0, mutations: [], observers: [], updateRequests: [] }
     const activity = window.slpResponsive
     const NativeObserver = window.ResizeObserver
     window.ResizeObserver = class {
@@ -94,6 +94,17 @@ export async function mountResponsiveFixture(page) {
         activity.quotaRequests.push({ at: Date.now(), body: options.body })
         if (activity.quotaFailures > 0) { activity.quotaFailures--; return { json: async () => ({ ok: false, error: 'network' }) } }
         return { json: async () => ({ ok: true, data: { windows: { rolling: { percent: 20 } }, fetchedAt: Date.now() } }) }
+      }
+      if (url.indexOf('/statusline/api/version') === 0) {
+        // One update is always on offer here, so the settings header always has
+        // something to render; the install itself is recorded, not performed.
+        if (String(options.method || 'GET').toUpperCase() === 'POST') {
+          activity.updateRequests.push(JSON.parse(options.body || '{}'))
+          return { json: async () => ({ ok: true, data: { version: '9.9.9', restartRequired: true, output: '' } }) }
+        }
+        return { json: async () => ({ ok: true, data: { installed: '0.1.9', latest: '9.9.9', latestEngines: '>=0.2.0-rc.2',
+          compatible: true, updateAvailable: true, checkedAt: new Date().toISOString(), error: null,
+          install: { linked: false, profile: 'fixture', dir: '/fixture' }, host: '0.2.1-rc.5' } }) }
       }
       if (url === '/statusline/api/peak-schedule') return { json: async () => ({ ok: false }) }
       throw new Error('Unexpected responsive fixture request: ' + url)
