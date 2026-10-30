@@ -6,6 +6,8 @@ on:
 
 permissions:
   contents: read
+  # OIDC trusted publishing: npm authenticates this workflow without a token.
+  # npm removes bypass-2FA tokens for direct publishing in January 2027.
   id-token: write
 
 jobs:
@@ -22,6 +24,8 @@ jobs:
         with:
           node-version: '22'
           registry-url: https://registry.npmjs.org
+      - name: Use an npm CLI with trusted publishing
+        run: npm install -g npm@^11.5.1
       - name: Install project dependencies
         run: npm install --ignore-scripts --no-audit --no-fund --no-package-lock
       - name: Verify
@@ -42,8 +46,6 @@ jobs:
       - name: Publish
         if: steps.check.outputs.published == 'false'
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Already published
         if: steps.check.outputs.published == 'true'
         run: echo "dsh-statusline-plus@$version is already on npm; nothing to publish."

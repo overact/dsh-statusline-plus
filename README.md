@@ -24,7 +24,7 @@ Screenshots use the actual UI with sample data, without account or conversation 
 
 ## Installation
 
-Requires DSH **0.2.0-rc.2 or later**, with no upper bound, so a DSH upgrade never disables the plugin; tested on **0.2.0-rc.2** and **0.2.1-rc.2**. Install from npm:
+Requires DSH **0.2.0-rc.2 or later**, with no upper bound, so a DSH upgrade never disables the plugin; tested on **0.2.0-rc.2**, **0.2.1-rc.2** and the Windows Desktop build (**0.2.1-rc.3**). Install from npm:
 
 ```sh
 dsh plugin --profile web add dsh-statusline-plus
@@ -97,7 +97,7 @@ npm run release:check   # version, README badge, CHANGELOG, tag, npm dist-tag, a
 
 `dev:runtime` reads the active profile's `cordis.patch.yml` (`DSH_PROFILE_DIR` overrides `~/.dsh/profiles/web`) and reports whether host-level edits hot-reload; run it before advising a restart. `release:check` verifies the current package version against the README badge, changelog, git tag, npm dist-tags, GitHub Release assets and `releases/latest`; use `--offline` to skip the npm and GitHub checks.
 
-Pushing a `v*` tag runs the Release workflow, which verifies the suite and publishes `dsh-statusline-plus@<version>` to npm with provenance (skipped when that version already exists). It needs a repository `NPM_TOKEN` secret: a granular access token with **Bypass 2FA**, read/write for this package. The GitHub Release assets are still uploaded afterwards, because `release:check` requires both channels and one shared digest.
+Pushing a `v*` tag runs the Release workflow, which verifies the suite and publishes `dsh-statusline-plus@<version>` to npm with provenance (skipped when that version already exists). Authentication is OIDC trusted publishing and needs no token or repository secret: on npmjs.com, add a Trusted Publisher for this package (GitHub Actions, user `overact`, repository `dsh-statusline-plus`, workflow `release.yml`) and allow direct `npm publish`. npm removes bypass-2FA tokens for direct publishing in January 2027, so trusted publishing is the supported path; switching the workflow to `npm stage publish` instead lets each version wait for a manual approval. The GitHub Release assets are still uploaded afterwards, because `release:check` requires both channels and one shared digest.
 
 Quota protocol notes (client identity, percentage semantics and known provider inconsistencies) are in [`docs/QUOTA_SOURCES.md`](docs/QUOTA_SOURCES.md).
 
@@ -120,7 +120,7 @@ DSH 网页端状态行：顶部显示账号余额与套餐额度，输入区显�
 
 **截图：** [总览（额度、峰谷、会话指标与详情面板）](docs/images/overview.png)、[设置选项](docs/images/settings.png)。截图使用英文界面与演示数据，不包含真实账号或对话数据。
 
-**安装：** 需要 DSH 0.2.0-rc.2 或更高版本，不设上限，升级 DSH 不会让插件被跳过；已在 0.2.0-rc.2 与 0.2.1-rc.2 上测试，使用上面的安装命令；插件自带预构建文件和注册配置。启用 HMR 后，插件启停与设置实时生效；本地源码目录纳入监听时也可热加载，之后刷新浏览器。安装或升级提示 `restart-required` 时，才需等待无活跃会话后重启。旧版手动安装请先移除 `@local/dsh-statusline-plus` 注册行和依赖，避免重复。
+**安装：** 需要 DSH 0.2.0-rc.2 或更高版本，不设上限，升级 DSH 不会让插件被跳过；已在 0.2.0-rc.2、0.2.1-rc.2 与 Windows 桌面版（0.2.1-rc.3）上测试，使用上面的安装命令；插件自带预构建文件和注册配置。启用 HMR 后，插件启停与设置实时生效；本地源码目录纳入监听时也可热加载，之后刷新浏览器。安装或升级提示 `restart-required` 时，才需等待无活跃会话后重启。旧版手动安装请先移除 `@local/dsh-statusline-plus` 注册行和依赖，避免重复。
 
 **设置：** 打开 **DSH 网页端 → 设置 → 状态栏**，调整显示、排序、预设、顶部额度、账号来源及缓存。密钥仅在宿主侧解析，设置里填写凭据引用。DeepSeek 有两种计费方式：`deepseek`／`deepseek-official` 使用 `DEEPSEEK_API_KEY` 查询按量余额；使用 DSH 登录账号（`deepseek-account`）时，状态栏通过宿主 `deepseekAccount` 服务读取登录账号的充值余额与赠送余额，不需要 API Key。
 
