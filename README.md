@@ -1,6 +1,6 @@
 # <img src="icon.svg" width="32" height="32" alt=""> dsh-statusline-plus
 
-[![Version](https://img.shields.io/badge/version-0.1.10-blue)](https://github.com/overact/dsh-statusline-plus/releases/latest)
+[![Version](https://img.shields.io/badge/version-0.1.11-blue)](https://github.com/overact/dsh-statusline-plus/releases/latest)
 [![npm](https://img.shields.io/npm/v/dsh-statusline-plus)](https://www.npmjs.com/package/dsh-statusline-plus)
 [![Verify](https://github.com/overact/dsh-statusline-plus/actions/workflows/verify.yml/badge.svg)](https://github.com/overact/dsh-statusline-plus/actions/workflows/verify.yml)
 
@@ -21,7 +21,7 @@ Screenshots use the actual UI with sample data, without account or conversation 
 - **DeepSeek peak hours:** status, countdown and daily timeline, plus a sidebar indicator. In a year with no calendar, a weekday inside a peak window stays unknown while weekends and hours outside the windows are still off-peak; when the official rule wording no longer matches, the schedule is still applied and the indicator warns that rules may have changed.
 - **Workspace and session:** Git branch and changes, context usage, streaming TPS, API reference cost, direct child agents and tool activity.
 - **Layout:** component switches, ordering, presets and an interactive preview. Groups wrap on narrow screens; an optional switch disables this plugin's bottom status line when the input area is at most 480px wide, including when sidebars narrow it.
-- **Self-update:** when npm publishes a newer version, the settings header shows an update button naming it (checked when the page opens, cached for a minute) (hover shows the installed and latest versions). It stays hidden otherwise, is not offered for a linked development checkout, and installs in place with `pnpm add` before asking for a restart.
+- **Self-update:** when npm publishes a newer version, the settings header shows an update button naming it (checked when the page opens, cached for a minute; hover shows the installed and latest versions). It stays hidden otherwise, is not offered for a linked development checkout, and installs in place with `pnpm add` on one click. The Host then swaps the new copy into the running profile through HMR, so a refresh is enough; a profile without HMR asks for a restart instead.
 
 ## Installation
 
@@ -123,7 +123,7 @@ DSH 网页端状态行：顶部显示账号余额与套餐额度，输入区显�
 
 **安装：** 需要 DSH 0.2.0-rc.2 或更高版本，不设上限，升级 DSH 不会让插件被跳过；已在 0.2.0-rc.2、0.2.1-rc.2 与 Windows 桌面版（0.2.1-rc.3）上测试，使用上面的安装命令；插件自带预构建文件和注册配置。启用 HMR 后，插件启停与设置实时生效；本地源码目录纳入监听时也可热加载，之后刷新浏览器。安装或升级提示 `restart-required` 时，才需等待无活跃会话后重启。旧版手动安装请先移除 `@local/dsh-statusline-plus` 注册行和依赖，避免重复。
 
-**设置：** 打开 **DSH 网页端 → 设置 → 状态栏**，调整显示、排序、预设、顶部额度、账号来源及缓存。有新版本时右上角出现更新按钮（打开设置页时检查，缓存一分钟；悬停显示当前与最新版本），第一次点击确认、第二次用 `pnpm add` 原地覆盖安装，重启后生效；`link:` 安装的本地副本不显示。密钥仅在宿主侧解析，设置里填写凭据引用。DeepSeek 有两种计费方式：`deepseek`／`deepseek-official` 使用 `DEEPSEEK_API_KEY` 查询按量余额；使用 DSH 登录账号（`deepseek-account`）时，状态栏通过宿主 `deepseekAccount` 服务读取登录账号的充值余额与赠送余额，不需要 API Key。
+**设置：** 打开 **DSH 网页端 → 设置 → 状态栏**，调整显示、排序、预设、顶部额度、账号来源及缓存。有新版本时右上角出现更新按钮（打开设置页时检查，缓存一分钟；悬停显示当前与最新版本），点一次即用 `pnpm add` 原地覆盖安装，随后由宿主通过 HMR 把新副本换进运行中的 profile，刷新页面即可；没有 HMR 的 profile 才提示重启。`link:` 安装的本地副本不显示。密钥仅在宿主侧解析，设置里填写凭据引用。DeepSeek 有两种计费方式：`deepseek`／`deepseek-official` 使用 `DEEPSEEK_API_KEY` 查询按量余额；使用 DSH 登录账号（`deepseek-account`）时，状态栏通过宿主 `deepseekAccount` 服务读取登录账号的充值余额与赠送余额，不需要 API Key。
 
 **额度恢复：** 额度请求使用插件自有连接池，每个地址的连接尝试窗口为 5 秒，完整请求仍受总超时限制（Codex 为 15 秒）；宿主网络默认值不变。查询成功即更新显示，不必等满 5 秒。网络失败每轮最多自动重试 3 次，分别等待 15／30／60 秒；限流时等待 60／120／240 秒。断网时暂停，网络恢复、页面重新可见、新步骤或手动刷新会开启新一轮查询；当前重试轮结束后，页面重新获得焦点也可恢复查询。重试期间保留已有的成功数据，并提示网络异常及重试已用完；凭据与响应格式错误不自动重试。
 

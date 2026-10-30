@@ -1342,6 +1342,11 @@ test('the version route reports the registry update and refuses to touch a linke
     assert.equal(body.data.installed, require('../package.json').version)
     // Tests run from the source tree, so the copy is linked and not replaceable.
     assert.equal(body.data.install.linked, true)
+    // The page watches this id to tell a live swap from a copy that waits for a restart.
+    assert.equal(typeof body.data.instanceId, 'string')
+    assert.ok(body.data.instanceId.length > 0)
+    const again = JSON.parse((await callRoute(version, 'GET', {})).response.body)
+    assert.equal(again.data.instanceId, body.data.instanceId, 'the id identifies the loaded copy')
     const apply = await callRoute(version, 'POST', { 'content-type': 'application/json' }, JSON.stringify({ version: '9.9.9' }))
     assert.equal(apply.response.status, 409)
     assert.equal(JSON.parse(apply.response.body).error, 'linked-install')

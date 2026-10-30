@@ -1,5 +1,10 @@
 # Release notes
 
+## 0.1.11
+
+- The update button installs on one click. The previous two-step confirm was friction on an action that names its target and can be retried, and the release page already told you what 0.1.10 would do.
+- A finished install is applied to the running profile instead of waiting for a restart: the Host calls the same HMR reconciliation the plugin manager uses, the page notices the new copy through an instance id, and the button reads "Updated · Refresh". A profile without HMR still falls back to "Restart to apply", so the two profiles no longer behave the same.
+
 ## 0.1.10
 
 - Every hover and state change now runs on one motion ladder (70ms press, 120ms hover/state, 180ms panel) instead of snapping, and buttons press with a 2% scale. Radius, opacity and border steps collapsed to a small ladder: buttons and inputs 8px, panels 10px; dim text 0.6, disabled 0.4.

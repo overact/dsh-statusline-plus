@@ -9,6 +9,9 @@ const {
   PACKAGE_NAME, compareVersions, enginesAllow, readInstalled, resolveInstall, hostVersion,
   createUpdateChecker, applyUpdate, fetchLatest,
 } = require('../lib/update.js')
+process.env.SLP_TEST = '1'
+const { __test } = require('../lib/index.js')
+const { hotApplyUpdate } = __test
 
 const manifest = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8'))
 
@@ -189,4 +192,36 @@ test('an install without a package manager or a profile is refused before spawni
   await assert.rejects(() => applyUpdate({ version: '0.1.10', profileDir: '/profiles/web', subprocess: bare }), /no-package-manager/)
   await assert.rejects(() => applyUpdate({ version: '0.1.10', profileDir: '', subprocess: bare }), /no-profile/)
   await assert.rejects(() => applyUpdate({ version: '0.1.10', profileDir: '/profiles/web' }), /no-subprocess/)
+})
+
+
+test('a hot apply reconciles the profile instead of asking for a restart', async () => {
+  const calls = []
+  const ctx = {
+    get: name => name === 'hmr'
+      ? { runExclusive: run => run(), reconcileProfile: async () => { calls.push('reconcile'); return { warnings: [], pending: [] } } }
+      : undefined,
+  }
+  assert.deepEqual(await hotApplyUpdate(ctx), { applied: true })
+  assert.deepEqual(calls, ['reconcile'])
+})
+
+test('a profile without HMR keeps the restart path', async () => {
+  assert.deepEqual(await hotApplyUpdate({ get: () => undefined }), { applied: false, reason: 'no-hmr' })
+  assert.deepEqual(await hotApplyUpdate({ get: () => ({ runExclusive: 1 }) }), { applied: false, reason: 'no-hmr' })
+})
+
+test('a reconcile that still needs a restart reports why', async () => {
+  const ctx = { get: () => ({ runExclusive: run => run(), reconcileProfile: async () => ({ warnings: [], pending: [{ reason: 'native-addon' }] }) }) }
+  assert.deepEqual(await hotApplyUpdate(ctx), { applied: false, reason: 'native-addon' })
+  const direct = { get: () => ({ runExclusive: run => run(), reconcileProfile: async () => ({ warnings: [], restartReason: 'loader' }) }) }
+  assert.deepEqual(await hotApplyUpdate(direct), { applied: false, reason: 'loader' })
+})
+
+test('a failing HMR lookup or reconcile falls back instead of failing the install', async () => {
+  assert.deepEqual(await hotApplyUpdate({ get: () => { throw new Error('cannot get property "hmr" without inject') } }), { applied: false, reason: 'no-hmr' })
+  const broken = { get: () => ({ runExclusive: run => run(), reconcileProfile: async () => { throw new Error('boom') } }) }
+  const outcome = await hotApplyUpdate(broken)
+  assert.equal(outcome.applied, false)
+  assert.match(outcome.reason, /boom/)
 })

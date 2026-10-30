@@ -65,7 +65,7 @@ export async function mountResponsiveFixture(page) {
       cacheTtlMs: 60000, fetchTimeoutMs: 10000 }
     let config = { ...defaults, hideBottomOnNarrow: true }
     const listeners = new Set(), registrations = new Map(), cleanups = []
-    window.slpResponsive = { sources: [], gitRequests: [], quotaRequests: [], quotaFailures: 0, mutations: [], observers: [], updateRequests: [] }
+    window.slpResponsive = { sources: [], gitRequests: [], quotaRequests: [], quotaFailures: 0, mutations: [], observers: [], updateRequests: [], updateInstance: 'fixture-before-install' }
     const activity = window.slpResponsive
     const NativeObserver = window.ResizeObserver
     window.ResizeObserver = class {
@@ -100,11 +100,15 @@ export async function mountResponsiveFixture(page) {
         // something to render; the install itself is recorded, not performed.
         if (String(options.method || 'GET').toUpperCase() === 'POST') {
           activity.updateRequests.push(JSON.parse(options.body || '{}'))
-          return { json: async () => ({ ok: true, data: { version: '9.9.9', restartRequired: true, output: '' } }) }
+          // A live swap replaces the running copy, which the page sees as a new
+          // instance id; the fixture reports that instead of running pnpm.
+          activity.updateInstance = 'fixture-after-install'
+          return { json: async () => ({ ok: true, data: { version: '9.9.9', output: '', instanceId: 'fixture-before-install' } }) }
         }
         return { json: async () => ({ ok: true, data: { installed: '0.1.9', latest: '9.9.9', latestEngines: '>=0.2.0-rc.2',
           compatible: true, updateAvailable: true, checkedAt: new Date().toISOString(), error: null,
-          install: { linked: false, profile: 'fixture', dir: '/fixture' }, host: '0.2.1-rc.5' } }) }
+          install: { linked: false, profile: 'fixture', dir: '/fixture' }, host: '0.2.1-rc.5',
+          instanceId: activity.updateInstance } }) }
       }
       if (url === '/statusline/api/peak-schedule') return { json: async () => ({ ok: false }) }
       throw new Error('Unexpected responsive fixture request: ' + url)
