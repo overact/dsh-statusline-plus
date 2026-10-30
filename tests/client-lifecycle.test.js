@@ -27,7 +27,8 @@ function harness({ hidden = false, wallTime = Date.now(), panelLayout = null } =
   let scopeRefuse = false
   const documentEvents = new Map()
   const windowEvents = new Map()
-  const scope = { getSnapshot: () => ({ mode: 'host', writable: true, value: scopeValue }), mutate: async ops => {
+  // Mirrors the real configForms snapshot: only writable/value/revision, no `mode`.
+  const scope = { getSnapshot: () => ({ writable: true, value: scopeValue }), mutate: async ops => {
     // The framework resolves false when the Host refuses the write.
     if (scopeRefuse) return false
     mutations.push(ops)

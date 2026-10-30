@@ -99,7 +99,8 @@ export async function mountResponsiveFixture(page) {
       throw new Error('Unexpected responsive fixture request: ' + url)
     }
     const scope = {
-      getSnapshot: () => ({ value: config, mode: 'host', writable: true }),
+      // Mirrors the real configForms snapshot: only writable/value, no `mode`.
+      getSnapshot: () => ({ value: config, writable: true }),
       subscribe: fn => { listeners.add(fn); return () => listeners.delete(fn) },
       mutate: async ops => {
         activity.mutations.push(ops)

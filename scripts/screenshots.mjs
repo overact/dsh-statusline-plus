@@ -45,7 +45,7 @@ try {
       componentOrder: ['git', 'context', 'tps', 'cost', 'activity', 'tools'], quotaAuto: true, quotaOnStep: true,
       showQuota: true, hideBottomOnNarrow: false, showDeepseekPeak: true, showPeakDot: true, deepseekPeakCountdown: true, providers, cacheTtlMs: 60000, fetchTimeoutMs: 10000 }
     const cleanups = []
-    const scope = { getSnapshot: () => ({ mode: 'host', writable: true, value: config }), subscribe: () => () => {}, mutate: () => { throw new Error('Demo must not change settings') } }
+    const scope = { getSnapshot: () => ({ writable: true, value: config }), subscribe: () => () => {}, mutate: () => { throw new Error('Demo must not change settings') } }
     window.slpDemo.apply({ configForms: { get: () => scope }, get: () => ({ inject() {} }), effect(fn) { const cleanup = fn(); if (cleanup) cleanups.push(cleanup) } })
     window.slpDemoConfig = config
     window.slpDemoRoot = window.ReactDOM.createRoot(document.getElementById('root'))

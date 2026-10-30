@@ -188,7 +188,7 @@ function loadClientPluginForTest(options = {}) {
       },
     }
     captured.apply({ configForms: { get() { return {
-        getSnapshot() { return { value: configResponse && configResponse.ok ? configResponse.config : undefined, mode: 'host', writable: true } },
+        getSnapshot() { return { value: configResponse && configResponse.ok ? configResponse.config : undefined, writable: true } },
         subscribe() { return () => {} }, mutate: async () => {},
       } } }, get(name) {
       if (name === 'slots') return slots
