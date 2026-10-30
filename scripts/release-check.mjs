@@ -38,6 +38,20 @@ export function validateAssets(assets, version) {
   return { ok: missing.length === 0 && sameDigest, names, missing, found, digests, sameDigest }
 }
 
+export function validateNpmTags(version, distTags) {
+  const tags = distTags && typeof distTags === 'object' && !Array.isArray(distTags) ? distTags : null
+  if (!tags) return { ok: false, detail: 'no dist-tags returned' }
+  const matching = Object.keys(tags).filter(tag => tags[tag] === version)
+  if (matching.length === 0) return { ok: false, detail: 'version not published' }
+  if (version.includes('-')) {
+    if (matching.includes('latest')) return { ok: false, detail: 'prerelease on latest' }
+    return { ok: true, detail: 'dist-tag ' + matching.join(', ') }
+  }
+  return tags.latest === version
+    ? { ok: true, detail: 'latest=' + version }
+    : { ok: false, detail: 'latest=' + (tags.latest || 'none') }
+}
+
 export function repoSlug(pkg, remote) {
   const fromPackage = pkg && pkg.repository && pkg.repository.url
   for (const candidate of [fromPackage, remote]) {
@@ -84,8 +98,8 @@ function usage() {
     'Usage: npm run release:check -- [--offline] [--json]',
     '',
     'Checks the current package version against README, CHANGELOG, the git tag,',
-    'the GitHub Release assets and releases/latest.',
-    '--offline  local checks only (skip gh release/latest checks)',
+    'the npm dist-tags, the GitHub Release assets and releases/latest.',
+    '--offline  local checks only (skip npm and gh checks)',
     '--json     machine-readable result',
   ].join('\n')
 }
@@ -130,6 +144,16 @@ function main(argv) {
   const remote = tryRun('git', ['remote', 'get-url', 'origin'])
   const slug = repoSlug(pkg, remote.value)
   add('GitHub repository', !!slug, slug || 'cannot derive from package repository or origin')
+
+  if (args.offline) {
+    add('npm publication', true, 'skipped: --offline', true)
+  } else {
+    const view = tryRun('npm', ['view', pkg.name, 'dist-tags', '--json'])
+    let distTags = null
+    try { distTags = JSON.parse(view.value) } catch { /* reported below */ }
+    const npmState = validateNpmTags(version, distTags)
+    add('npm publication', view.ok && npmState.ok, view.ok ? npmState.detail : view.error)
+  }
 
   if (args.offline) {
     add('GitHub Release', true, 'skipped: --offline', true)
@@ -178,7 +202,7 @@ function finish({ version, checks, json }) {
     }
     console.log(ok ? (skipped ? 'PASS (' + skipped + ' skipped)' : 'PASS') : 'FAIL')
     if (!ok) {
-      console.log('Fix the failed items, then run this check again. Release order: bump package.json/README/CHANGELOG, commit, tag, publish both tgz assets, mark the release latest.')
+      console.log('Fix the failed items, then run this check again. Release order: bump package.json/README/CHANGELOG, commit, tag (the Release workflow publishes npm), publish both tgz assets, mark the release latest.')
     }
   }
   return ok ? 0 : 1

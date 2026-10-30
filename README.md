@@ -1,6 +1,7 @@
 # <img src="icon.svg" width="32" height="32" alt=""> dsh-statusline-plus
 
 [![Version](https://img.shields.io/badge/version-0.1.8-blue)](https://github.com/overact/dsh-statusline-plus/releases/latest)
+[![npm](https://img.shields.io/npm/v/dsh-statusline-plus)](https://www.npmjs.com/package/dsh-statusline-plus)
 [![Verify](https://github.com/overact/dsh-statusline-plus/actions/workflows/verify.yml/badge.svg)](https://github.com/overact/dsh-statusline-plus/actions/workflows/verify.yml)
 
 [English](#english) | [简体中文](#简体中文)
@@ -23,7 +24,13 @@ Screenshots use the actual UI with sample data, without account or conversation 
 
 ## Installation
 
-Requires DSH **0.2.0-rc.2 or later**, with no upper bound, so a DSH upgrade never disables the plugin; tested on **0.2.0-rc.2** and **0.2.1-rc.2**. Install the latest release:
+Requires DSH **0.2.0-rc.2 or later**, with no upper bound, so a DSH upgrade never disables the plugin; tested on **0.2.0-rc.2** and **0.2.1-rc.2**. Install from npm:
+
+```sh
+dsh plugin --profile web add dsh-statusline-plus
+```
+
+The same release is also published as a GitHub Release tarball for pinned and offline installs:
 
 ```sh
 dsh plugin --profile web add https://github.com/overact/dsh-statusline-plus/releases/latest/download/dsh-statusline-plus.tgz
@@ -85,10 +92,12 @@ Two maintenance checks cover the development profile and releases:
 
 ```sh
 npm run dev:runtime     # does the active profile HMR-watch this checkout's lib/?
-npm run release:check   # version, README badge, CHANGELOG, tag, assets and latest
+npm run release:check   # version, README badge, CHANGELOG, tag, npm dist-tag, assets and latest
 ```
 
-`dev:runtime` reads the active profile's `cordis.patch.yml` (`DSH_PROFILE_DIR` overrides `~/.dsh/profiles/web`) and reports whether host-side edits hot-reload; run it before advising a restart. `release:check` verifies the current package version against the README badge, changelog, git tag, GitHub Release assets and `releases/latest`; use `--offline` to skip the GitHub checks.
+`dev:runtime` reads the active profile's `cordis.patch.yml` (`DSH_PROFILE_DIR` overrides `~/.dsh/profiles/web`) and reports whether host-level edits hot-reload; run it before advising a restart. `release:check` verifies the current package version against the README badge, changelog, git tag, npm dist-tags, GitHub Release assets and `releases/latest`; use `--offline` to skip the npm and GitHub checks.
+
+Pushing a `v*` tag runs the Release workflow, which verifies the suite and publishes `dsh-statusline-plus@<version>` to npm with provenance (skipped when that version already exists). It needs a repository `NPM_TOKEN` secret: a granular access token with **Bypass 2FA**, read/write for this package. The GitHub Release assets are still uploaded afterwards, because `release:check` requires both channels and one shared digest.
 
 Quota protocol notes (client identity, percentage semantics and known provider inconsistencies) are in [`docs/QUOTA_SOURCES.md`](docs/QUOTA_SOURCES.md).
 
