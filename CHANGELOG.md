@@ -1,9 +1,9 @@
 # Release notes
 
-## Unreleased
+## 0.1.9
 
-- Settings edits auto-save again on current DSH: the write precondition no longer requires the config form's removed `mode` field, so a change is accepted instead of failing with "Settings are not writable on this connection".
-- The header peak indicator reads "Peak" / "Off-peak" without the "rate" suffix. The switch countdown remains a separate setting.
+- Settings edits auto-save again on current DSH: the write precondition no longer requires the config form's removed `mode` field, so the Host accepts writes instead of the panel failing with "Settings are not writable on this connection". A successful save shows its "Saved" time in green.
+- The header peak indicator reads "Peak" / "Off-peak" (峰 / 谷 in Chinese) without the "rate" suffix. The switch countdown remains a separate setting.
 
 ## 0.1.8
 
