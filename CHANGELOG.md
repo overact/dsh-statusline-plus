@@ -1,9 +1,5 @@
 # Release notes
 
-## Unreleased
-
-- The plugin is now also published to npm as `dsh-statusline-plus`, so `dsh plugin --profile web add dsh-statusline-plus` installs it by name and the Desktop plugin page finds it without a Git or tarball spec. Pushing a `v*` tag publishes through the Release workflow with provenance; GitHub Release assets remain for pinned and offline installs, and `release:check` now also verifies the npm dist-tag.
-
 ## 0.1.8
 
 - A model's header quota chip no longer switches to another subscription kind. If the model's own subscription has no usable data (`no-credential`, `auth`, `invalid-response`, `not-found`), the chip shows "Subscription not found" and keeps the short reason in the tooltip; a Gemini model can no longer display Codex quota. Transient failures still retry the same subscription.
