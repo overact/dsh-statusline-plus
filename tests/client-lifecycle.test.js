@@ -832,6 +832,8 @@ test('settings switch percentage mode and reset preferences in two steps without
   assert.deepEqual(JSON.parse(JSON.stringify(h.mutations[0])), [{ op: 'set', path: ['quotaPercentMode'], value: 'left' }])
   view = h.renderComponent(h.SettingsPage)
   assert.equal(descendants(view, node => node.props?.['data-mode'] === 'left')[0].props['aria-pressed'], true)
+  const savedState = descendants(view, node => typeof node.props?.className === 'string' && node.props.className.indexOf('slp-save-state') !== -1)[0]
+  assert.match(savedState.props.className, /slp-ok/, 'an accepted write shows a green Saved state')
   const button = () => descendants(h.renderComponent(h.SettingsPage), node => node.props?.name === 'reset')[0]
   button().props.onClick()
   assert.equal(h.mutations.length, 1, 'first click only arms')
@@ -1822,6 +1824,14 @@ test('unmatched billing providers leave the header empty, including while the mo
 test('zh and en string tables define the same keys', () => {
   const h = harness()
   assert.deepEqual(Object.keys(h.STR.zh).sort(), Object.keys(h.STR.en).sort())
+})
+
+test('Chinese peak status reads 峰 / 谷 while English reads Peak / Off-peak', () => {
+  const h = harness()
+  assert.equal(h.STR.zh.peakStatus, '峰')
+  assert.equal(h.STR.zh.offPeakStatus, '谷')
+  assert.equal(h.STR.en.peakStatus, 'Peak')
+  assert.equal(h.STR.en.offPeakStatus, 'Off-peak')
 })
 
 test('quota state is one machine: loading, fresh, stale, retrying with countdown, exhausted, error', () => {
