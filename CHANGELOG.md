@@ -1,5 +1,10 @@
 # Release notes
 
+## Unreleased
+
+- Settings edits auto-save again on current DSH: the write precondition no longer requires the config form's removed `mode` field, so a change is accepted instead of failing with "Settings are not writable on this connection".
+- The header peak indicator reads "Peak" / "Off-peak" without the "rate" suffix. The switch countdown remains a separate setting.
+
 ## 0.1.8
 
 - A model's header quota chip no longer switches to another subscription kind. If the model's own subscription has no usable data (`no-credential`, `auth`, `invalid-response`, `not-found`), the chip shows "Subscription not found" and keeps the short reason in the tooltip; a Gemini model can no longer display Codex quota. Transient failures still retry the same subscription.

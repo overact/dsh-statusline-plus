@@ -1384,7 +1384,7 @@ test('DeepSeek peak clock ticks locally, stops while hidden and cleans up on unm
   assert.deepEqual(h.requests.map(r => r.url), ['/statusline/api/peak-schedule'], 'only the once-per-page schedule load')
   h.advance(1000); h.tick()
   chip = h.renderComponent(h.DeepseekPeakChip)
-  assert.match(textContent(chip), /Peak rate.*03:00:00/)
+  assert.match(textContent(chip), /^Peak.*03:00:00/)
   h.setVisible(false)
   assert.equal(h.renderComponent(h.DeepseekPeakChip), null)
   assert.equal(h.timers.size, 0)
@@ -1397,7 +1397,7 @@ test('DeepSeek peak clock ticks locally, stops while hidden and cleans up on unm
 })
 
 test('footer dot shows peak state without a session, with countdown tooltip and an upward panel', () => {
-  for (const [at, tone, word] of [['2026-10-08T02:00:00Z', 'peak', /Peak rate · Off-peak in 02:00:00/], ['2026-10-10T02:00:00Z', 'off', /Off-peak · Peak in/], ['2027-03-03T02:00:00Z', 'unknown', /Schedule unknown/]]) {
+  for (const [at, tone, word] of [['2026-10-08T02:00:00Z', 'peak', /Peak · Off-peak in 02:00:00/], ['2026-10-10T02:00:00Z', 'off', /Off-peak · Peak in/], ['2027-03-03T02:00:00Z', 'unknown', /Schedule unknown/]]) {
     const h = harness({ wallTime: Date.parse(at) })
     h.setConfig({ ...config })
     h.renderComponent(h.PeakFooterDot)
@@ -1488,7 +1488,7 @@ test('disabled or hidden peak indicators start no timers and countdown preferenc
   }
   const h = harness({ wallTime: Date.parse('2026-10-08T02:00:00Z') })
   let chip = h.renderComponent(h.DeepseekPeakChip, { countdown: false })
-  assert.match(textContent(chip), /Peak rate/)
+  assert.match(textContent(chip), /^Peak$/)
   assert.doesNotMatch(textContent(chip), /02:00:00/)
   const button = descendants(chip, node => node.type === 'button')[0]
   assert.doesNotMatch(button.props.title, /Off-peak in/)
