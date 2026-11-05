@@ -17,8 +17,10 @@ export async function installSettings(ctx, dsh) {
    // is what gets stored, so a rejected edit must leave nothing behind.
    const resolved=entry.fiber.ctx.waterfall(entry.fiber,'internal/config',next,()=>next);
    const validated=entry.fiber.runtime.Config(resolved);
-   // cordis keeps the raw value in fiber.config; the resolved volatile cells live here.
-   for(const [key,value] of Object.entries(validated))updateVolatile(entry.fiber.effectiveConfig[key],value);
+   // Since DSH 0.2.2 fiber.config is the raw value and the resolved volatile cells live in
+   // effectiveConfig; before that fiber.config held them. CI pins the older Host.
+   const cells=entry.fiber.effectiveConfig??entry.fiber.config;
+   for(const [key,value] of Object.entries(validated))updateVolatile(cells[key],value);
    entry.options.config=next;
   }
  });
