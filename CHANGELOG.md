@@ -1,5 +1,18 @@
 # Release notes
 
+## 0.1.13
+
+- Quota works without Magpie or CPA. Every subscription now reads in one order: your choice for that subscription (default none), then Magpie, CPA and similar tools, then the official tool's login file. Codex reads `~/.codex/auth.json`, Claude reads `~/.claude/.credentials.json`, and Antigravity reads its CLI token. Login files are only read: an expired token is reported, never refreshed or written back.
+- Claude subscriptions are supported (`showClaudeQuota`).
+- Everything your Magpie lists gets a chip, including subscriptions the plugin has no reader for.
+- Settings can pin the source per subscription (`quotaSources`). This replaces the old `quotaSource` setting, which is now ignored: if you had set it, choose the source again in Settings.
+- The Antigravity request no longer presents another client's identity. The service may then omit the Gemini group, and the panel says so.
+- The subscription panel opens in a portal, so the DSH header no longer clips it. Chips fold by available width, and the panel footer names the source and the update time.
+- Git line counts now compare against HEAD, using one `git diff` instead of two. A line both staged and edited counts once instead of twice. A repository with no commit yet counts its staged lines.
+- The Git status fallback for porcelain v1 and the unused `/statusline/api/config` route are removed.
+- Less background work: one refresh of several chips is one Magpie request, Git reuses the repository root for 60 seconds, a closed chip's clock ticks every 30 seconds, and TPS updates are coalesced to 200ms.
+- All subscriptions share one result shape (`lib/quota-window.js`) and one chip component. Visible differences: Codex panels say "5 hours" instead of "5h", the Codex account address is no longer sent to the browser, and a Magpie Antigravity account reporting only one window of a pair reads as "unknown" instead of "available".
+
 ## 0.1.12
 
 - The update button installs through the running host's own CLI (`dsh plugin --profile <name> add <pkg>@<version>`) before falling back to `pnpm` or `npx`. A desktop build carries its package manager inside DSH and has no `pnpm` on PATH, so the previous command could not run there at all.
