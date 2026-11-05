@@ -2031,3 +2031,74 @@ test('model selection reaches any Magpie subscription without a name list', () =
   assert.equal(h.primarySubscriptionKind({ provider: 'anthropic', model: 'claude-opus' }), null)
   assert.equal(h.primarySubscriptionKind({ provider: 'magpie', model: 'antigravity/claude-opus' }), 'antigravity')
 })
+
+async function settingsUpdate(data) {
+  const h = harness()
+  h.setConfig({ ...config })
+  h.renderComponent(h.SettingsPage)
+  const request = h.requests.find(item => String(item.url).startsWith('/statusline/api/version'))
+  request.resolve({ ok: true, data: { install: { linked: false }, instanceId: 'boot', error: null, ...data } })
+  await flush()
+  const view = () => h.renderComponent(h.SettingsPage)
+  return { h, view, button: () => descendants(view(), node => node.props?.name === 'update')[0] }
+}
+
+test('settings offers a compatible update and shows nothing when the plugin is current', async () => {
+  const offered = await settingsUpdate({ installed: '0.1.12', latest: '0.1.13', compatible: true, updateAvailable: true, restartRequired: false })
+  assert.match(textContent(offered.button()), /Update to 0\.1\.13/)
+  const current = await settingsUpdate({ installed: '0.1.13', latest: '0.1.13', compatible: true, updateAvailable: false, restartRequired: false })
+  assert.equal(current.button(), undefined)
+  const linked = await settingsUpdate({ install: { linked: true }, installed: '0.1.12', latest: '0.1.13', compatible: true, updateAvailable: true, restartRequired: true })
+  assert.equal(linked.button(), undefined)
+})
+
+test('settings keeps asking for a restart instead of offering the installed version again', async () => {
+  const { button } = await settingsUpdate({ installed: '0.1.13', loaded: '0.1.12', latest: '0.1.13', compatible: true, updateAvailable: false, restartRequired: true })
+  assert.match(textContent(button()), /Restart to apply/)
+  assert.equal(button().props.disabled, true)
+})
+
+test('settings offers a newer version even while an earlier install waits for a restart', async () => {
+  const { button } = await settingsUpdate({ installed: '0.1.13', loaded: '0.1.12', latest: '0.1.14', compatible: true, updateAvailable: true, restartRequired: true })
+  assert.match(textContent(button()), /Update to 0\.1\.14/)
+})
+
+test('settings names the DSH a refused version needs, without a button', async () => {
+  const { view, button } = await settingsUpdate({ installed: '0.1.12', latest: '0.1.13', latestEngines: '>=0.3.0', host: '0.2.2', compatible: false, updateAvailable: true, restartRequired: false })
+  assert.equal(button(), undefined)
+  const note = descendants(view(), node => node.props?.className === 'slp-update-note')[0]
+  assert.match(textContent(note), /Version 0\.1\.13 needs DSH >=0\.3\.0/)
+  assert.match(note.props.title, /Plugin 0\.1\.12 on DSH 0\.2\.2/)
+})
+
+async function clickUpdate() {
+  const session = await settingsUpdate({ installed: '0.1.12', latest: '0.1.13', compatible: true, updateAvailable: true, restartRequired: false })
+  const already = session.h.requests.length
+  session.button().props.onClick()
+  session.h.requests[already].resolve({ ok: true, data: { version: '0.1.13', instanceId: 'boot' } })
+  await flush()
+  return { ...session, poll: () => session.h.requests[session.h.requests.length - 1] }
+}
+
+test('a new instance id reports the live swap', async () => {
+  const { button, poll } = await clickUpdate()
+  poll().resolve({ ok: true, data: { instanceId: 'next' } })
+  await flush()
+  assert.match(textContent(button()), /Updated · Refresh/)
+})
+
+test('a failed swap reports the restart without waiting for the deadline', async () => {
+  const { button, poll } = await clickUpdate()
+  poll().resolve({ ok: true, data: { instanceId: 'boot', hotFailed: 'no-hmr' } })
+  await flush()
+  assert.match(textContent(button()), /Restart to apply/)
+})
+
+test('a swap unfinished at the deadline asks for a refresh, not a restart', async () => {
+  const { h, button, poll } = await clickUpdate()
+  h.advance(8000)
+  poll().resolve({ ok: true, data: { instanceId: 'boot', hotFailed: null } })
+  await flush()
+  assert.match(textContent(button()), /Installed · Refresh to confirm/)
+  assert.notEqual(button().props.disabled, true)
+})

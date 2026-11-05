@@ -132,6 +132,52 @@ test('the default cache window is one minute', async () => {
   ))
 })
 
+test('an install inside the cache minute is not offered again, and waits for a restart', async () => {
+  await withHostVersion('0.2.1-rc.5', () => withFetch(
+    () => registryResponse({ version: '0.1.13', engines: { dsh: '>=0.2.0-rc.2' } }),
+    async calls => {
+      let clock = 0
+      let onDisk = '0.1.12'
+      const check = createUpdateChecker({ now: () => clock, installedVersion: () => onDisk, loadedVersion: '0.1.12' })
+      const before = await check({})
+      assert.equal(before.updateAvailable, true)
+      assert.equal(before.restartRequired, false)
+      onDisk = '0.1.13'
+      clock = 30_000
+      const after = await check({})
+      assert.equal(calls.length, 1, 'the registry answer is still the cached one')
+      assert.equal(after.updateAvailable, false, 'the version just installed is not an update')
+      assert.equal(after.installed, '0.1.13')
+      assert.equal(after.loaded, '0.1.12')
+      assert.equal(after.restartRequired, true)
+      clock = 61_000
+      assert.equal((await check({})).restartRequired, true, 'a re-check does not lose the pending restart')
+    },
+  ))
+})
+
+test('a registry failure still reports a pending restart', async () => {
+  await withHostVersion('0.2.1-rc.5', () => withFetch(
+    () => { throw new Error('offline') },
+    async () => {
+      const result = await createUpdateChecker({ installedVersion: () => '0.1.13', loadedVersion: '0.1.12' })({})
+      assert.equal(result.error, 'registry')
+      assert.equal(result.restartRequired, true)
+    },
+  ))
+})
+
+test('a running copy matching the disk needs no restart, and an unknown version never claims one', async () => {
+  await withHostVersion('0.2.1-rc.5', () => withFetch(
+    () => registryResponse({ version: '0.1.13' }),
+    async () => {
+      assert.equal((await createUpdateChecker({ installedVersion: () => '0.1.13', loadedVersion: '0.1.13' })({})).restartRequired, false)
+      assert.equal((await createUpdateChecker({ installedVersion: () => null, loadedVersion: '0.1.13' })({})).restartRequired, false)
+      assert.equal((await createUpdateChecker({ installedVersion: () => '0.1.13', loadedVersion: null })({})).restartRequired, false)
+    },
+  ))
+})
+
 test('a version the running host would refuse is not offered', async () => {
   await withHostVersion('0.2.0', () => withFetch(
     () => registryResponse({ version: '99.0.0', engines: { dsh: '>=0.2.1-rc.2' } }),

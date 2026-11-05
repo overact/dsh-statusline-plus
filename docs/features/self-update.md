@@ -12,12 +12,24 @@ in `SettingsPage` (`lib/client.js`).
 ## Checking
 
 The page asks once per settings visit, never on a timer, and the Host caches the registry
-answer for a minute. The button stays hidden when:
+answer for a minute. Only that answer is cached: `updateAvailable`, `compatible` and
+`restartRequired` are worked out on each call, because an install changes them inside the
+minute. A cached `updateAvailable` once offered the version just installed.
 
-- the install is linked, because a development checkout is not the registry's to replace;
-- the registry failed, because an error must not read as "up to date";
-- `compatible` is false for the running Host (null, meaning unknown, does not hide it);
-- no newer version exists.
+The check always offers `latest` and installs it directly, however many versions that skips.
+Settings are read compatibly on load, with no per-version migration chain. No earlier version
+is offered when `latest` needs a newer Host.
+
+The settings header shows the first that applies:
+
+1. **Button: update to a version.** A newer version exists and the running Host accepts it
+   (`compatible` null, meaning unknown, counts as accepted).
+2. **Disabled: restart to apply.** `restartRequired`, meaning the version on disk is newer than
+   the one loaded when this module was evaluated. It stays until the new copy is really running.
+3. **Note: the version and the DSH it needs.** A newer version exists, but `compatible` is false.
+4. **Nothing.** The install is linked, because a development checkout is not the registry's to
+   replace; the registry failed, because an error must not read as "up to date"; or the plugin
+   is current. A linked install shows nothing even with a restart pending.
 
 The check asks the registry directly, so it works on any Host running this plugin.
 `STATUSLINE_REGISTRY` overrides the registry for tests.
@@ -54,9 +66,14 @@ The install is an overlay rather than remove-then-install, because unloading thi
 would kill the request that asked for the update.
 
 `hotApplyUpdate` then runs `hmr.reconcileProfile()` 80 ms after the response is sent, because
-applying disposes this plugin's own fiber. The page learns the outcome by watching for a new
-`instanceId` from the `version` route, and asks for a restart if none appears. A profile
-without HMR applies the update on the next start.
+applying disposes this plugin's own fiber. The page polls the `version` route for 8 seconds:
+
+- a new `instanceId` means the swap happened: "Updated · Refresh", which reloads the page;
+- `hotFailed` means this instance could not swap, including a profile without HMR: "Restart to
+  apply";
+- neither by the deadline means the swap may still be running: "Installed · Refresh to confirm".
+  Reloading runs the check again, which shows no button or "Restart to apply". The deadline
+  alone must not claim a restart is needed.
 
 ## Rules
 
