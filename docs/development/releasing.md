@@ -5,11 +5,26 @@ Maintainer notes for this plugin. User-facing installation stays in the README.
 ## Release order
 
 1. Bump `version` in `package.json`, the README version badge and the CHANGELOG heading; move the `Unreleased` notes under the new heading.
-2. Run `npm run verify:all` (tests plus the browser panels).
+2. Run `npm run verify:all` (tests plus the browser panels), then repeat the tests against a fresh install (see [Fresh-install check](#fresh-install-check)).
 3. Commit `chore(release): <version>`, create the annotated tag `v<version>`, and push `main` and the tag.
 4. The tag runs `.github/workflows/release.yml`: it verifies the suite, checks that the tag matches `package.json`, and publishes `dsh-statusline-plus@<version>` to npm with provenance. A version that already exists on npm is skipped, so re-running is safe.
 5. Upload the two GitHub Release assets — `dsh-statusline-plus-<version>.tgz` and `dsh-statusline-plus.tgz`, byte-identical — and mark the release latest.
 6. Run `npm run release:check` to confirm package, README badge, CHANGELOG, tag, npm dist-tag, Release assets and `releases/latest` all agree.
+
+## Fresh-install check
+
+The local `node_modules` can hold a newer DSH than the version `package.json` pins, and that pinned version is what the tag workflow tests. There is no lockfile, so CI always installs fresh. The suite can therefore pass locally and fail on the tag: 0.1.13 failed its first tag run this way, and the tag had to be moved. Before tagging, run what CI runs on a committed copy of the release:
+
+```sh
+dir=$(mktemp -d)
+git archive HEAD | tar x -C "$dir"
+cd "$dir"
+git init -q && git add -A && git -c user.name=check -c user.email=check@example.invalid commit -qm check
+HOME="$dir/.home" npm install --ignore-scripts --no-audit --no-fund --no-package-lock
+HOME="$dir/.home" npm run verify:all -- --ui none
+```
+
+The `git init` matters because Git tests read the checkout as a repository. The empty `HOME` keeps your login files out of the run. Delete the directory afterwards.
 
 ## npm trusted publishing
 

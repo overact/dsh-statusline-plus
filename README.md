@@ -17,11 +17,11 @@ Screenshots use the actual UI with sample data, without account or conversation 
 
 ## Features
 
-- **Balances and quotas:** DeepSeek, Kimi Code, Z.ai / Zhipu, Antigravity, Codex, OpenCode Go and OpenRouter. Click a chip for details and refresh.
+- **Balances and quotas:** DeepSeek, Kimi Code, Z.ai / Zhipu, Claude, Antigravity, Codex, OpenCode Go and OpenRouter, plus other subscriptions your Magpie reports. Click a chip for details and refresh.
 - **DeepSeek peak hours:** status, countdown and daily timeline, plus a sidebar indicator. In a year with no calendar, a weekday inside a peak window stays unknown while weekends and hours outside the windows are still off-peak; when the official rule wording no longer matches, the schedule is still applied and the indicator warns that rules may have changed.
 - **Workspace and session:** Git branch and changes, context usage, streaming TPS, API reference cost, direct child agents and tool activity.
 - **Layout:** component switches, ordering, presets and an interactive preview. Groups wrap on narrow screens; an optional switch disables this plugin's bottom status line when the input area is at most 480px wide, including when sidebars narrow it.
-- **Self-update:** when npm publishes a newer version, the settings header shows an update button naming it (checked when the page opens, cached for a minute; hover shows the installed and latest versions). It stays hidden otherwise, is not offered for a linked development checkout, and installs in place with `pnpm add` on one click. The Host then swaps the new copy into the running profile through HMR, so a refresh is enough; a profile without HMR asks for a restart instead.
+- **Self-update:** when npm publishes a newer version, the settings header shows an update button naming it (checked when the page opens, cached for a minute; hover shows the installed and latest versions). It stays hidden otherwise, is not offered for a linked development checkout, and installs in place on one click, using the Host's own `dsh plugin add` and falling back to `pnpm`. The Host then swaps the new copy into the running profile through HMR, so a refresh is enough; a profile without HMR asks for a restart instead.
 
 ## Installation
 
@@ -60,9 +60,9 @@ Open **DSH Web → Settings → Statusline**. Settings are saved under `statusli
 | `showDeepseekPeak`, `deepseekPeakCountdown`, `showPeakDot` | `true` | DeepSeek peak indicators and countdown |
 | `cacheTtlMs` | `60000` | Quota result reuse; UI displays seconds, effective minimum 15s |
 | `fetchTimeoutMs` | `10000` | Request timeout; UI displays seconds |
-| `quotaSources` | `{}` | Per-subscription source pin, e.g. `{ "codex": "cpa" }`, set in each source card. With none set: Magpie, then CPA, then the official tool's login file (read only, never refreshed). A pinned source has no fallback. See `docs/QUOTA_SOURCES.md`. |
+| `quotaSources` | `{}` | Per-subscription source pin, e.g. `{ "codex": "cpa" }`, set in each source card. With none set: Magpie, then CPA, then the official tool's login file (read only, never refreshed). A pinned source has no fallback. See `docs/features/quota/sources.md`. |
 | `showClaudeQuota` | `true` | Allow the Claude subscription chip. |
-| `quotaShowAll` | `false` | Show every enabled subscription chip (Codex / Antigravity / OpenCode) instead of selecting one from the model |
+| `quotaShowAll` | `false` | Show every enabled subscription chip (Codex / Antigravity / Claude / OpenCode) and other subscriptions Magpie reports, instead of selecting one from the model |
 | `providers` | Built-in sources | Credential references, source switches and endpoint overrides |
 
 The narrow-screen switch is in **Bottom status line**. It affects this plugin's bottom components; header quotas, peak indicators and native composer stats remain available.
@@ -99,9 +99,9 @@ npm run release:check   # version, README badge, CHANGELOG, tag, npm dist-tag, a
 
 `dev:runtime` reads the active profile's `cordis.patch.yml` (`DSH_PROFILE_DIR` overrides `~/.dsh/profiles/web`) and reports whether host-level edits hot-reload; run it before advising a restart. `release:check` verifies the current package version against the README badge, changelog, git tag, npm dist-tags, GitHub Release assets and `releases/latest`; use `--offline` to skip the npm and GitHub checks.
 
-Pushing a `v*` tag publishes the version to npm through the release workflow; release steps, npm trusted-publishing setup and post-release checks are in [docs/RELEASING.md](docs/RELEASING.md).
+Pushing a `v*` tag publishes the version to npm through the release workflow; release steps, npm trusted-publishing setup and post-release checks are in [docs/development/releasing.md](docs/development/releasing.md).
 
-Quota protocol notes (client identity, percentage semantics and known provider inconsistencies) are in [`docs/QUOTA_SOURCES.md`](docs/QUOTA_SOURCES.md).
+Per-feature design notes, including quota protocols, start at [docs/README.md](docs/README.md). Read the page for an area before changing it.
 
 Browser checks use real React and the client bundle with offline fixtures. Coverage includes cost, Subagents and responsive settings/resource cleanup. Install browser tooling only if missing:
 
@@ -118,13 +118,13 @@ An optional authorized, read-only live check requires an existing session: `npm 
 <a id="简体中文"></a>
 ## 简体中文
 
-DSH 网页端状态行：顶部显示账号余额与套餐额度，输入区显示 Git、上下文、TPS、API 参考金额、子代理和工具活动。支持 DeepSeek、Kimi Code、Z.ai／智谱、Antigravity、Codex、OpenCode Go、OpenRouter，以及 DeepSeek 峰谷时段指示。
+DSH 网页端状态行：顶部显示账号余额与套餐额度，输入区显示 Git、上下文、TPS、API 参考金额、子代理和工具活动。支持 DeepSeek、Kimi Code、Z.ai／智谱、Claude、Antigravity、Codex、OpenCode Go、OpenRouter，以及 DeepSeek 峰谷时段指示。
 
 **截图：** [总览（额度、峰谷、会话指标与详情面板）](docs/images/overview.png)、[设置选项](docs/images/settings.png)。截图使用英文界面与演示数据，不包含真实账号或对话数据。
 
 **安装：** 需要 DSH 0.2.0-rc.2 或更高版本，不设上限，升级 DSH 不会让插件被跳过；已在 0.2.0-rc.2、0.2.1-rc.2 与 Windows 桌面版（0.2.1-rc.3）上测试，使用上面的安装命令；插件自带预构建文件和注册配置。启用 HMR 后，插件启停与设置实时生效；本地源码目录纳入监听时也可热加载，之后刷新浏览器。安装或升级提示 `restart-required` 时，才需等待无活跃会话后重启。旧版手动安装请先移除 `@local/dsh-statusline-plus` 注册行和依赖，避免重复。
 
-**设置：** 打开 **DSH 网页端 → 设置 → 状态栏**，调整显示、排序、预设、顶部额度、账号来源及缓存。有新版本时右上角出现更新按钮（打开设置页时检查，缓存一分钟；悬停显示当前与最新版本），点一次即用 `pnpm add` 原地覆盖安装，随后由宿主通过 HMR 把新副本换进运行中的 profile，刷新页面即可；没有 HMR 的 profile 才提示重启。`link:` 安装的本地副本不显示。密钥仅在宿主侧解析，设置里填写凭据引用。DeepSeek 有两种计费方式：`deepseek`／`deepseek-official` 使用 `DEEPSEEK_API_KEY` 查询按量余额；使用 DSH 登录账号（`deepseek-account`）时，状态栏通过宿主 `deepseekAccount` 服务读取登录账号的充值余额与赠送余额，不需要 API Key。
+**设置：** 打开 **DSH 网页端 → 设置 → 状态栏**，调整显示、排序、预设、顶部额度、账号来源及缓存。有新版本时右上角出现更新按钮（打开设置页时检查，缓存一分钟；悬停显示当前与最新版本），点一次即原地覆盖安装（优先用宿主自带的 `dsh plugin add`，其次 `pnpm`），随后由宿主通过 HMR 把新副本换进运行中的 profile，刷新页面即可；没有 HMR 的 profile 才提示重启。`link:` 安装的本地副本不显示。密钥仅在宿主侧解析，设置里填写凭据引用。DeepSeek 有两种计费方式：`deepseek`／`deepseek-official` 使用 `DEEPSEEK_API_KEY` 查询按量余额；使用 DSH 登录账号（`deepseek-account`）时，状态栏通过宿主 `deepseekAccount` 服务读取登录账号的充值余额与赠送余额，不需要 API Key。
 
 **额度恢复：** 额度请求使用插件自有连接池，每个地址的连接尝试窗口为 5 秒，完整请求仍受总超时限制（Codex 为 15 秒）；宿主网络默认值不变。查询成功即更新显示，不必等满 5 秒。网络失败每轮最多自动重试 3 次，分别等待 15／30／60 秒；限流时等待 60／120／240 秒。断网时暂停，网络恢复、页面重新可见、新步骤或手动刷新会开启新一轮查询；当前重试轮结束后，页面重新获得焦点也可恢复查询。重试期间保留已有的成功数据，并提示网络异常及重试已用完；凭据与响应格式错误不自动重试。
 
