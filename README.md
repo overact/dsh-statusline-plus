@@ -60,7 +60,8 @@ Open **DSH Web → Settings → Statusline**. Settings are saved under `statusli
 | `showDeepseekPeak`, `deepseekPeakCountdown`, `showPeakDot` | `true` | DeepSeek peak indicators and countdown |
 | `cacheTtlMs` | `60000` | Quota result reuse; UI displays seconds, effective minimum 15s |
 | `fetchTimeoutMs` | `10000` | Request timeout; UI displays seconds |
-| `quotaSource` | `auto` | Quota source: `auto` reads a live Magpie gateway first, then CPA; `magpie`/`cpa` pin one source |
+| `quotaSources` | `{}` | Per-subscription source pin, e.g. `{ "codex": "cpa" }`, set in each source card. With none set: Magpie, then CPA, then the official tool's login file (read only, never refreshed). A pinned source has no fallback. See `docs/QUOTA_SOURCES.md`. |
+| `showClaudeQuota` | `true` | Allow the Claude subscription chip. |
 | `quotaShowAll` | `false` | Show every enabled subscription chip (Codex / Antigravity / OpenCode) instead of selecting one from the model |
 | `providers` | Built-in sources | Credential references, source switches and endpoint overrides |
 

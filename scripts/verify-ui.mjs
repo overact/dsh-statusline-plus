@@ -72,6 +72,15 @@ async function geometry(page, panel, maxWidth) {
   return { width: Math.round(box.width), height: Math.round(box.height) }
 }
 
+// A clipping or masking ancestor keeps the box measurable but stops it hit-testing.
+async function assertPanelVisible(page, panel) {
+  await panel.waitFor()
+  await page.waitForFunction(node => {
+    const box = node.getBoundingClientRect()
+    return [0.1, 0.5, 0.9].every(y => node.contains(document.elementFromPoint(box.left + box.width / 2, box.top + box.height * y)))
+  }, await panel.elementHandle(), { timeout: 5000 }).catch(() => { throw new Error('Quota panel is clipped by the header title cluster') })
+}
+
 async function verifyCost(page, folder, live) {
   const trigger = page.locator('.slp-cost-trigger').first()
   await trigger.waitFor(); await trigger.click()
@@ -151,6 +160,7 @@ async function verifyResponsive(page, folder) {
   await page.evaluate(() => { window.slpResponsive.quotaFailures = 4 })
   // Opening details no longer bypasses the cache; the explicit Refresh button does.
   await quota.click()
+  await assertPanelVisible(page, page.locator('.slp-panel').first())
   await page.locator('.slp-panel .slp-link-btn').first().click()
   await quotaCount(2)
   await page.locator('#fixture-header .slp-err').waitFor()

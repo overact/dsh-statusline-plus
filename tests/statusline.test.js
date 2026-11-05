@@ -44,6 +44,7 @@ function loadClientPluginForTest(options = {}) {
     useState(initial) { if (!activeRenderer) throw new Error('React hook used outside renderer'); return activeRenderer.useState(initial) },
     useEffect(effect, deps) { if (!activeRenderer) throw new Error('React hook used outside renderer'); return activeRenderer.useEffect(effect, deps) },
     useRef(initial) { if (!activeRenderer) throw new Error('React hook used outside renderer'); return activeRenderer.useRef(initial) },
+    useLayoutEffect() {},
   }
   function createRenderer() {
     const hookSlots = []
@@ -149,9 +150,6 @@ function loadClientPluginForTest(options = {}) {
   const gitResolvers = []
   const defaultGitData = { isRepo: true, branch: 'main', ahead: 0, behind: 0, counts: { staged: 0, unstaged: 0, untracked: 0, conflict: 0 }, lineStats: { added: 0, deleted: 0 } }
   global.fetch = async (url, requestOptions = {}) => {
-    if (url === '/statusline/api/config') {
-      return { json: async () => configResponse }
-    }
     if (url === '/statusline/api/git') {
       gitRequests.push({ url, options: requestOptions })
       if (options.deferGit) {
@@ -163,7 +161,7 @@ function loadClientPluginForTest(options = {}) {
       return { json: async () => (options.sessionModelResponse !== undefined ? options.sessionModelResponse : { ok: true, data: { model: 'gemini-3.8-flash-high', provider: 'antigravity' } }) }
     }
     if (url === '/statusline/api/antigravity-quota') {
-      return { json: async () => (options.antigravityQuotaResponse !== undefined ? options.antigravityQuotaResponse : { ok: true, data: { gemini5h: { usedPercent: 14, remainingPercent: 86, resetInSec: 10800 }, geminiWeekly: { usedPercent: 20, remainingPercent: 80, resetInSec: 86400 } } }) }
+      return { json: async () => (options.antigravityQuotaResponse !== undefined ? options.antigravityQuotaResponse : { ok: true, data: { style: 'windows', windows: [{ id: 'gemini-5h', group: 'gemini', minutes: 300, usedPercent: 14, remainingPercent: 86, resetInSec: 10800 }, { id: 'gemini-weekly', group: 'gemini', minutes: 10080, usedPercent: 20, remainingPercent: 80, resetInSec: 86400 }] } }) }
     }
     return { json: async () => ({ ok: true }) }
   }
@@ -394,16 +392,13 @@ test('sanitizeConfig normalizes booleans, clamps numbers, and keeps usage on the
   assert.equal(__test.sanitizeConfig({ quotaOnStep: false }).quotaOnStep, false)
 })
 
-test('parseGitStatus counts AA/DD/UU conflicts', () => {
-  const out = __test.parseGitStatus([
-    '## main',
-    'AA file-a.ts',
-    'DD file-d.ts',
-    'UU file-u.ts',
-  ].join('\n'))
+test('parseGitStatusV2 counts AA/DD/UU conflicts', () => {
+  const out = __test.parseGitStatusV2(['AA file-a.ts', 'DD file-d.ts', 'UU file-u.ts']
+    .map(entry => 'u ' + entry.slice(0, 2) + ' N... 100644 100644 100644 100644 aaa bbb ccc ' + entry.slice(3)).concat('# branch.head main').join('\0'))
   assert.equal(out.counts.conflict, 3)
   assert.equal(out.counts.staged, 0)
   assert.equal(out.counts.unstaged, 0)
+  assert.ok(out.files.includes('file-a.ts'))
 })
 
 test('parseGitStatusV2 preserves literal quotes and backslashes in NUL paths', () => {
@@ -418,8 +413,8 @@ test('parseGitStatusV2 preserves literal quotes and backslashes in NUL paths', (
 
 test('parseGitStatusV2 preserves a following record after a non-rename type-2 record', () => {
   const out = __test.parseGitStatusV2([
-    '2 R. N... 100 100 100 100 100 R100 old.ts',
-    'new.ts',
+    '2 R. N... 100 100 100 100 100 R100 new.ts',
+    'old.ts',
     '? later.txt',
   ].join('\0'))
   assert.equal(out.counts.untracked, 1)
@@ -434,8 +429,8 @@ test('parseGitStatusV2 handles branch metadata, untracked files, conflicts, and 
     '1 M. N... 100 100 100 100 100 file with spaces.ts',
     'u UU N... 100 100 100 100 100 100 100 conflict.ts',
     '? untracked.txt',
-    '2 R. N... 100 100 100 100 100 R100 old.ts',
-    'new -> name.ts',
+    '2 R. N... 100 100 100 100 100 R100 new -> name.ts',
+    'old.ts',
   ].join('\0'))
   assert.equal(out.branch, 'main')
   assert.equal(out.ahead, 5)
@@ -502,9 +497,9 @@ test('resolveGitRepo refuses to infer another repository from tool history', asy
     git(repo, ['add', 'a.ts'])
     git(repo, ['commit', '-qm', 'init'])
     const repoFile = join(repo, 'a.ts')
-    assert.equal(await __test.resolveGitRepo(fakeSubprocess(), outside, [repoFile]), null)
-    assert.equal(await __test.resolveGitRepo(fakeSubprocess(), repo, []), repo)
-    assert.equal(await __test.resolveGitRepo(fakeSubprocess(), null, [repoFile]), null)
+    assert.equal(await __test.resolveGitRepo(fakeSubprocess(), outside, 'git'), null)
+    assert.equal(await __test.resolveGitRepo(fakeSubprocess(), repo, 'git'), repo)
+    assert.equal(await __test.resolveGitRepo(fakeSubprocess(), null, 'git'), null)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
@@ -534,6 +529,31 @@ test('fetchGitStatus uses porcelain v2 and preserves the repo root', async () =>
     assert.equal(out.counts.untracked, 2)
     assert.ok(out.files.includes('renamed.ts'))
     assert.ok(out.files.includes('new file.ts'))
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('fetchGitStatus counts uncommitted lines against HEAD, and only staged lines before a first commit', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'slp-test-'))
+  try {
+    const repo = join(root, 'repo')
+    mkdirSync(repo, { recursive: true })
+    git(root, ['init', '-q', repo])
+    git(repo, ['config', 'user.email', 'test@example.com'])
+    git(repo, ['config', 'user.name', 'Test'])
+    writeFileSync(join(repo, 'a.ts'), 'one\ntwo\n')
+    git(repo, ['add', 'a.ts'])
+    const first = await __test.fetchGitStatus(fakeSubprocess(), repo)
+    assert.deepEqual(first.lineStats, { added: 2, deleted: 0 }, 'a repository with no commit has no HEAD')
+    assert.equal(first.lineStatsError, undefined)
+    assert.equal('noCommits' in first, false, 'the flag stays internal')
+    git(repo, ['commit', '-qm', 'init'])
+    writeFileSync(join(repo, 'a.ts'), 'one\ntwo\nthree\n')
+    git(repo, ['add', 'a.ts'])
+    writeFileSync(join(repo, 'a.ts'), 'one\ntwo\nthree\nfour\n')
+    const edited = await __test.fetchGitStatus(fakeSubprocess(), repo)
+    assert.deepEqual(edited.lineStats, { added: 2, deleted: 0 }, 'a line staged then kept in the worktree counts once')
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
@@ -581,7 +601,7 @@ test('Git keeps branch/file state when optional line statistics fail', async () 
         collected: { stdout: { readFrom: () => ({ text: diff ? '' : text }) }, stderr: { readFrom: () => ({ text: diff ? 'fixture failure' : '' }) } } }
     },
   }
-  const result = await __test.fetchGitStatus(subprocess, '/tmp/repo', [])
+  const result = await __test.fetchGitStatus(subprocess, '/tmp/repo')
   assert.equal(result.branch, 'main')
   assert.equal(result.lineStats, null)
   assert.equal(result.lineStatsError, 'line-stats-unavailable')
@@ -653,15 +673,14 @@ test('fetchGitStatus detects an SSH repo without local anchor contents and maps 
   const fixture = fakeSshBridge([
     { stdout: '/srv/workspace/repo\n' },
     { stdout: ['# branch.head remote-main', '# branch.ab +2 -1', '1 .M N... 100644 100644 100644 abc def src/tracked.ts', '? src/new.ts'].join('\0') },
-    { stdout: '4\t1\tsrc/tracked.ts\n' },
-    { stdout: '2\t0\tsrc/staged.ts\n' },
+    { stdout: '4\t1\tsrc/tracked.ts\n2\t0\tsrc/staged.ts\n' },
   ])
   const localSubprocess = {
     async resolveExecutable() { return '/usr/bin/git' },
     spawn() { throw new Error('SSH Git must not use the local subprocess') },
   }
   const cwd = fixture.anchorPath + '/repo/src'
-  const out = await __test.fetchGitStatus(localSubprocess, cwd, [], fixture.bridge)
+  const out = await __test.fetchGitStatus(localSubprocess, cwd, fixture.bridge)
   assert.equal(out.isRepo, true)
   assert.equal(out.repoRoot, fixture.anchorPath + '/repo')
   assert.deepEqual(out.remote, { host: 'test-host', root: '/srv/workspace/repo' })
@@ -670,17 +689,11 @@ test('fetchGitStatus detects an SSH repo without local anchor contents and maps 
   assert.equal(out.behind, 1)
   assert.equal(out.counts.unstaged, 1)
   assert.equal(out.counts.untracked, 1)
-  assert.deepEqual(out.lineStats, {
-    added: 6,
-    deleted: 1,
-    staged: { added: 2, deleted: 0 },
-    unstaged: { added: 4, deleted: 1 },
-  })
+  assert.deepEqual(out.lineStats, { added: 6, deleted: 1 })
   assert.deepEqual(fixture.calls.map((call) => call.argv), [
     ['git', 'rev-parse', '--show-toplevel'],
     ['git', 'status', '--porcelain=v2', '-z', '--branch'],
-    ['git', 'diff', '--numstat', '--no-ext-diff'],
-    ['git', 'diff', '--cached', '--numstat', '--no-ext-diff'],
+    ['git', 'diff', 'HEAD', '--numstat', '--no-ext-diff'],
   ].map(argv => [argv[0], '--no-optional-locks', '-c', 'core.fsmonitor=false', ...argv.slice(1)]))
   assert.equal(fixture.calls[0].cwd, cwd)
   assert.ok(fixture.calls.slice(1).every((call) => call.cwd === fixture.anchorPath + '/repo'))
@@ -749,10 +762,10 @@ test('Git route reuses completed snapshots briefly, scopes them by session and b
   try {
     const request = (sessionId, force) => callRoute(routes.get('/statusline/api/git'), 'POST', { 'content-type': 'application/json' }, JSON.stringify({ cwd: process.cwd(), sessionId, force }))
     assert.equal((await request('one')).json.ok, true)
-    assert.equal(calls.length, 4)
-    await request('one'); assert.equal(calls.length, 4, 'completed snapshot is reused')
-    await request('one', true); assert.equal(calls.length, 8, 'manual refresh bypasses the snapshot')
-    await request('two'); assert.equal(calls.length, 12, 'another session has its own scope')
+    assert.equal(calls.length, 3)
+    await request('one'); assert.equal(calls.length, 3, 'completed snapshot is reused')
+    await request('one', true); assert.equal(calls.length, 6, 'manual refresh bypasses the snapshot and the repository lookup')
+    await request('two'); assert.equal(calls.length, 8, 'another session has its own snapshot and reuses the repository root')
   } finally { routes.disposePlugin() }
 })
 
@@ -1036,14 +1049,14 @@ test('parseAntigravityQuotaSummary extracts real 5h and weekly quotas from group
   assert.ok(result, 'result should be non-null')
   assert.equal(result.email, 'user@example.com')
   assert.equal(result.projectId, 'test-proj')
-  assert.equal(result.gemini5h.remainingPercent, 85)
-  assert.equal(result.gemini5h.usedPercent, 15)
-  assert.equal(result.gemini5h.resetInSec, 10800)
-  assert.equal(result.geminiWeekly.remainingPercent, 95)
-  assert.equal(result.geminiWeekly.usedPercent, 5)
-  assert.equal(result.geminiWeekly.resetInSec, 360000)
-  assert.equal(result.thirdParty.remainingPercent, 100)
-  assert.equal(result.thirdParty.usedPercent, 0)
+  assert.equal(result.windows.find(win => win.id === 'gemini-5h').remainingPercent, 85)
+  assert.equal(result.windows.find(win => win.id === 'gemini-5h').usedPercent, 15)
+  assert.equal(result.windows.find(win => win.id === 'gemini-5h').resetInSec, 10800)
+  assert.equal(result.windows.find(win => win.id === 'gemini-weekly').remainingPercent, 95)
+  assert.equal(result.windows.find(win => win.id === 'gemini-weekly').usedPercent, 5)
+  assert.equal(result.windows.find(win => win.id === 'gemini-weekly').resetInSec, 360000)
+  assert.equal(result.windows.find(win => win.id === 'third-5h').remainingPercent, 100)
+  assert.equal(result.windows.find(win => win.id === 'third-5h').usedPercent, 0)
 })
 
 test('Antigravity upstream host uses official daily-cloudcode-pa endpoint', () => {
@@ -1122,19 +1135,17 @@ test('truncated Git output is reported instead of showing misleading counts', as
       stdout: { readFrom: () => ({ text: '/tmp/repo', lossy: true }) },
     } } },
   }
-  await assert.rejects(__test.fetchGitStatus(subprocess, '/tmp/repo', []), /git-output-too-large/)
+  await assert.rejects(__test.fetchGitStatus(subprocess, '/tmp/repo'), /git-output-too-large/)
 })
 
 test('Git resolves a known workspace before invoking expensive history hints', async () => {
-  let hintReads = 0
   const subprocess = {
     async resolveExecutable() { return '/usr/bin/git' },
     spawn({ argv }) { return { done: Promise.resolve({ exitCode: 0, signal: null }), collected: {
       stdout: { readFrom: () => ({ text: argv.includes('rev-parse') ? '/tmp/repo' : '' }) },
     } } },
   }
-  await __test.fetchGitStatus(subprocess, '/tmp/repo', () => { hintReads++; return [] })
-  assert.equal(hintReads, 0)
+  await __test.fetchGitStatus(subprocess, '/tmp/repo')
 })
 
 test('Git shares the caller cancellation across discovery and status commands', async () => {
@@ -1148,7 +1159,7 @@ test('Git shares the caller cancellation across discovery and status commands', 
         collected: { stdout: { readFrom: () => ({ text: '' }) } } }
     },
   }
-  const pending = __test.fetchGitStatus(subprocess, '/tmp/repo', ['/tmp/other'], undefined, abort.signal)
+  const pending = __test.fetchGitStatus(subprocess, '/tmp/repo', undefined, abort.signal)
   await new Promise(setImmediate); abort.abort(new Error('cancelled-by-client'))
   await assert.rejects(pending, /cancelled-by-client/)
   assert.equal(calls, 1)
@@ -1188,32 +1199,39 @@ test('Antigravity quota panel opens on trigger click and auto-hides on click out
     }
     const renderer = createRenderer()
     // Initial render
-    let tree = renderer.render(headerEntry.component, props)
+    // The slot wraps HeaderChip in ChipFold; render HeaderChip itself.
+    const chip = renderer.render(headerEntry.component, props).props.children.flat()[0]
+    const headerRenderer = createRenderer()
+    let tree = headerRenderer.render(() => chip)
     await new Promise((r) => setTimeout(r, 20))
     // Render HeaderChip -> QuotaChip element
-    tree = renderer.render(headerEntry.component, props)
+    tree = headerRenderer.render(() => chip)
     assert.ok(tree)
-    // Render QuotaChip in fresh renderer -> span wrapping AntigravityQuotaLine
+    // Render QuotaChip in fresh renderer -> span wrapping QuotaLine
     const chipRenderer = createRenderer()
     const chipTree = chipRenderer.render(tree.type, tree.props)
     assert.ok(chipTree)
     const agComponent = chipTree.props.children[0]
     assert.ok(agComponent)
 
-    // AntigravityQuotaLine props from quota response
+    // QuotaLine props from quota response
     const agData = {
+      style: 'windows',
       email: 'user@example.com',
-      gemini5h: { usedPercent: 14, remainingPercent: 86, resetInSec: 10800 },
-      geminiWeekly: { usedPercent: 20, remainingPercent: 80, resetInSec: 86400 },
+      windows: [
+        { id: 'gemini-5h', group: 'gemini', minutes: 300, usedPercent: 14, remainingPercent: 86, resetInSec: 10800 },
+        { id: 'gemini-weekly', group: 'gemini', minutes: 10080, usedPercent: 20, remainingPercent: 80, resetInSec: 86400 },
+      ],
     }
     let refreshed = 0
     const agProps = {
+      kind: 'antigravity',
       data: agData,
       error: null,
       refresh() { refreshed++ },
     }
 
-    // Render AntigravityQuotaLine in its own renderer
+    // Render QuotaLine in its own renderer
     const agRenderer = createRenderer()
     let agTree = agRenderer.render(agComponent.type, agProps)
     assert.ok(agTree)
@@ -1226,7 +1244,8 @@ test('Antigravity quota panel opens on trigger click and auto-hides on click out
     agTree = agRenderer.render(agComponent.type, agProps)
     const panel = agTree.props.children[1]
     assert.ok(panel, 'panel should be open')
-    assert.equal(panel.type.name, 'AntigravityDetailPanel')
+    assert.equal(panel.type.name, 'AnchoredPanel', 'header overlays portal out of the clipped actions slot')
+    assert.equal([panel.props.children].flat()[0].props.role, 'dialog')
 
     // 2. Click INSIDE the panel: should stay open
     const rootEl = {
@@ -1235,12 +1254,17 @@ test('Antigravity quota panel opens on trigger click and auto-hides on click out
       },
     }
     if (agTree.props.ref) agTree.props.ref.current = rootEl
+    // The portalled surface is outside the root's DOM subtree but still inside the panel.
+    panel.props.dismiss.panelRef.current = { contains: target => target === 'portal' }
 
     const pointerListeners = docListeners.get('pointerdown') || new Set()
     assert.ok(pointerListeners.size > 0, 'pointerdown listener should be registered')
     for (const fn of pointerListeners) fn({ target: 'inside' })
     agTree = agRenderer.render(agComponent.type, agProps)
     assert.ok(agTree.props.children[1], 'panel should stay open when clicking inside')
+    for (const fn of pointerListeners) fn({ target: 'portal' })
+    agTree = agRenderer.render(agComponent.type, agProps)
+    assert.ok(agTree.props.children[1], 'panel should stay open when clicking its portalled surface')
 
     // 3. Click OUTSIDE the panel: should close
     for (const fn of pointerListeners) fn({ target: 'outside' })
@@ -1288,9 +1312,12 @@ test('OpenCode quota panel in QuotaChip opens and auto-hides on click outside', 
     assert.ok(headerEntry)
     const props = { sessionId: 'sess-opencode', useProjection() { return null } }
     const renderer = createRenderer()
-    renderer.render(headerEntry.component, props)
+    // The slot wraps HeaderChip in ChipFold; render HeaderChip itself.
+    const chip = renderer.render(headerEntry.component, props).props.children.flat()[0]
+    const headerRenderer = createRenderer()
+    headerRenderer.render(() => chip)
     await new Promise((r) => setTimeout(r, 20))
-    const tree = renderer.render(headerEntry.component, props)
+    const tree = headerRenderer.render(() => chip)
     assert.ok(tree)
     // tree is QuotaChip element
     const chipRenderer = createRenderer()
@@ -1303,7 +1330,7 @@ test('OpenCode quota panel in QuotaChip opens and auto-hides on click outside', 
     // QuotaChip wraps the per-source line; render the OpenCode line itself.
     const line = chipTree.props.children[0]
     const lineRenderer = createRenderer()
-    const renderLine = () => lineRenderer.render(line.type, { ...line.props, data: { fetchedAt: Date.now(), windows: { rolling: { percent: 20 } } } })
+    const renderLine = () => lineRenderer.render(line.type, { ...line.props, data: { style: 'windows', fetchedAt: Date.now(), windows: [{ id: 'rolling', minutes: 300, usedPercent: 20 }] } })
     chipTree = renderLine()
     assert.equal(chipTree.props.className, 'slp-quota-root')
     const button = chipTree.props.children[0]
@@ -1356,4 +1383,49 @@ test('the version route reports the registry update and refuses to touch a linke
   } finally {
     global.fetch = previous
   }
+})
+
+test('Git keeps found roots and the git path, and resolves a root again when it stops working', async () => {
+  const commands = []
+  let rootWorks = true, lookups = 0
+  const subprocess = {
+    async resolveExecutable() { lookups++; return '/usr/bin/git' },
+    spawn({ argv }) {
+      commands.push(argv.includes('rev-parse') ? 'rev-parse' : argv.includes('status') ? 'status' : 'diff')
+      const failed = argv.includes('status') && !rootWorks
+      return { done: Promise.resolve({ exitCode: failed ? 128 : 0, signal: null }), collected: {
+        stdout: { readFrom: () => ({ text: argv.includes('rev-parse') ? '/tmp/repo' : '' }) },
+        stderr: { readFrom: () => ({ text: failed ? 'fatal: cannot change to' : '' }) },
+      } }
+    },
+  }
+  const cache = __test.createGitLookups()
+  await __test.fetchGitStatus(subprocess, '/tmp/repo', undefined, undefined, cache)
+  const first = commands.splice(0)
+  await __test.fetchGitStatus(subprocess, '/tmp/repo', undefined, undefined, cache)
+  assert.equal(first.filter(name => name === 'rev-parse').length, 1)
+  assert.equal(commands.filter(name => name === 'rev-parse').length, 0, 'second refresh reuses the root')
+  assert.equal(lookups, 1, 'second refresh reuses the git path')
+  commands.length = 0
+  rootWorks = false
+  await assert.rejects(__test.fetchGitStatus(subprocess, '/tmp/repo', undefined, undefined, cache), /git status/)
+  assert.equal(commands.filter(name => name === 'rev-parse').length, 1, 'a failing cached root is resolved again')
+})
+
+test('Git only caches found repositories, so a new git init is seen at once', async () => {
+  let repo = false, revParse = 0
+  const subprocess = {
+    async resolveExecutable() { return '/usr/bin/git' },
+    spawn({ argv }) {
+      if (argv.includes('rev-parse')) revParse++
+      return { done: Promise.resolve({ exitCode: argv.includes('rev-parse') && !repo ? 128 : 0, signal: null }), collected: {
+        stdout: { readFrom: () => ({ text: argv.includes('rev-parse') ? '/tmp/repo' : '' }) },
+      } }
+    },
+  }
+  const cache = __test.createGitLookups()
+  assert.equal((await __test.fetchGitStatus(subprocess, '/tmp/repo', undefined, undefined, cache)).isRepo, false)
+  repo = true
+  assert.equal((await __test.fetchGitStatus(subprocess, '/tmp/repo', undefined, undefined, cache)).isRepo, true)
+  assert.equal(revParse, 2)
 })

@@ -5,6 +5,29 @@ import { root } from './verification.mjs'
 
 export const uiRequire = createRequire(new URL('../tools/ui/package.json', import.meta.url))
 
+// Offline stand-ins for the Host-provided client modules. Same contract as the
+// real hooks' common path; the real ones are only exercised against a live Host.
+export async function installHostModules(page) {
+  await page.evaluate(() => {
+    const { React, ReactDOM } = window
+    const useAnchoredPosition = ({ anchorRef, panelRef, gap, margin }) => {
+      const [position, setPosition] = React.useState(null)
+      React.useLayoutEffect(() => {
+        const rect = anchorRef.current.getBoundingClientRect(), width = panelRef.current.offsetWidth
+        setPosition({ left: Math.max(margin, Math.min(rect.left, document.documentElement.clientWidth - margin - width)), top: rect.bottom + gap })
+      }, [])
+      return position
+    }
+    const MenuSurface = React.forwardRef(({ phase, ...props }, ref) => React.createElement('div', { ...props, ref }))
+    window.slpHostModule = name => {
+      if (name === 'react') return React
+      if (name === 'react-dom') return ReactDOM
+      if (name === '@deepseek-ai/dsh-client-ui-primitives') return { useAnchoredPosition, MenuSurface }
+      throw new Error('Unexpected fixture dependency: ' + name)
+    }
+  })
+}
+
 export async function mountFixture(page) {
   await page.clock.install()
   await page.setContent(`<!doctype html><html lang="en"><head><style>
@@ -16,11 +39,9 @@ export async function mountFixture(page) {
     const folder = dirname(uiRequire.resolve(name + '/package.json'))
     await page.addScriptTag({ path: join(folder, 'umd', name + '.development.js') })
   }
+  await installHostModules(page)
   await page.evaluate(() => {
-    window.__ModuleLoader__ = { load(spec) { window.slpComponents = spec.factory(name => {
-      if (name !== 'react') throw new Error('Unexpected fixture dependency: ' + name)
-      return window.React
-    }) } }
+    window.__ModuleLoader__ = { load(spec) { window.slpComponents = spec.factory(window.slpHostModule) } }
   })
   const source = await readFile(join(root, 'lib/client.js'), 'utf8')
   if (!source.includes('return module.exports')) throw new Error('Client factory format changed; update UI fixture adapter')
@@ -93,7 +114,7 @@ export async function mountResponsiveFixture(page) {
       if (url === '/statusline/api/usage') {
         activity.quotaRequests.push({ at: Date.now(), body: options.body })
         if (activity.quotaFailures > 0) { activity.quotaFailures--; return { json: async () => ({ ok: false, error: 'network' }) } }
-        return { json: async () => ({ ok: true, data: { windows: { rolling: { percent: 20 } }, fetchedAt: Date.now() } }) }
+        return { json: async () => ({ ok: true, data: { style: 'windows', windows: [{ id: 'rolling', minutes: 300, short: '5h', usedPercent: 20 }], fetchedAt: Date.now() } }) }
       }
       if (url.indexOf('/statusline/api/version') === 0) {
         // One update is always on offer here, so the settings header always has
@@ -132,7 +153,9 @@ export async function mountResponsiveFixture(page) {
       useSessions: select => select({ byId: { 'fixture-parent': { cwd: '/fixture-repo' } } }) }
     function App() {
       return React.createElement(React.Fragment, null,
-        React.createElement('div', { id: 'fixture-header' }, React.createElement(registrations.get('conversation.session.header.actions'), sessionProps)),
+        // Mirrors DSH 0.2.2's title cluster: the actions slot sits inside clip + mask.
+        React.createElement('div', { style: { display: 'flex', overflow: 'clip', maskImage: 'linear-gradient(to left, transparent, #000 20px)' } },
+          React.createElement('div', { id: 'fixture-header', className: 'fixture-headerActions' }, React.createElement(registrations.get('conversation.session.header.actions'), sessionProps))),
         React.createElement('div', { id: 'fixture-dock' },
           React.createElement('div', { 'data-composer-card': true, style: { width: '100%', height: '1px' } }),
           React.createElement('div', { 'data-composer-dock': true, style: { display: 'inline-flex' } },

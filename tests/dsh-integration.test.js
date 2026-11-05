@@ -77,7 +77,6 @@ test('every independent plugin route enforces Connection admission before handli
       assert.equal(req.listenerCount('aborted'), 0, 'rejection starts no request lifecycle')
     }
   }
-  assert.equal((await call(f.routes.get('/statusline/api/config'), {}, 'GET')).value.ok, true, 'admitted config reads remain available')
 })
 
 test('quota routes share a plugin-owned dispatcher and release it on unmount', async t => {
@@ -138,7 +137,7 @@ test('one invalid stored provider is skipped with a warning instead of failing t
   const f = await fixture({ providers: [{ id: 'broken-source', endpoints: [{ url: 'https://api.deepseek.com/user/balance' }] }] })
   t.after(f.close)
   assert.ok(f.routes.size > 0, 'the plugin still loads with a malformed stored provider')
-  const ids = (await call(f.routes.get('/statusline/api/config'), {}, 'GET')).value.config.providers.map(provider => provider.id)
+  const ids = f.ctx.settings.describe().find(s => s.ns === 'statusline-plus').value.providers.map(provider => provider.id)
   assert.ok(ids.includes('openrouter') && ids.includes('kimi-code'), 'the other providers keep working: ' + ids.join(','))
   assert.ok(warnings.some(line => line.includes('broken-source')), 'and skipping it is warned about: ' + JSON.stringify(warnings))
   // A malformed builtin override falls back to the built-in default in one pass; an unknown
@@ -229,19 +228,11 @@ test('native DSH settings drive the plugin, reject stale edits, and clean up on 
   assert.equal(plugin.__test.SettingsSchema({}).providers.find(provider => provider.id === 'zai').apiKeyEnv, 'ZAI_API_KEY')
   assert.equal(plugin.__test.SettingsSchema({}).usageUrl, 'https://opencode.ai/zen/go/v1/usage',
     'the documented usageUrl default must survive the hostValidated wrapper')
-  const fresh = f.ctx.settings.describe().find(s => s.ns === 'statusline-plus').revision
-  const invalid = await call(f.routes.get('/statusline/api/config'), { revision: fresh, patch: { showGit: 'yes' } })
-  assert.equal(invalid.status, 400, 'an invalid patch is invalid input, not a revision conflict')
-  assert.equal(invalid.value.error, 'invalid-config')
-  const saved = await call(f.routes.get('/statusline/api/config'), { revision: fresh, patch: { showGit: false } })
-  assert.equal(saved.status, 200, 'a display-only patch on a fresh revision must be accepted')
-  assert.equal(saved.value.config.showGit, false)
+  assert.throws(() => plugin.__test.assertRawConfig({ ...initial.value, showGit: 'yes' }), /showGit|invalid|boolean/i, 'an invalid value must not reach the profile')
   await f.ctx.settings.update('statusline-plus', { enabled: false })
   await Promise.resolve()
   const reply = await call(f.routes.get('/statusline/api/usage'))
   assert.equal(reply.value.error, 'disabled')
-  const stale = await call(f.routes.get('/statusline/api/config'), { revision: initial.revision, patch: { showGit: false } })
-  assert.equal(stale.status, 409)
   await f.fiber.dispose()
   assert.equal(f.routes.size, 0)
   assert.equal(f.ctx.settings.describe().find(s => s.ns === 'statusline-plus')?.value, undefined)
@@ -309,7 +300,9 @@ test('native OpenCode source toggle prevents requests while preserving credentia
   const value = () => f.ctx.settings.describe().find(s => s.ns === 'statusline-plus').value
   const before = value(), previous = global.fetch; t.after(() => { global.fetch = previous })
   let requests = 0
-  global.fetch = async () => {
+  global.fetch = async url => {
+    // Magpie comes first in the order; these tests count the provider's own requests.
+    if (String(url).includes('/v1/magpie/')) throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNREFUSED' } })
     requests++
     return new Response(JSON.stringify({ usage: { rolling: { percent: 20 } } }))
   }
@@ -350,7 +343,9 @@ test('display-only settings keep quota cache while request settings invalidate i
   await f.ctx.settings.update('statusline-plus', { enabled: true, showQuota: true })
   const previous = global.fetch; t.after(() => { global.fetch = previous })
   let requests = 0
-  global.fetch = async () => {
+  global.fetch = async url => {
+    // Magpie comes first in the order; these tests count the provider's own requests.
+    if (String(url).includes('/v1/magpie/')) throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNREFUSED' } })
     requests++
     return new Response(JSON.stringify({ usage: { rolling: { percent: 20 } } }))
   }
@@ -559,9 +554,11 @@ test('account quota routes keep their stable error codes and Codex result shape'
   assert.equal(reply.ok, true)
   assert.equal(typeof reply.data.fetchedAt, 'number')
   delete reply.data.fetchedAt
-  assert.deepEqual(reply.data, { planType: 'plus', activeLimit: 'none',
-    primary: { usedPercent: 12.5, windowMinutes: 300, resetAt: 1790000000, resetAfterSeconds: 600 },
-    secondary: { usedPercent: 40, windowMinutes: 10080 },
+  assert.deepEqual(reply.data, { source: 'cpa', style: 'windows', plan: 'plus', activeLimit: 'none',
+    windows: [
+      { id: 'primary', minutes: 300, usedPercent: 13, remainingPercent: 87, resetInSec: 600 },
+      { id: 'secondary', minutes: 10080, usedPercent: 40, remainingPercent: 60, resetInSec: 0 },
+    ],
     credits: { hasCredits: true, balance: 3.5, unlimited: false } })
   // A selected account must name an existing file of that prefix; there is no fallback.
   await codex.ctx.settings.update('statusline-plus', { codexAccount: 'codex-other.json' })

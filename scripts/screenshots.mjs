@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { readFile, mkdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { uiRequire } from './ui-fixture.mjs'
+import { installHostModules, uiRequire } from './ui-fixture.mjs'
 import { root, excerpt } from './verification.mjs'
 import { PROVIDER_PRESETS } from '../lib/provider-presets.js'
 
@@ -27,15 +27,13 @@ try {
   for (const name of ['react', 'react-dom']) {
     await page.addScriptTag({ path: join(dirname(uiRequire.resolve(name + '/package.json')), 'umd', name + '.development.js') })
   }
+  await installHostModules(page)
   await page.evaluate(() => {
-    window.__ModuleLoader__ = { load(spec) { window.slpDemo = spec.factory(name => {
-      if (name !== 'react') throw new Error('Unexpected demo dependency')
-      return window.React
-    }) } }
+    window.__ModuleLoader__ = { load(spec) { window.slpDemo = spec.factory(window.slpHostModule) } }
   })
   const source = await readFile(join(root, 'lib/client.js'), 'utf8')
   if (!source.includes('return module.exports')) throw new Error('Client factory format changed')
-  await page.addScriptTag({ content: source.replace('return module.exports', 'return Object.assign({}, module.exports, {LayoutPreview, SettingsPage, ProviderQuotaLine, DeepseekPeakChip, PeakFooterDot, PeakPanel, deepseekPeakStatus})') })
+  await page.addScriptTag({ content: source.replace('return module.exports', 'return Object.assign({}, module.exports, {LayoutPreview, SettingsPage, QuotaLine, DeepseekPeakChip, PeakFooterDot, PeakPanel, deepseekPeakStatus})') })
   await page.evaluate(providers => {
     window.fetch = async url => {
       if (url === '/statusline/api/peak-schedule') return { json: async () => ({ ok: false }) }
@@ -88,9 +86,9 @@ try {
     document.getElementById('root').style.marginTop = '440px'
     window.slpDemoRoot.render(React.createElement('div', { id: 'demo-header', style: { padding: '16px', border: '1px solid #e5e7eb', borderRadius: '10px' } },
       React.createElement('div', { className: 'slp-header-group' },
-        React.createElement(demo.ProviderQuotaLine, { provider: { id: 'deepseek', label: 'DeepSeek' }, now, refresh() {},
+        React.createElement(demo.QuotaLine, { provider: { id: 'deepseek', label: 'DeepSeek' }, now, refresh() {},
           data: { style: 'balance', fetchedAt: now, isAvailable: true, balances: [{ currency: 'CNY', remaining: 12.34 }] } }),
-        React.createElement(demo.ProviderQuotaLine, { provider: { id: 'kimi-code', label: 'Kimi Code' }, now, refresh() {},
+        React.createElement(demo.QuotaLine, { provider: { id: 'kimi-code', label: 'Kimi Code' }, now, refresh() {},
           data: { style: 'windows', fetchedAt: now, windows: [
             { label: '5h', usedPercent: 32, resetInSec: 7200 }, { label: 'Weekly', usedPercent: 18, resetInSec: 259200 },
           ] } }),
@@ -104,7 +102,7 @@ try {
   await page.locator('#demo-header').screenshot({ path: join(folder, 'header-quotas.png'), animations: 'disabled' })
   await page.evaluate(() => {
     const now = Date.parse('2026-10-09T03:00:00Z')
-    window.slpDemoRoot.render(window.React.createElement(window.slpDemo.ProviderQuotaLine, {
+    window.slpDemoRoot.render(window.React.createElement(window.slpDemo.QuotaLine, {
       provider: { id: 'deepseek-official', label: 'DeepSeek' }, ttlMs: 60000, now, refresh() {},
       data: { style: 'balance', isAvailable: true, fetchedAt: now, balances: [
         { currency: 'CNY', remaining: 12.34, granted: 2.34, toppedUp: 10 },

@@ -73,7 +73,7 @@ function harness({ hidden = false, wallTime = Date.now(), panelLayout = null } =
       disconnect() { this.nodes.clear() }
     }
   }
-  const source = fs.readFileSync(require.resolve('../lib/client'), 'utf8').replace('return module.exports', 'return { ContextProjection, ContextRow, componentOrder, reorderComponent, layoutPreset, matchingPreset, dockComponents, LayoutEditor, LayoutPreview, ToolActivityRow, toolElapsed, quotaRefreshOnStep, TpsRow, useLiveTps, useQuotaResource, normalizeWindows, formatPathSegs, fmtResetHours, codexWindowLabel, isCodexModel, isAntigravityModel, primarySubscriptionKind, looksLikeSubscription, providerMatchesModel, fmtMoney, ProviderQuotaLine, CodexQuotaLine, AntigravityQuotaLine, OpenCodeQuotaLine, parseSeconds, PeakPanel, PeakFooterDot, deepseekPeakStatus, HeaderChip, SettingsPage, DeepseekPeakChip, ActivityRow, childActivityRows, childElapsed, CostRow, estimateCost, quotaFreshness, QuotaChip, quotaState, fmtRetryIn, contextUsage, ContextPanel, STR, publishConfig, apiSetConfig, setScope: function (scope) { settingsScope = scope } }')
+  const source = fs.readFileSync(require.resolve('../lib/client'), 'utf8').replace('return module.exports', 'return { magpieSubscriptionHint, ContextProjection, ContextRow, componentOrder, reorderComponent, layoutPreset, matchingPreset, dockComponents, LayoutEditor, LayoutPreview, ToolActivityRow, toolElapsed, quotaRefreshOnStep, TpsRow, useLiveTps, useQuotaResource, formatPathSegs, fmtResetHours, minutesLabel, primarySubscriptionKind, looksLikeSubscription, providerMatchesModel, fmtMoney, QuotaLine, parseSeconds, PeakPanel, PeakFooterDot, deepseekPeakStatus, HeaderChip, SettingsPage, DeepseekPeakChip, ActivityRow, childActivityRows, childElapsed, CostRow, estimateCost, quotaFreshness, pickFoldLevel, QuotaSource, QUOTA_SOURCES, QuotaChip, quotaState, fmtRetryIn, contextUsage, ContextPanel, STR, publishConfig, apiSetConfig, setScope: function (scope) { settingsScope = scope } }')
   vm.runInNewContext(source, context)
   exported.setScope(scope)
   return {
@@ -257,7 +257,7 @@ test('a newly successful quota refresh is fresh immediately between age-clock ti
   const props = { resource, config: { ...config, cacheTtlMs: 1000 }, stepCount: 0 }
   h.renderComponent(h.QuotaChip, props)
   h.requests[0].resolve({ ok: true, data: { style: 'balance', fetchedAt: now, remaining: 1 } }); await flush()
-  const title = view => h.ProviderQuotaLine(view.children[0].props).children[0].props.title
+  const title = view => h.QuotaLine(view.children[0].props).children[0].props.title
   let view = h.renderComponent(h.QuotaChip, props)
   assert.match(title(view), /0s/)
   assert.equal(view.children.length, 1, 'header has only the quota component, with no visible age')
@@ -688,19 +688,19 @@ test('cost panel fits clipping containers at its final animation size and follow
 
 test('opening quota details keeps the last fetch time; the panel Refresh button forces a query', () => {
   for (const [name, data] of [
-    ['ProviderQuotaLine', { style: 'balance', remaining: 12, currency: 'CNY' }],
-    ['ProviderQuotaLine', { style: 'windows', windows: [{ label: '5h', usedPercent: 23 }] }],
-    ['CodexQuotaLine', { primary: { usedPercent: 20, windowMinutes: 300 } }],
-    ['AntigravityQuotaLine', { gemini5h: { usedPercent: 20, remainingPercent: 80 } }],
-    ['OpenCodeQuotaLine', { windows: { rolling: { percent: 20 } } }],
+    ['provider', { style: 'balance', remaining: 12, currency: 'CNY' }],
+    ['provider', { style: 'windows', windows: [{ label: '5h', usedPercent: 23 }] }],
+    ['codex', { style: 'windows', windows: [{ id: 'primary', usedPercent: 20, minutes: 300 }] }],
+    ['antigravity', { style: 'windows', windows: [{ id: 'gemini-5h', group: 'gemini', minutes: 300, usedPercent: 20, remainingPercent: 80 }] }],
+    ['opencode', { style: 'windows', windows: [{ id: 'rolling', minutes: 300, short: '5h', usedPercent: 20 }] }],
   ]) {
     const h = harness(); let calls = 0
-    const props = { provider: { label: 'Test' }, data, refresh() { calls++ } }
-    let view = h.renderComponent(h[name], props)
+    const props = { kind: name, provider: { label: 'Test' }, data, refresh() { calls++ } }
+    let view = h.renderComponent(h.QuotaLine, props)
     view.children[0].props.onClick()
     assert.equal(calls, 0, name + ' opening does not reset the fetch time')
-    view = h.renderComponent(h[name], props)
-    const panel = view.children[1]
+    view = h.renderComponent(h.QuotaLine, props)
+    const panel = view.children[1].children[0]
     assert.ok(panel, name + ' opens details')
     const body = typeof panel.type === 'function' ? panel.type(panel.props) : panel
     const foot = descendants(body, node => node.type?.name === 'PanelFoot')[0]
@@ -716,15 +716,15 @@ test('opening quota details keeps the last fetch time; the panel Refresh button 
 
 test('every quota chip opens details on click without refreshing or bypassing the cache', () => {
   for (const [name, data] of [
-    ['ProviderQuotaLine', { style: 'windows', windows: [{ label: '5h', usedPercent: 23 }] }],
-    ['ProviderQuotaLine', { style: 'balance', remaining: 12, currency: 'CNY' }],
-    ['CodexQuotaLine', { primary: { usedPercent: 20, windowMinutes: 300 }, planType: 'plus' }],
-    ['AntigravityQuotaLine', { gemini5h: { usedPercent: 20, remainingPercent: 80 } }],
-    ['OpenCodeQuotaLine', { windows: { rolling: { percent: 20 } } }],
+    ['provider', { style: 'windows', windows: [{ label: '5h', usedPercent: 23 }] }],
+    ['provider', { style: 'balance', remaining: 12, currency: 'CNY' }],
+    ['codex', { ...{ style: 'windows', windows: [{ id: 'primary', usedPercent: 20, minutes: 300 }] }, plan: 'plus' }],
+    ['antigravity', { style: 'windows', windows: [{ id: 'gemini-5h', group: 'gemini', minutes: 300, usedPercent: 20, remainingPercent: 80 }] }],
+    ['opencode', { style: 'windows', windows: [{ id: 'rolling', minutes: 300, short: '5h', usedPercent: 20 }] }],
   ]) {
     const h = harness(); let calls = 0
-    const props = { provider: { label: 'Test' }, data, refresh() { calls++ } }
-    const render = () => h.renderComponent(h[name], props)
+    const props = { kind: name, provider: { label: 'Test' }, data, refresh() { calls++ } }
+    const render = () => h.renderComponent(h.QuotaLine, props)
     const stale = render().children[0]
     assert.equal(stale.type, 'button', name)
     assert.equal(stale.props['aria-expanded'], false)
@@ -739,20 +739,20 @@ test('every quota chip opens details on click without refreshing or bypassing th
 
 test('quota errors are retry buttons with localized reasons; loading is inert', () => {
   const h = harness(); let calls = 0
-  for (const [name, error, reason] of [['CodexQuotaLine', 'account-required', /choose the account file/], ['AntigravityQuotaLine', 'account-required', /choose the account file/], ['ProviderQuotaLine', 'auth', /credential invalid/], ['OpenCodeQuotaLine', 'network', /quota fetch failed/]]) {
-    const chip = h[name]({ provider: { label: 'Test' }, error, refresh() { calls++ } }).children[0]
+  for (const [name, error, reason] of [['codex', 'no-credential', /Codex/], ['antigravity', 'no-credential', /Antigravity/], ['provider', 'auth', /credential invalid/], ['opencode', 'network', /quota fetch failed/]]) {
+    const chip = h.QuotaLine({ kind: name, provider: { label: 'Test' }, error, refresh() { calls++ } }).children[0]
     assert.equal(chip.type, 'button', name)
     assert.match(chip.props.title, reason)
     chip.props.onClick()
-    assert.equal(h[name]({ provider: { label: 'Test' }, data: null, error: null, refresh() {} }).children[0].type, 'span')
+    assert.equal(h.QuotaLine({ kind: name, provider: { label: 'Test' }, data: null, error: null, refresh() {} }).children[0].type, 'span')
   }
   assert.equal(calls, 4)
 })
 
 test('failed quota chips name the error and expose exhausted recovery without inventing a number', () => {
   const h = harness()
-  for (const name of ['CodexQuotaLine', 'AntigravityQuotaLine', 'ProviderQuotaLine', 'OpenCodeQuotaLine']) {
-    const chip = h[name]({ provider: { label: 'Test' }, error: 'network', retryExhausted: true, refresh() {} }).children[0]
+  for (const name of ['codex', 'antigravity', 'provider', 'opencode']) {
+    const chip = h.QuotaLine({ kind: name, provider: { label: 'Test' }, error: 'network', retryExhausted: true, refresh() {} }).children[0]
     assert.match(textContent(chip), /network error.*3 retries used/)
     assert.doesNotMatch(textContent(chip), /\?|\d+%/)
     assert.match(chip.props.title, /Automatic retries exhausted.*refocus/)
@@ -762,23 +762,24 @@ test('failed quota chips name the error and expose exhausted recovery without in
 
 test('used/left mode reads the same in chip, tooltip and details, and colour tracks consumption', () => {
   const sources = [
-    ['AntigravityQuotaLine', { gemini5h: { usedPercent: 14, remainingPercent: 86 }, geminiWeekly: { usedPercent: 90, remainingPercent: 10 } }],
-    ['CodexQuotaLine', { primary: { usedPercent: 14, windowMinutes: 300 }, secondary: { usedPercent: 90, windowMinutes: 10080 } }],
-    ['ProviderQuotaLine', { style: 'windows', windows: [{ label: '5h', usedPercent: 14 }, { label: '7d', usedPercent: 90 }] }],
-    ['OpenCodeQuotaLine', { windows: { rolling: { percent: 14 }, weekly: { percent: 90 } } }],
+    ['antigravity', { style: 'windows', windows: [{ id: 'gemini-5h', group: 'gemini', minutes: 300, usedPercent: 14, remainingPercent: 86 }, { id: 'gemini-weekly', group: 'gemini', minutes: 10080, usedPercent: 90, remainingPercent: 10 }] }],
+    ['codex', { style: 'windows', windows: [{ id: 'primary', usedPercent: 14, minutes: 300 }, { id: 'secondary', usedPercent: 90, minutes: 10080 }] }],
+    ['provider', { style: 'windows', windows: [{ label: '5h', usedPercent: 14 }, { label: '7d', usedPercent: 90 }] }],
+    ['opencode', { style: 'windows', windows: [{ id: 'rolling', minutes: 300, short: '5h', usedPercent: 14 }, { id: 'weekly', minutes: 10080, short: '7d', usedPercent: 90 }] }],
   ]
   for (const [name, data] of sources) {
     for (const [mode, shown, hidden, word] of [['used', /14%.*90%/, /86%|10%/, /14% used/], ['left', /86%.*10%/, /14%|90%/, /86% left/]]) {
-      const h = harness(), props = { provider: { label: 'Test' }, data, mode, refresh() {} }
-      let view = h.renderComponent(h[name], props)
+      const h = harness(), props = { kind: name, provider: { label: 'Test' }, data, mode, refresh() {} }
+      let view = h.renderComponent(h.QuotaLine, props)
       assert.match(textContent(view.children[0]), shown, name + ' ' + mode)
       assert.doesNotMatch(textContent(view.children[0]), hidden, name + ' ' + mode)
       assert.ok(descendants(view.children[0], node => word.test(node.props?.title || '')).length, name + ' tooltip')
       const red = descendants(view.children[0], node => node.props?.style?.background === 'var(--dsw-alias-state-error-primary)')
       assert.equal(red.length, 1, name + ' the 90%-used window stays red in either mode')
       view.children[0].props.onClick()
-      view = h.renderComponent(h[name], props)
-      const panel = typeof view.children[1].type === 'function' ? h.renderComponent(view.children[1].type, view.children[1].props) : view.children[1]
+      view = h.renderComponent(h.QuotaLine, props)
+      const opened = view.children[1].children[0]
+      const panel = typeof opened.type === 'function' ? h.renderComponent(opened.type, opened.props) : opened
       const values = descendants(panel, node => node.props?.className === 'slp-bar-pct').map(textContent)
       assert.deepEqual(values, mode === 'used' ? ['14%', '90%'] : ['86%', '10%'], name + ' details')
       assert.match(textContent(panel), mode === 'used' ? /used/ : /left/)
@@ -858,14 +859,15 @@ test('settings switch percentage mode and reset preferences in two steps without
 
 test('details footer marks a failed refresh as stale and offers a real refresh button', () => {
   const h = harness(); let calls = 0
-  const props = { data: { primary: { usedPercent: 20, windowMinutes: 300 }, fetchedAt: Date.now() }, staleError: 'network', ttlMs: 60000, refresh() { calls++ } }
-  let view = h.renderComponent(h.CodexQuotaLine, props)
+  const props = { kind: 'codex', data: { style: 'windows', windows: [{ id: 'primary', usedPercent: 20, minutes: 300 }], fetchedAt: Date.now() }, staleError: 'network', ttlMs: 60000, refresh() { calls++ } }
+  let view = h.renderComponent(h.QuotaLine, props)
   assert.ok(descendants(view.children[0], node => node.props?.className === 'slp-err').length, 'chip flags the failed refresh')
   view.children[0].props.onClick()
-  view = h.renderComponent(h.CodexQuotaLine, props)
+  view = h.renderComponent(h.QuotaLine, props)
   const foot = descendants(view.children[1], node => node.type === h.PanelFoot || node.type?.name === 'PanelFoot')[0]
   const rendered = foot.type(foot.props)
-  assert.match(rendered.children[0].type(rendered.children[0].props).props.className, /slp-stale/)
+  const freshness = rendered.children[0].children[1]
+  assert.match(freshness.type(freshness.props).props.className, /slp-stale/)
   const button = rendered.children[1]
   assert.equal(button.type, 'button')
   button.props.onClick({ stopPropagation() {} })
@@ -876,8 +878,8 @@ test('details footer marks a failed refresh as stale and offers a real refresh b
 test('OpenCode quota click both opens details and bypasses the cache immediately', async () => {
   const h = harness(), props = { resource: { kind: 'opencode', key: 'opencode', onStep: true }, config, stepCount: 0 }
   h.renderComponent(h.QuotaChip, props)
-  h.requests[0].resolve({ ok: true, data: { fetchedAt: Date.now(), windows: { rolling: { percent: 20 } } } }); await flush()
-  const line = () => h.OpenCodeQuotaLine(h.renderComponent(h.QuotaChip, props).children[0].props)
+  h.requests[0].resolve({ ok: true, data: { style: 'windows', fetchedAt: Date.now(), windows: [{ id: 'rolling', minutes: 300, usedPercent: 20 }] } }); await flush()
+  const line = () => h.QuotaLine(h.renderComponent(h.QuotaChip, props).children[0].props)
   line().children[0].props.onClick()
   assert.equal(h.requests.length, 1, 'opening details does not bypass the cache')
   assert.ok(line().children[1], 'details are opened without waiting for the refresh')
@@ -894,11 +896,11 @@ test('TPS distinguishes current estimate, retained old rate and settled average'
   assert.equal(h.renderTps('one'), null, 'a new session shows no TPS placeholder before any reading')
   h.sources[0].emit({ sessionId: 'one', phase: 'unavailable', tokensPerSecond: null })
   assert.equal(h.renderTps('one'), null, 'a reconnect without a prior rate stays hidden')
-  h.advance(100); h.sources[0].emit({ sessionId: 'one', phase: 'streaming', tokensPerSecond: 42, estimated: true })
+  h.advance(250); h.sources[0].emit({ sessionId: 'one', phase: 'streaming', tokensPerSecond: 42, estimated: true })
   assert.equal(h.renderTps('one').children[0], 'TPS ≈42 tok/s')
-  h.advance(100); h.sources[0].emit({ sessionId: 'one', phase: 'streaming', tokensPerSecond: null })
+  h.advance(250); h.sources[0].emit({ sessionId: 'one', phase: 'streaming', tokensPerSecond: null })
   assert.equal(h.renderTps('one').children[0], 'TPS last ≈42 tok/s')
-  h.advance(100); h.sources[0].emit({ sessionId: 'one', phase: 'completed', tokensPerSecond: 50, estimated: false })
+  h.advance(250); h.sources[0].emit({ sessionId: 'one', phase: 'completed', tokensPerSecond: 50, estimated: false })
   const settled = h.renderTps('one')
   assert.equal(settled.children[0], 'TPS 50 tok/s')
   assert.match(settled.props.title, /Average speed for this generation/)
@@ -908,7 +910,7 @@ test('TPS distinguishes current estimate, retained old rate and settled average'
 test('TPS marks streaming character estimates while keeping rounded rates readable', () => {
   const h = harness(); h.renderTps('one')
   for (const [rate, expected] of [[0, '0'], [12.4, '12'], [12.5, '13'], [99.9, '100'], [123.5, '124']]) {
-    h.advance(100)
+    h.advance(250)
     h.sources[0].emit({ sessionId: 'one', phase: 'streaming', tokensPerSecond: rate, estimated: true })
     assert.equal(h.renderTps('one').children[0], 'TPS ≈' + expected + ' tok/s')
   }
@@ -959,15 +961,15 @@ test('TPS push is session-isolated, polling-free and closed when hidden/disabled
   assert.equal(hidden.sources.length, 0); hidden.unmount()
 })
 
-test('TPS coalesces bursts to 25ms and flushes the latest final value', () => {
+test('TPS coalesces bursts to 200ms and flushes the latest final value', () => {
   const h = harness(); h.renderLive('one')
   const emit = (rate, phase = 'streaming') => h.sources[0].emit({ sessionId: 'one', phase, tokensPerSecond: rate })
   emit(10); assert.equal(h.renderLive('one').tokensPerSecond, 10)
   h.advance(5); emit(20); emit(30)
   assert.equal(h.timeouts.size, 1)
-  h.advance(19); assert.equal(h.renderLive('one').tokensPerSecond, 10)
+  h.advance(194); assert.equal(h.renderLive('one').tokensPerSecond, 10)
   h.advance(1); assert.equal(h.renderLive('one').tokensPerSecond, 30)
-  emit(40, 'completed'); h.advance(25)
+  emit(40, 'completed'); h.advance(200)
   assert.equal(h.renderLive('one').tokensPerSecond, 40)
   assert.equal(h.renderLive('one').phase, 'completed')
   assert.equal(h.timeouts.size, 0)
@@ -978,14 +980,14 @@ test('TPS retains same-session speed through TTFT and reconnect, never across se
   const h = harness(); h.renderLive('one')
   const emit = rate => h.sources[0].emit({ sessionId: 'one', phase: 'streaming', tokensPerSecond: rate, estimated: true })
   emit(null); assert.equal(h.renderLive('one').tokensPerSecond, null)
-  h.advance(100); emit(42)
-  h.advance(100); emit(null)
+  h.advance(250); emit(42)
+  h.advance(250); emit(null)
   assert.equal(h.renderLive('one').tokensPerSecond, 42)
   assert.equal(h.renderLive('one').held, true)
-  h.advance(100); h.sources[0].onerror()
+  h.advance(250); h.sources[0].onerror()
   assert.equal(h.renderLive('one').tokensPerSecond, 42)
   assert.equal(h.renderLive('one').phase, 'unavailable')
-  h.advance(100); emit(50)
+  h.advance(250); emit(50)
   assert.equal(h.renderLive('one').held, false)
   emit(60); assert.equal(h.timeouts.size, 1)
   assert.equal(h.renderLive('two'), null)
@@ -1036,7 +1038,7 @@ test('DeepSeek account models request the signed-in balance without borrowing th
 
 test('DeepSeek account failures explain the sign-in instead of a missing API key', () => {
   const h = harness()
-  const line = error => h.renderComponent(h.ProviderQuotaLine, {
+  const line = error => h.renderComponent(h.QuotaLine, {
     provider: { id: 'deepseek', label: 'DeepSeek' }, error, refresh: function () {}, now: Date.now(),
   })
   assert.match(textContent(line('signed-out')), /signed out/i)
@@ -1101,10 +1103,10 @@ test('switching quota sources cancels the old request and ignores late data', as
 
 test('billing provider and reset units do not infer Codex from a GPT model name', () => {
   const h = harness()
-  assert.equal(h.isCodexModel({ provider: 'openrouter', model: 'gpt-5.6' }), false)
-  assert.equal(h.isAntigravityModel({ provider: 'google', model: 'gemini-3' }), false)
-  assert.equal(h.isCodexModel({ provider: 'codex', model: 'gpt-5.6' }), true)
-  assert.equal(h.codexWindowLabel(300), '5h')
+  assert.equal(h.primarySubscriptionKind({ provider: 'openrouter', model: 'gpt-5.6' }), null)
+  assert.equal(h.primarySubscriptionKind({ provider: 'google', model: 'gemini-3' }), null)
+  assert.equal(h.primarySubscriptionKind({ provider: 'codex', model: 'gpt-5.6' }), 'codex')
+  assert.equal(h.minutesLabel(300), '5h')
   assert.equal(h.fmtResetHours(30), '30s')
   assert.equal(h.fmtResetHours(18000), '5.0h')
   assert.equal(h.fmtResetHours(47 * 3600), '47.0h')
@@ -1147,13 +1149,8 @@ test('a refused defaults reset preserves preferences and reports failure', async
   h.unmount()
 })
 
-test('missing OpenCode windows stay unknown and paths display only their last two segments', () => {
+test('paths display only their last two segments', () => {
   const h = harness()
-  assert.equal(h.normalizeWindows({ windows: {} }, 0).length, 0)
-  assert.equal(h.normalizeWindows({ windows: { rolling: { percent: null } } }, 0).length, 0)
-  const windows = h.normalizeWindows({ windows: { rolling: { percent: 0 } } }, 0)
-  assert.equal(windows.length, 1)
-  assert.equal(windows[0].pct, 0)
   assert.equal(h.formatPathSegs('/workspace/projects/statusline/', 2), 'projects/statusline')
   assert.equal(h.formatPathSegs('C:\\projects\\statusline', 2), 'projects/statusline')
 })
@@ -1212,7 +1209,7 @@ test('DeepSeek chip renders every currency, balance components and account avail
     { currency: 'USD', remaining: 0.5, granted: 0, toppedUp: 0.5 },
   ] }
   let refreshes = 0
-  const chip = h.ProviderQuotaLine({ provider, data, refresh: () => refreshes++ }).children[0]
+  const chip = h.QuotaLine({ provider, data, refresh: () => refreshes++ }).children[0]
   assert.match(textContent(chip), /DeepSeek/)
   assert.match(textContent(chip), /¥10\.00\+2\.34/, 'the chip shows paid balance plus gift without repeating the symbol')
   assert.match(textContent(chip), /\$0\.50/)
@@ -1226,12 +1223,12 @@ test('DeepSeek chip renders every currency, balance components and account avail
   assert.equal(amounts[0].props.style.color, undefined)
   assert.equal(amounts[1].props.style.color, 'var(--dsw-alias-state-error-primary)')
   chip.props.onClick(); assert.equal(refreshes, 0, 'opening details keeps the last fetch time')
-  const unavailable = h.ProviderQuotaLine({ provider, data: { ...data, isAvailable: false }, refresh() {} }).children[0]
+  const unavailable = h.QuotaLine({ provider, data: { ...data, isAvailable: false }, refresh() {} }).children[0]
   assert.match(unavailable.props.title, /account currently unavailable/)
   for (const amount of descendants(unavailable, node => node.props?.className === 'slp-seg-label')) {
     assert.equal(amount.props.style.color, 'var(--dsw-alias-state-error-primary)')
   }
-  const unknown = h.ProviderQuotaLine({ provider, data: { style: 'balance', remaining: null, used: undefined }, refresh() {} })
+  const unknown = h.QuotaLine({ provider, data: { style: 'balance', remaining: null, used: undefined }, refresh() {} })
   assert.match(textContent(unknown), /DeepSeek.*—/)
   assert.doesNotMatch(textContent(unknown), /\$0/)
   h.unmount()
@@ -1246,10 +1243,10 @@ test('balance details keep topped-up and granted amounts on separate lines', () 
     ] },
     refresh() {}, now: Date.now(),
   }
-  let view = h.renderComponent(h.ProviderQuotaLine, props)
+  let view = h.renderComponent(h.QuotaLine, props)
   const trigger = descendants(view, node => node.type === 'button' && node.props?.onClick)[0]
   trigger.props.onClick()
-  view = h.renderComponent(h.ProviderQuotaLine, props)
+  view = h.renderComponent(h.QuotaLine, props)
   const notes = descendants(view, node => node.props?.className === 'slp-panel-note').map(textContent)
   assert.ok(notes.some(text => /topped-up balance ¥51\.43/.test(text)), 'recharged balance is its own line')
   assert.ok(notes.some(text => /granted balance 3\.26/.test(text)), 'granted balance is its own line')
@@ -1265,20 +1262,20 @@ test('balance chips hide zero gift credit and zero currency wallets', () => {
     { currency: 'USD', remaining: 0, toppedUp: 0, granted: 0 },
     { currency: 'CNY', remaining: 12.34, toppedUp: 12.34, granted: 0 },
   ] }
-  const chip = h.ProviderQuotaLine({ provider, data, refresh() {} }).children[0]
+  const chip = h.QuotaLine({ provider, data, refresh() {} }).children[0]
   const chipText = textContent(chip)
   assert.match(chipText, /¥12\.34/)
   assert.doesNotMatch(chipText, /\$0\.00|USD/, 'a zero currency is hidden when another wallet is funded')
   assert.doesNotMatch(chipText, /\+/, 'a zero gift adds no plus suffix')
   assert.doesNotMatch(chip.props.title, /granted balance|USD/, 'zero gift and zero currency stay out of the tooltip')
-  let view = h.renderComponent(h.ProviderQuotaLine, { provider, data, refresh() {}, now: Date.now() })
+  let view = h.renderComponent(h.QuotaLine, { provider, data, refresh() {}, now: Date.now() })
   const trigger = descendants(view, node => node.type === 'button' && node.props?.onClick)[0]
   trigger.props.onClick()
-  view = h.renderComponent(h.ProviderQuotaLine, { provider, data, refresh() {}, now: Date.now() })
+  view = h.renderComponent(h.QuotaLine, { provider, data, refresh() {}, now: Date.now() })
   const notes = descendants(view, node => node.props?.className === 'slp-panel-note').map(textContent)
   assert.ok(notes.some(text => /topped-up balance ¥12\.34/.test(text)), 'the funded wallet remains')
   assert.ok(!notes.some(text => /granted balance/.test(text)), 'a zero gift has no detail line')
-  const empty = h.ProviderQuotaLine({ provider, data: { style: 'balance', currency: 'CNY', balances: [
+  const empty = h.QuotaLine({ provider, data: { style: 'balance', currency: 'CNY', balances: [
     { currency: 'USD', remaining: 0, toppedUp: 0, granted: 0 },
   ] }, refresh() {} }).children[0]
   assert.match(textContent(empty), /\$0\.00/, 'an all-zero wallet still shows a real zero')
@@ -1293,7 +1290,7 @@ test('subscription chips show provider, window labels and actual percentages wit
     { label: '7d', usedPercent: 0 },
     { label: 'monthly', usedPercent: null },
   ] }
-  const render = () => h.ProviderQuotaLine({ provider, data, refresh() {} })
+  const render = () => h.QuotaLine({ provider, data, refresh() {} })
   const chip = render()
   assert.match(textContent(chip), /Kimi Code.*5h.*23%.*7d.*0%/)
   assert.doesNotMatch(textContent(chip), /monthly/)
@@ -1496,7 +1493,7 @@ test('disabled or hidden peak indicators start no timers and countdown preferenc
   assert.doesNotMatch(button.props.title, /Off-peak in/)
   button.props.onClick()
   chip = h.renderComponent(h.DeepseekPeakChip, { countdown: false })
-  const panel = h.PeakPanel(chip.children[1].props)
+  const panel = h.PeakPanel(chip.children[1].children[0].props)
   assert.match(textContent(panel), /Official rules and current prices/)
   assert.doesNotMatch(textContent(panel), /Off-peak in/)
   h.documentEvents.get('keydown').forEach(fn => fn({ key: 'Escape', stopPropagation() {} }))
@@ -1808,7 +1805,8 @@ test('quotaShowAll renders every enabled subscription chip', () => {
   h.setConfig({ ...config, quotaShowAll: true, showDeepseekPeak: false, showCodexQuota: true, showAntigravityQuota: true, showOpenCodeQuota: true })
   const view = h.renderComponent(h.HeaderChip, { sessionId: 'fixture' })
   assert.equal(view.props.className, 'slp-header-group')
-  assert.deepEqual(Array.from(view.children[0], child => child.props.resource.kind), ['codex', 'antigravity', 'opencode'])
+  assert.deepEqual(Array.from(view.children[0], child => child.props.resource.kind), ['codex', 'antigravity', 'claude', 'opencode'])
+  assert.equal(view.children[1].props.resource.kind, 'magpie')
   h.unmount()
 })
 
@@ -1876,14 +1874,14 @@ test('a failed chip shows the reason and a live countdown; the clock stops when 
   h.renderComponent(h.QuotaChip, props)
   h.requests[0].resolve({ ok: false, error: 'network' }); await flush()
   let view = h.renderComponent(h.QuotaChip, props)
-  let chip = h.ProviderQuotaLine(view.children[0].props).children[0]
+  let chip = h.QuotaLine(view.children[0].props).children[0]
   assert.equal(chip.type, 'button')
   assert.equal(chip.props['data-state'], 'retrying')
   assert.match(textContent(chip), /network error.*retry in 15s/)
   assert.match(chip.props.title, /Automatic retry 1\/3 in 15s.*click to retry/)
   assert.equal(h.timers.size, 1, 'one per-second countdown clock')
   h.advance(5000); view = h.renderComponent(h.QuotaChip, props)
-  assert.match(textContent(h.ProviderQuotaLine(view.children[0].props).children[0]), /retry in 10s/)
+  assert.match(textContent(h.QuotaLine(view.children[0].props).children[0]), /retry in 10s/)
   h.setVisible(false); h.renderComponent(h.QuotaChip, props)
   assert.equal(h.timers.size, 0, 'hidden pages run no countdown')
   h.unmount()
@@ -1891,28 +1889,28 @@ test('a failed chip shows the reason and a live countdown; the clock stops when 
 
 test('quota details state the failure and the next step; screen readers get the stale reason', () => {
   const h = harness(), now = 1700000000000
-  const props = { data: { primary: { usedPercent: 20, windowMinutes: 300 }, fetchedAt: now - 1000 }, staleError: 'timeout',
+  const props = { kind: 'codex', data: { style: 'windows', windows: [{ id: 'primary', usedPercent: 20, minutes: 300 }], fetchedAt: now - 1000 }, staleError: 'timeout',
     retryAt: now + 30000, retryAttempt: 2, ttlMs: 60000, now, refresh() {} }
-  let view = h.renderComponent(h.CodexQuotaLine, props)
+  let view = h.renderComponent(h.QuotaLine, props)
   assert.equal(view.children[0].props['data-state'], 'retrying')
   assert.ok(descendants(view.children[0], node => node.props?.className === 'slp-sr' && /timeout/.test(textContent(node))).length)
-  view.children[0].props.onClick(); view = h.renderComponent(h.CodexQuotaLine, props)
+  view.children[0].props.onClick(); view = h.renderComponent(h.QuotaLine, props)
   const note = descendants(view.children[1], node => node.props?.className === 'slp-panel-status')[0]
   assert.equal(textContent(note), 'timeout · Automatic retry 2/3 in 30s')
   assert.ok(descendants(view.children[1], node => node.props?.className === 'slp-panel-scroll').length, 'body scrolls between fixed title and footer')
-  view = h.renderComponent(h.CodexQuotaLine, { ...props, retryAt: null, retryExhausted: true })
+  view = h.renderComponent(h.QuotaLine, { ...props, retryAt: null, retryExhausted: true })
   assert.match(textContent(descendants(view.children[1], node => node.props?.className === 'slp-panel-status')[0]), /exhausted/)
-  view = h.renderComponent(h.CodexQuotaLine, { ...props, staleError: null, retryAt: null })
+  view = h.renderComponent(h.QuotaLine, { ...props, staleError: null, retryAt: null })
   assert.equal(descendants(view.children[1], node => node.props?.className === 'slp-panel-status').length, 0, 'fresh data adds no note')
 })
 
 test('loading chips say loading; credential errors get a short reason, not a generic one', () => {
   const h = harness()
-  for (const name of ['CodexQuotaLine', 'AntigravityQuotaLine', 'ProviderQuotaLine', 'OpenCodeQuotaLine']) {
-    const loading = h[name]({ provider: { label: 'Test' }, data: null, error: null, refresh() {} }).children[0]
+  for (const name of ['codex', 'antigravity', 'provider', 'opencode']) {
+    const loading = h.QuotaLine({ kind: name, provider: { label: 'Test' }, data: null, error: null, refresh() {} }).children[0]
     assert.equal(loading.props.title, 'Loading quota…', name)
     assert.equal(loading.props['data-state'], 'loading')
-    const auth = h[name]({ provider: { label: 'Test' }, error: 'auth', refresh() {} }).children[0]
+    const auth = h.QuotaLine({ kind: name, provider: { label: 'Test' }, error: 'auth', refresh() {} }).children[0]
     assert.match(textContent(auth), /auth failed/, name)
     assert.equal(auth.props['data-state'], 'error')
   }
@@ -1968,27 +1966,68 @@ test('CTX details show occupancy, remaining room and the cache read/write split'
 
 test('Antigravity chip falls back to Claude/GPT windows and never shows a bare question mark', () => {
   const h = harness()
-  const data = { email: 'u@example.invalid', gemini5h: null, geminiWeekly: null, thirdParty: { usedPercent: 10, remainingPercent: 90 }, thirdPartyWeekly: { usedPercent: 60, remainingPercent: 40 } }
-  let view = h.renderComponent(h.AntigravityQuotaLine, { data, mode: 'used', refresh() {} })
+  const third = [{ id: 'third-5h', group: 'third', minutes: 300, usedPercent: 10, remainingPercent: 90 }, { id: 'third-weekly', group: 'third', minutes: 10080, usedPercent: 60, remainingPercent: 40 }]
+  const data = { style: 'windows', chipWindows: 2, email: 'u@example.invalid', windows: third }
+  let view = h.renderComponent(h.QuotaLine, { kind: 'antigravity', data, mode: 'used', refresh() {} })
   const chip = view.children[0]
   assert.match(textContent(chip), /10%.*60%/)
   assert.doesNotMatch(textContent(chip), /\?/)
   assert.match(chip.props.title, /5 hours: 10% used · this week: 60% used/)
   assert.doesNotMatch(chip.props.title, /third-party|Claude|GPT/)
   chip.props.onClick()
-  view = h.renderComponent(h.AntigravityQuotaLine, { data, mode: 'used', refresh() {} })
-  const panel = h.renderComponent(view.children[1].type, view.children[1].props)
+  view = h.renderComponent(h.QuotaLine, { kind: 'antigravity', data, mode: 'used', refresh() {} })
+  const panel = view.children[1].children[0]
   assert.deepEqual(descendants(panel, node => node.props?.className === 'slp-bar-pct').map(textContent), ['10%', '60%'])
   assert.deepEqual(descendants(panel, node => node.props?.className === 'slp-bar-label').map(textContent), ['5 hours', 'this week'])
   // With the Gemini group present, the other group carries its qualifier.
-  const both = { ...data, gemini5h: { usedPercent: 1, remainingPercent: 99 }, geminiWeekly: { usedPercent: 2, remainingPercent: 98 } }
-  view = h.renderComponent(h.AntigravityQuotaLine, { data: both, mode: 'used', refresh() {} })
-  const bothPanel = h.renderComponent(view.children[1].type, view.children[1].props)
+  const both = { ...data, windows: [{ id: 'gemini-5h', group: 'gemini', minutes: 300, usedPercent: 1, remainingPercent: 99 }, { id: 'gemini-weekly', group: 'gemini', minutes: 10080, usedPercent: 2, remainingPercent: 98 }, ...third] }
+  view = h.renderComponent(h.QuotaLine, { kind: 'antigravity', data: both, mode: 'used', refresh() {} })
+  const bothPanel = view.children[1].children[0]
   assert.deepEqual(descendants(bothPanel, node => node.props?.className === 'slp-bar-label').map(textContent), ['5 hours', 'this week', 'third-party 5 hours', 'third-party this week'])
   h.unmount()
   const empty = harness()
-  const blank = empty.renderComponent(empty.AntigravityQuotaLine, { data: { gemini5h: null }, mode: 'used', refresh() {} })
+  const blank = empty.renderComponent(empty.QuotaLine, { kind: 'antigravity', data: { style: 'windows', windows: [] }, mode: 'used', refresh() {} })
   assert.match(textContent(blank), /Antigravity unknown/)
   assert.doesNotMatch(textContent(blank), /\?/)
   empty.unmount()
+})
+
+test('header chip keeps the fullest form that fits', () => {
+  const h = harness()
+  const run = (fitsAt, max) => {
+    const applied = []
+    const level = h.pickFoldLevel(value => applied.push(value), () => applied[applied.length - 1] >= fitsAt, max)
+    return { level, applied }
+  }
+  assert.deepEqual(run(0, 3), { level: 0, applied: [0] })
+  assert.deepEqual(run(2, 3), { level: 2, applied: [0, 1, 2] })
+  // Nothing fits: stop at the smallest allowed form instead of hiding the percentage.
+  assert.deepEqual(run(9, 3), { level: 3, applied: [0, 1, 2, 3] })
+  assert.deepEqual(run(9, 2), { level: 2, applied: [0, 1, 2] })
+})
+
+test('quota source names each known path and hides unknown ones', () => {
+  const h = harness()
+  assert.deepEqual(Object.keys(h.QUOTA_SOURCES), ['magpie', 'cpa', 'official', 'direct', 'host'])
+  for (const key of Object.values(h.QUOTA_SOURCES)) {
+    for (const lang of Object.values(h.STR)) {
+      assert.equal(typeof lang[key], 'string', key)
+      assert.equal(typeof lang[key + 'Title'], 'string', key + 'Title')
+    }
+  }
+  assert.equal(h.QuotaSource({ source: 'nope' }), null)
+  assert.equal(h.QuotaSource({ source: undefined }), null)
+  assert.match(h.QuotaSource({ source: 'cpa' }).children[0], /CPA/)
+})
+
+test('model selection reaches any Magpie subscription without a name list', () => {
+  const h = harness()
+  assert.equal(h.magpieSubscriptionHint({ provider: 'magpie-workbuddy', model: 'workbuddy-ai/deepseek-v4' }), 'workbuddy-ai')
+  assert.equal(h.magpieSubscriptionHint({ provider: 'magpie-copilot', model: 'gpt-x' }), 'copilot')
+  assert.equal(h.magpieSubscriptionHint({ provider: 'magpie', model: 'gpt-x' }), '')
+  assert.equal(h.magpieSubscriptionHint({ provider: 'anthropic', model: 'claude' }), '')
+  assert.equal(h.primarySubscriptionKind({ provider: 'claude-sub', model: 'opus' }), 'claude')
+  assert.equal(h.primarySubscriptionKind({ provider: 'magpie', model: 'claude/opus' }), 'claude')
+  assert.equal(h.primarySubscriptionKind({ provider: 'anthropic', model: 'claude-opus' }), null)
+  assert.equal(h.primarySubscriptionKind({ provider: 'magpie', model: 'antigravity/claude-opus' }), 'antigravity')
 })

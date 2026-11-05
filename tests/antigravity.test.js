@@ -8,7 +8,10 @@ process.env.SLP_TEST = '1'
 const { __test: api } = require('../lib/index')
 const { RequestPool } = require('../lib/request-pool')
 const credentials = [100, 10, 0, -1].map((priority, i) => ({ priority, fileName: `account-${i}.json`, email: `test-${i}@example.invalid` }))
-const quota = (fraction = 1) => ({ fetchedAt: 123, gemini5h: { remainingFraction: fraction, remainingPercent: Math.round(fraction * 100) }, geminiWeekly: { remainingFraction: fraction, remainingPercent: Math.round(fraction * 100) } })
+const win = (id, group, exhausted, remainingPercent = exhausted ? 0 : 100) => ({ id, group, remainingPercent, usedPercent: 100 - remainingPercent, ...(exhausted ? { exhausted: true } : {}) })
+const pair = (group, exhausted, remainingPercent) => [win(group + '-5h', group, false, remainingPercent), win(group + '-weekly', group, exhausted, remainingPercent)]
+const quota = (fraction = 1) => ({ fetchedAt: 123, windows: pair('gemini', fraction === 0, Math.round(fraction * 100)) })
+const percentOf = (result, id) => result.windows.find(item => item.id === id)?.remainingPercent
 
 test('missing, malformed and out-of-range quotas stay unknown', () => {
   for (const remainingFraction of [undefined, null, '1', NaN, Infinity, -1, 1.1]) {
@@ -30,7 +33,7 @@ test('empty upstream summary never invokes the obsolete models fallback', async 
 // Google keys the summary on the client identity: a bare `antigravity` UA is
 // treated as a legacy client and loses the whole Gemini group, leaving only an
 // untouched Claude/GPT pool at 100%. The chip must keep the measured Gemini pair.
-test('quota summary requests identify as the Antigravity Hub client', async t => {
+test('quota summary requests do not claim to be another client', async t => {
   const before = global.fetch; t.after(() => { global.fetch = before })
   let sentHeaders
   const reset = secondsFromNow => new Date(Date.now() + secondsFromNow * 1000).toISOString()
@@ -48,9 +51,9 @@ test('quota summary requests identify as the Antigravity Hub client', async t =>
     ] }), { status: 200 })
   }
   const result = await api.fetchAntigravityQuotaForCred({ accessToken: 'fixture-not-real', fileName: 'a.json' }, Date.now())
-  assert.match(sentHeaders['User-Agent'], /^antigravity\/hub\/\d+\.\d+\.\d+ (linux|darwin|windows)\/(amd64|arm64)$/)
-  assert.equal(result.gemini5h.remainingPercent, 96)
-  assert.equal(result.geminiWeekly.remainingPercent, 99)
+  assert.equal(sentHeaders['User-Agent'], undefined)
+  assert.equal(percentOf(result, 'gemini-5h'), 96)
+  assert.equal(percentOf(result, 'gemini-weekly'), 99)
 })
 
 test('fallback preserves the successful account identity and priority', async () => {
@@ -65,12 +68,17 @@ test('fallback preserves the successful account identity and priority', async ()
 })
 
 test('positive fractions rounded to 0 percent are not treated as exhausted', async () => {
-  const result = await api.collectAntigravityQuotas(credentials.slice(0, 1), async () => quota(0.001))
+  const summary = { groups: [{ displayName: 'Gemini', buckets: [{ window: '5h', remainingFraction: 0.001 }, { window: 'weekly', remainingFraction: 0.5 }] }] }
+  const parsed = api.parseAntigravityQuotaSummary(0, {}, summary)
+  assert.equal(percentOf(parsed, 'gemini-5h'), 0)
+  const result = await api.collectAntigravityQuotas(credentials.slice(0, 1), async () => parsed)
   assert.equal(result.status, 'available')
+  const none = api.parseAntigravityQuotaSummary(0, {}, { groups: [{ displayName: 'Gemini', buckets: [{ window: '5h', remainingFraction: 0 }] }] })
+  assert.equal(none.windows[0].exhausted, true)
 })
 
 test('missing Gemini windows do not imply account availability', async () => {
-  const result = await api.collectAntigravityQuotas(credentials.slice(0, 2), async cred => cred.priority === 100 ? { thirdParty: { remainingFraction: 1 } } : quota())
+  const result = await api.collectAntigravityQuotas(credentials.slice(0, 2), async cred => cred.priority === 100 ? { windows: [win('third-5h', 'third')] } : quota())
   assert.equal(result.selectedFileName, credentials[1].fileName)
   assert.equal(result.accounts[0].status, 'unknown')
 })
@@ -137,21 +145,6 @@ test('readAllCredentials keeps CPA string priorities and orders accounts by them
   assert.deepEqual(creds.map(c => c.priority), [100, 50, 10])
 })
 
-// The CPA files only mirror Magpie. When their access token has expired and no
-// OAuth client secret is configured, their only answer is `auth`; a retryable
-// Magpie failure is the truer state and must not become a permanent absence.
-test('a retryable Magpie failure survives a stale CPA mirror auth error', () => {
-  for (const code of ['network', 'rate-limit', 'timeout']) {
-    const live = new Error(code)
-    assert.equal(api.preferredQuotaError(live, new Error('auth')), live, code)
-  }
-  const auth = new Error('auth')
-  assert.equal(api.preferredQuotaError(new Error('invalid-response'), auth).message, 'auth')
-  const mirrorRate = new Error('rate-limit')
-  assert.equal(api.preferredQuotaError(new Error('network'), mirrorRate), mirrorRate, 'a mirror rate limit stays actionable')
-  assert.equal(api.preferredQuotaError(null, auth).message, 'auth')
-})
-
 // Since 2026-10 some summaries carry only the Claude/GPT group (no Gemini group);
 // shape copied from a live response, values replaced.
 const thirdPartyOnly = { groups: [{ displayName: 'Claude and GPT models', buckets: [
@@ -161,17 +154,17 @@ const thirdPartyOnly = { groups: [{ displayName: 'Claude and GPT models', bucket
 
 test('a Claude/GPT-only summary keeps both of its windows', () => {
   const result = api.parseAntigravityQuotaSummary(0, { fileName: 'a.json' }, thirdPartyOnly)
-  assert.equal(result.gemini5h, null); assert.equal(result.geminiWeekly, null)
-  assert.equal(result.thirdParty.remainingPercent, 90)
-  assert.equal(result.thirdPartyWeekly.remainingPercent, 40)
+  assert.equal(percentOf(result, 'gemini-5h'), undefined); assert.equal(percentOf(result, 'gemini-weekly'), undefined)
+  assert.equal(percentOf(result, 'third-5h'), 90)
+  assert.equal(percentOf(result, 'third-weekly'), 40)
 })
 
 test('account status falls back to Claude/GPT windows only when Gemini is absent', async () => {
-  const third = fraction => ({ fetchedAt: 1, gemini5h: null, geminiWeekly: null, thirdParty: { remainingFraction: 1 }, thirdPartyWeekly: { remainingFraction: fraction } })
+  const third = fraction => ({ fetchedAt: 1, windows: pair('third', fraction === 0) })
   const result = await api.collectAntigravityQuotas(credentials.slice(0, 2), async cred => cred.priority === 100 ? third(0) : third(0.5))
   assert.deepEqual(result.accounts.map(a => a.status), ['exhausted', 'available'])
   assert.equal(result.selectedFileName, credentials[1].fileName)
   // With Gemini present, Claude/GPT exhaustion does not decide availability.
-  const mixed = await api.collectAntigravityQuotas(credentials.slice(0, 1), async () => ({ ...quota(), thirdPartyWeekly: { remainingFraction: 0 } }))
+  const mixed = await api.collectAntigravityQuotas(credentials.slice(0, 1), async () => ({ windows: [...quota().windows, win('third-weekly', 'third', true)] }))
   assert.equal(mixed.accounts[0].status, 'available')
 })

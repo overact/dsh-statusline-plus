@@ -6,7 +6,57 @@ page records the semantics that are easy to get wrong, plus how to verify a
 live response without leaking credentials.
 
 Last verified: 2026-10-26 (Antigravity against `agy` 1.4.7 and the live Magpie
-gateway; the rest from the live probes described below).
+gateway; the rest from the live probes described below). Verified 2026-11-05 with
+real login files: Codex `auth.json` and Claude `.credentials.json` return quota, and
+Claude needs no claimed client identity. The Antigravity login file does not yet: see
+**Antigravity**.
+
+## Result shape
+
+Every subscription reaches the browser in one shape, described in
+`lib/quota-window.js`: `{ style: 'windows', windows: [...], chipWindows?, plan?,
+accounts?, source, fetchedAt }`. A window has `usedPercent`, `remainingPercent` and
+`resetInSec`, plus optional `id`, `group`, `minutes`, `label`, `short` and
+`exhausted`. A window with `minutes` and no `label` is named in the viewer's
+language. The chip shows the leading group's windows, up to `chipWindows`; the
+panel lists all of them. `exhausted` is judged before rounding, so 99.9% used still
+counts as available. Wallets keep `style: 'balance'`. `lib/client.js` renders both
+with one `QuotaLine`.
+
+## Reading order
+
+Every subscription uses `readInOrder` (`lib/quota-order.js`):
+
+1. The user's pin, `quotaSources[<id>]`, default none. A pin is the only source
+   read, with no fallback. A chosen CPA account file is a pin on CPA.
+2. Tools: Magpie, then CPA.
+3. Others: the official tool's login file, then the DSH login (Codex only), or the
+   API key for API-key subscriptions.
+
+| Subscription | Tools | Others | Pins |
+| --- | --- | --- | --- |
+| Codex | Magpie, CPA | `$CODEX_HOME/auth.json`, DSH login | `magpie` `cpa` `official` `dsh` |
+| Claude | Magpie, CPA | `$CLAUDE_CONFIG_DIR/.credentials.json` | `magpie` `cpa` `official` |
+| Antigravity | Magpie, CPA | `~/.gemini/antigravity-cli/antigravity-oauth-token` | `magpie` `cpa` `official` |
+| OpenCode, Kimi Code, Z.ai | Magpie | API key | `magpie` `direct` |
+| Anything else in Magpie | Magpie | none | none |
+
+Rules:
+
+- The next source is tried only for `no-credential` or `auth`. Network, server and
+  decode failures of a real source are reported unchanged.
+- Magpie is optional. A refused connection means it is not running and reads as
+  absent. Any other Magpie failure also moves on, but stays the reported error if
+  the later sources can only say `auth`, because it can recover by itself.
+- Login files are only read: never refreshed, rewritten, logged or kept. Each token
+  goes only to the fixed endpoint of its own service. An expired login reads as
+  `auth`; signing in again belongs to the official tool.
+- The plugin does not present another client's identity (see Antigravity).
+- macOS keeps the Claude Code login in the Keychain, and the Antigravity CLI may use
+  the system keyring. Those are not read, so such users need Magpie or CPA.
+
+Shape sources: durandom/token-burn and steipete/CodexBar (Claude), raycast/extensions
+`agent-usage` (Antigravity token file).
 
 ## Where the code lives
 
@@ -14,14 +64,28 @@ gateway; the rest from the live probes described below).
 | --- | --- | --- |
 | Antigravity | `lib/quota-antigravity.js` | `tests/antigravity.test.js`, `tests/statusline.test.js` |
 | Codex | `lib/quota-codex.js` | `tests/dsh-integration.test.js` |
-| Magpie (fallback) | `lib/quota-magpie.js` | `tests/magpie-quota.test.js` |
+| Reading order | `lib/quota-order.js` | `tests/magpie-quota.test.js` |
+| Magpie (any subscription it reports) | `lib/quota-magpie.js` | `tests/magpie-quota.test.js` |
+| Claude | `lib/quota-claude.js` | `tests/magpie-quota.test.js` |
+| Official login files | `lib/quota-login-files.js` | `tests/magpie-quota.test.js` |
 | Kimi Code, Z.ai / Zhipu | `lib/quota-providers.js` | `lib/provider-presets.js`, `tests/provider-quota.test.js` |
 | OpenCode Go | `lib/quota-providers.js` (`fetchUsage`) | `tests/dsh-integration.test.js` |
 | OpenRouter, custom providers | `lib/quota-providers.js` | `tests/provider-quota.test.js` |
 | DeepSeek API key | `lib/provider-presets.js` | `tests/provider-quota.test.js` |
 | DeepSeek signed-in account | `lib/quota-deepseek-account.js` | `tests/provider-quota.test.js` |
 
-## Antigravity (CPA accounts)
+## Claude
+
+- Request: `GET https://api.anthropic.com/api/oauth/usage`, bearer token,
+  `anthropic-beta: oauth-2025-04-20`. No client identity is claimed.
+- Token: `claudeAiOauth.accessToken`, with `expiresAt` (epoch ms) and `scopes`. The
+  endpoint needs `user:profile`; a token without it reads as `no-credential`.
+- Response: `five_hour`, `seven_day`, `seven_day_opus`, `seven_day_sonnet`, each with
+  `utilization` (already 0–100, used) and `resets_at`. A null bucket is absent, not 0%.
+- A plain `anthropic` billing provider is usually an API key, so it does not select
+  this chip; `claude/` model namespaces and `claude*` providers do.
+
+## Antigravity (CPA accounts and the official login)
 
 - Read every `antigravity-*.json` under `~/.cli-proxy-api`; `priority` is a
   JSON string in the file and is sorted numerically. Accounts are queried
@@ -29,12 +93,16 @@ gateway; the rest from the live probes described below).
   the details panel lists all of them.
 - Request: `POST https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary`,
   JSON body `{ "project": "<project_id>" }`, bearer access token.
-- **Client identity matters.** Send `User-Agent: antigravity/hub/2.9.1 <os>/<arch>`
-  (for example `linux/amd64`). A bare `antigravity` User-Agent is treated as a
-  legacy client and the response silently omits the whole `Gemini Models`
-  group, leaving only an untouched Claude/GPT pool. `antigravity/1.4.7 ...`
-  also behaves like the legacy identity; the `hub/<version>` compatibility
-  identity is the one that returns both groups.
+- **Client identity matters.** The service keys its response on the User-Agent:
+  a bare `antigravity` value silently omits the whole `Gemini Models` group, while
+  `antigravity/hub/<version>` returns both groups. The plugin does not present
+  another client's identity, so this path may return only the Claude/GPT group; it
+  then sets `geminiHidden` and the panel says so. Magpie reports the full picture.
+- With the official login file, an unexpired token and no claimed identity, this
+  request answered 403 `SUBSCRIPTION_REQUIRED`, and `loadCodeAssist` returned no
+  project or current tier, on an account `agy` could read earlier. That reads as
+  `no-credential`, not as an expired login. Whether a client identity is the cause is
+  untested, because the plugin does not claim one.
 - Response: `groups[].displayName` is `Gemini Models` or `Claude and GPT
   models`; each group has `buckets[]` with `bucketId` (`gemini-weekly`,
   `gemini-5h`, `3p-weekly`, `3p-5h`), `window` (`weekly` / `5h`),
@@ -46,9 +114,8 @@ gateway; the rest from the live probes described below).
 - Independent check: `agy -p /usage --output-format json` prints the same
   groups and percentages. Compare the Gemini weekly/5h pair, not just the
   Claude/GPT pair.
-- A 401 refreshes the refresh token through `https://oauth2.googleapis.com/token`
-  (`ANTIGRAVITY_OAUTH_CLIENT_SECRET` is required) and writes the new access
-  token back to the CPA file.
+- Read-only: a 401 is reported as `auth`. The plugin does not refresh the token or
+  write to the CPA file, because that file belongs to CPA.
 
 ## Codex
 
@@ -76,28 +143,32 @@ gateway; the rest from the live probes described below).
   per-model rows alongside the aggregate pair; the parser only takes the
   aggregate names above.
 - Codex names: `5 hours`, `7 days`; the parser sorts by the length parsed from
-  the name, maps the shortest window to `primary` and the longest to
-  `secondary`.
-- Selection: `quotaSource` (`auto` | `magpie` | `cpa`, default `auto`).
-  `auto` reads Magpie when it is reachable and has the provider, otherwise CPA.
-  Pin `cpa` or `magpie` when both gateways run and the statusline should ignore
-  the other one. An explicitly selected CPA account (`codexAccount` /
-  `antigravityAccount`) keeps `auto` on CPA for that provider; `magpie` ignores
-  the account fields.
+  the name, shortest first.
+- Any provider is accepted. `parseMagpieSubscriptions` assumes no names, so each
+  user's list works as it is. A row with `error` or no measured window is left out;
+  several accounts of one provider show the first with quota left. Window `display`,
+  `unit` and `pool` are not used; `used` is enough for credit-type windows too.
+- `magpie-quota` answers one subscription by `id` (a model namespace or gateway
+  provider, exact name first, then a `-` prefix either way) or the whole list.
+- Selection is described in **Reading order**.
+- DSH login: `credentials.readRecord('llm-pi-ai/openai-codex')`. The grant's shape
+  is owned by the login plugin and unpublished, so an unexpected shape reads as
+  `no-credential`. An expired grant reads as `auth`; it is never refreshed. DSH has
+  no Antigravity login to read.
 - A stopped Magpie refuses the loopback connection immediately, so the CPA path
   is still reachable when Magpie is not running. The 8-second deadline covers a
   gateway that is busy refreshing: the first Antigravity read after a restart
   renews all three accounts and has been observed taking over 3 seconds.
 - Do not read a CPA fallback failure as the live state. When Magpie is reachable
   but slow, the CPA mirror can only answer `auth` (its saved access tokens have
-  expired and `ANTIGRAVITY_OAUTH_CLIENT_SECRET` is not set). The fetcher keeps
+  expired, and the plugin does not refresh them). The fetcher keeps
   Magpie's retryable failure in that case instead of turning it into a
   permanent "subscription missing" state.
 
 ## Subscription selection
 
 - The header chip picks a subscription from the model ID namespace first
-  (`antigravity/`, `codex/`, `opencode/`), then from the provider name
+  (`antigravity/`, `codex/`, `claude/`, `opencode/`), then from the provider name
   (`antigravity-sub`, `codex-sub`, `magpie-*`, ...).
 - One model shows one subscription. If that subscription returns
   `no-credential`, `auth`, `invalid-response` or `not-found`, the chip says
@@ -106,8 +177,12 @@ gateway; the rest from the live probes described below).
   cannot silently display Codex quota.
 - Transient failures (`network`, `timeout`, `rate-limit`) keep the retrying chip
   for the same subscription; they do not switch sources either.
+- A model with no dedicated reader asks Magpie by its namespace. Nothing shows when
+  Magpie has no such subscription, unless the model is on a subscription gateway,
+  which still says "Subscription not found".
 - `quotaShowAll` (default off) bypasses selection and renders every enabled
-  subscription chip (Codex, Antigravity, OpenCode) side by side.
+  subscription chip (Codex, Antigravity, Claude, OpenCode) side by side, then every
+  other subscription Magpie reports.
 
 ## Kimi Code
 

@@ -17,7 +17,8 @@ export async function installSettings(ctx, dsh) {
    // is what gets stored, so a rejected edit must leave nothing behind.
    const resolved=entry.fiber.ctx.waterfall(entry.fiber,'internal/config',next,()=>next);
    const validated=entry.fiber.runtime.Config(resolved);
-   for(const [key,value] of Object.entries(validated))updateVolatile(entry.fiber.config[key],value);
+   // cordis keeps the raw value in fiber.config; the resolved volatile cells live here.
+   for(const [key,value] of Object.entries(validated))updateVolatile(entry.fiber.effectiveConfig[key],value);
    entry.options.config=next;
   }
  });
