@@ -6,15 +6,26 @@ on:
 
 permissions:
   contents: read
-  # OIDC trusted publishing: npm authenticates this workflow without a token.
-  # npm removes bypass-2FA tokens for direct publishing in January 2027.
-  id-token: write
 
 jobs:
+  # Nothing is published until the whole suite passes on this exact commit,
+  # including the browser checks a plain push may skip.
+  verify:
+    name: Verify
+    uses: ./.github/workflows/verify.yml
+    with:
+      full: true
+
   npm:
     name: Publish to npm
+    needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      # OIDC trusted publishing: npm authenticates this workflow without a token.
+      # npm removes bypass-2FA tokens for direct publishing in January 2027.
+      id-token: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -26,11 +37,7 @@ jobs:
           registry-url: https://registry.npmjs.org
       - name: Use an npm CLI with trusted publishing
         run: npm install -g npm@^11.5.1
-      - name: Install project dependencies
-        run: npm install --ignore-scripts --no-audit --no-fund --no-package-lock
-      - name: Verify
-        run: npm run verify:all -- --ui none
-      - name: Check tag and published state
+      - name: Check tag, badge, changelog and published state
         id: check
         run: |
           version=$(node -p "require('./package.json').version")
@@ -38,6 +45,7 @@ jobs:
             echo "tag $GITHUB_REF_NAME does not match package version $version" >&2
             exit 1
           fi
+          npm run release:check -- --offline
           if npm view "dsh-statusline-plus@$version" version >/dev/null 2>&1; then
             echo "published=true" >> "$GITHUB_OUTPUT"
           else
@@ -48,4 +56,40 @@ jobs:
         run: npm publish --provenance --access public
       - name: Already published
         if: steps.check.outputs.published == 'true'
-        run: echo "dsh-statusline-plus@$version is already on npm; nothing to publish."
+        run: echo "$GITHUB_REF_NAME is already on npm; nothing to publish."
+
+  github-release:
+    name: Publish GitHub Release
+    needs: npm
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - name: Build the notes and both assets
+        run: |
+          version=$(node -p "require('./package.json').version")
+          npm pack
+          cp "dsh-statusline-plus-$version.tgz" dsh-statusline-plus.tgz
+          node scripts/release-check.mjs --notes > release-notes.md
+          echo "VERSIONED_ASSET=dsh-statusline-plus-$version.tgz" >> "$GITHUB_ENV"
+      # A re-run refreshes the assets and leaves notes edited by hand alone.
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$VERSIONED_ASSET" dsh-statusline-plus.tgz --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "$VERSIONED_ASSET" dsh-statusline-plus.tgz \
+              --verify-tag --latest \
+              --title "DSH Statusline Plus $GITHUB_REF_NAME" \
+              --notes-file release-notes.md
+          fi

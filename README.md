@@ -100,7 +100,7 @@ npm run release:check   # version, README badge, CHANGELOG, tag, npm dist-tag, a
 
 `dev:runtime` reads the active profile's `cordis.patch.yml` (`DSH_PROFILE_DIR` overrides `~/.dsh/profiles/web`) and reports whether host-level edits hot-reload; run it before advising a restart. `release:check` verifies the current package version against the README badge, changelog, git tag, npm dist-tags, GitHub Release assets and `releases/latest`; use `--offline` to skip the npm and GitHub checks.
 
-Pushing a `v*` tag publishes the version to npm through the release workflow; release steps, npm trusted-publishing setup and post-release checks are in [docs/development/releasing.md](docs/development/releasing.md).
+Pushing a `v*` tag runs the full verification, then publishes the version to npm and GitHub Releases through the release workflow; release steps, npm trusted-publishing setup and post-release checks are in [docs/development/releasing.md](docs/development/releasing.md).
 
 Per-feature design notes, including quota protocols, start at [docs/README.md](docs/README.md). Read the page for an area before changing it.
 

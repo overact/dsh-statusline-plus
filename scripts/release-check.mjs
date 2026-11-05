@@ -24,6 +24,17 @@ export function hasChangelogHeading(changelog, version) {
   return new RegExp('^##\\s+v?' + escaped + '\\s*$', 'm').test(String(changelog || ''))
 }
 
+/** The notes under a version's CHANGELOG heading, or null when it has none. */
+export function changelogSection(changelog, version) {
+  const lines = String(changelog || '').split(/\r?\n/)
+  const start = lines.findIndex(line => hasChangelogHeading(line, version))
+  if (start === -1) return null
+  const rest = lines.slice(start + 1)
+  const end = rest.findIndex(line => /^##\s/.test(line))
+  const body = (end === -1 ? rest : rest.slice(0, end)).join('\n').trim()
+  return body === '' ? null : body
+}
+
 export function releaseAssetNames(version) {
   return ['dsh-statusline-plus-' + version + '.tgz', ...REQUIRED_ASSETS]
 }
@@ -83,9 +94,10 @@ function readJson(file) {
 }
 
 function parseArgs(argv) {
-  const args = { offline: false, json: false, help: false }
+  const args = { offline: false, json: false, help: false, notes: false }
   for (const arg of argv) {
     if (arg === '--offline') args.offline = true
+    else if (arg === '--notes') args.notes = true
     else if (arg === '--json') args.json = true
     else if (arg === '--help' || arg === '-h') args.help = true
     else throw new Error('unknown argument: ' + arg)
@@ -101,6 +113,7 @@ function usage() {
     'the npm dist-tags, the GitHub Release assets and releases/latest.',
     '--offline  local checks only (skip npm and gh checks)',
     '--json     machine-readable result',
+    '--notes    print this version\'s CHANGELOG notes instead of checking',
   ].join('\n')
 }
 
@@ -112,6 +125,12 @@ function main(argv) {
 
   const pkg = readJson('package.json')
   const version = String(pkg.version || '')
+  if (args.notes) {
+    const notes = changelogSection(readFileSync(resolve(REPO_ROOT, 'CHANGELOG.md'), 'utf8'), version)
+    if (notes === null) throw new Error('CHANGELOG has no notes for ' + version)
+    console.log(notes)
+    return 0
+  }
   add('package.json version', VERSION_PATTERN.test(version), version || '(missing or invalid)')
 
   if (!VERSION_PATTERN.test(version)) {
@@ -202,7 +221,7 @@ function finish({ version, checks, json }) {
     }
     console.log(ok ? (skipped ? 'PASS (' + skipped + ' skipped)' : 'PASS') : 'FAIL')
     if (!ok) {
-      console.log('Fix the failed items, then run this check again. Release order: bump package.json/README/CHANGELOG, commit, tag (the Release workflow publishes npm), publish both tgz assets, mark the release latest.')
+      console.log('Fix the failed items, then run this check again. Release order: bump package.json/README/CHANGELOG, commit, push main and the tag; the Release workflow verifies, publishes npm and creates the GitHub Release. See docs/development/releasing.md.')
     }
   }
   return ok ? 0 : 1

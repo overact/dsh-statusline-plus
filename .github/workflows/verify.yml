@@ -5,6 +5,13 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # The release workflow runs this before it publishes.
+  workflow_call:
+    inputs:
+      full:
+        description: Run the browser checks whatever files changed
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -40,6 +47,7 @@ jobs:
         id: ui
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          FULL: ${{ inputs.full }}
         run: |
           node --input-type=module <<'JS'
           import { execFileSync } from 'node:child_process'
@@ -49,7 +57,7 @@ jobs:
           let run = true
           let known = false
           try { execFileSync('git', ['cat-file', '-e', `${base}^{commit}`], { stdio: 'ignore' }); known = true } catch {}
-          if (base && !/^0+$/.test(base) && known) {
+          if (process.env.FULL !== 'true' && base && !/^0+$/.test(base) && known) {
             const files = execFileSync('git', ['diff', '--name-only', '-z', base, 'HEAD'], { encoding: 'utf8' }).split('\0').filter(Boolean)
             run = selectChecks(files).panel !== null
           }

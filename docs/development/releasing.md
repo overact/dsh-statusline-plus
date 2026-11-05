@@ -5,15 +5,21 @@ Maintainer notes for this plugin. User-facing installation stays in the README.
 ## Release order
 
 1. Bump `version` in `package.json`, the README version badge and the CHANGELOG heading; move the `Unreleased` notes under the new heading.
-2. Run `npm run verify:all` (tests plus the browser panels), then repeat the tests against a fresh install (see [Fresh-install check](#fresh-install-check)).
-3. Commit `chore(release): <version>`, create the annotated tag `v<version>`, and push `main` and the tag.
-4. The tag runs `.github/workflows/release.yml`: it verifies the suite, checks that the tag matches `package.json`, and publishes `dsh-statusline-plus@<version>` to npm with provenance. A version that already exists on npm is skipped, so re-running is safe.
-5. Upload the two GitHub Release assets — `dsh-statusline-plus-<version>.tgz` and `dsh-statusline-plus.tgz`, byte-identical — and mark the release latest.
-6. Run `npm run release:check` to confirm package, README badge, CHANGELOG, tag, npm dist-tag, Release assets and `releases/latest` all agree.
+2. Commit `chore(release): <version>`, create the annotated tag `v<version>`, and run `git push origin main v<version>`.
+3. The tag runs `.github/workflows/release.yml`, in this order, each step only if the last passed:
+   1. **Verify:** the whole of `verify.yml` on that commit, including the oldest supported DSH and the browser checks. A plain push may skip the browser checks; this run never does.
+   2. **npm:** checks the tag against `package.json`, the README badge and the CHANGELOG, then publishes with provenance. A version already on npm is skipped.
+   3. **GitHub Release:** builds the two byte-identical assets, `dsh-statusline-plus-<version>.tgz` and `dsh-statusline-plus.tgz`, and creates the latest release. Its notes are the version's CHANGELOG section. Edit them with `gh release edit` if the release deserves a better summary.
+4. Run `npm run release:check` to confirm package, README badge, CHANGELOG, tag, npm dist-tag, Release assets and `releases/latest` all agree.
+
+## When the tag run fails
+
+- **Failed at Verify, or at npm's checks:** nothing was published. Fix it on `main`, move the tag with `git tag -fa v<version> -m v<version>`, and run `git push origin main` and then `git push -f origin v<version>`.
+- **Failed at or after publishing:** never move the tag, because npm cannot republish a version. Re-run the workflow's failed jobs. A re-run skips what is already on npm, refreshes the assets and leaves the release notes alone. If the published code itself is wrong, release a new version.
 
 ## Fresh-install check
 
-The local `node_modules` can hold a newer DSH than the version `package.json` pins, and that pinned version is what the tag workflow tests. There is no lockfile, so CI always installs fresh. The suite can therefore pass locally and fail on the tag: 0.1.13 failed its first tag run this way, and the tag had to be moved. Before tagging, run what CI runs on a committed copy of the release:
+Optional, and worth running when the suite or the DSH dependency changed: it finds on your machine what would otherwise fail the tag run. The local `node_modules` can hold a newer DSH than the version `package.json` pins, and that pinned version is what CI tests. There is no lockfile, so CI always installs fresh. Run what CI runs on a committed copy of the release:
 
 ```sh
 dir=$(mktemp -d)
