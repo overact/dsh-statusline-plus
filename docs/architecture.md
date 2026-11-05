@@ -55,7 +55,8 @@ from `http-route.js`. Quota routes answer HTTP 200 with `{ ok: false, error }`, 
 `quotaRoute` turns any error outside its allow-list into `network`, so raw exception
 text stays on the Host. A new stable error code must be added to
 `ACCOUNT_QUOTA_ERRORS` or `PROVIDER_QUOTA_ERRORS` and to the client's error text. The
-`usage` and `git` routes do not use `quotaRoute` and return the error message as it is.
+`git` route has its own list, `GIT_ERRORS`. The `usage` route does not use `quotaRoute` and
+returns the error message as it is.
 
 ## Request pools
 

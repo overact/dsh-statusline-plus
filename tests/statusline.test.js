@@ -585,8 +585,188 @@ test('fetchGitStatus throws on genuine fatal git errors instead of misreporting 
     async () => {
       await __test.fetchGitStatus(fakeSubproc, '/tmp/fake-repo')
     },
-    /git status 失败.*fatal: index file corrupt/
+    /^Error: git-failed$/
   )
+})
+
+function makeRepo(root, name) {
+  const repo = join(root, name)
+  mkdirSync(repo)
+  git(root, ['init', '-q', repo])
+  git(repo, ['config', 'user.email', 'test@example.com'])
+  git(repo, ['config', 'user.name', 'Test'])
+  writeFileSync(join(repo, 'a.ts'), 'x\n')
+  git(repo, ['add', 'a.ts'])
+  git(repo, ['commit', '-qm', 'init'])
+  return repo
+}
+
+function gitWithEnv(extraEnv, seen = []) {
+  return {
+    async resolveExecutable() { return 'git' },
+    spawn({ argv, cwd, env }) {
+      seen.push(env)
+      const child = spawn(argv[0], argv.slice(1), { cwd, env: { ...process.env, ...env, ...extraEnv } })
+      let stdout = '', stderr = ''
+      child.stdout.on('data', chunk => { stdout += chunk })
+      child.stderr.on('data', chunk => { stderr += chunk })
+      const done = new Promise(resolveDone => child.on('close', (exitCode, signal) => resolveDone({ exitCode, signal })))
+      return { done, collected: { stdout: { readFrom: () => ({ text: stdout }) }, stderr: { readFrom: () => ({ text: stderr }) } } }
+    },
+  }
+}
+
+test('Git tells a missing repository apart from one it cannot read', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'slp-test-'))
+  try {
+    const seen = []
+    const plain = join(root, 'plain')
+    mkdirSync(plain)
+    assert.deepEqual(await __test.fetchGitStatus(gitWithEnv({}, seen), plain), { isRepo: false })
+    assert.ok(seen.every(env => env.LC_ALL === 'C'), 'Git wording must not follow the user locale')
+
+    const owned = makeRepo(root, 'owned')
+    await assert.rejects(__test.fetchGitStatus(gitWithEnv({ GIT_TEST_ASSUME_DIFFERENT_OWNER: '1' }), owned), /^Error: git-unsafe-repo$/)
+
+    const head = makeRepo(root, 'head')
+    writeFileSync(join(head, '.git/HEAD'), 'garbage\n')
+    await assert.rejects(__test.fetchGitStatus(gitWithEnv({}), head), /^Error: git-failed$/)
+
+    const index = makeRepo(root, 'index')
+    writeFileSync(join(index, '.git/index'), 'not an index')
+    await assert.rejects(__test.fetchGitStatus(gitWithEnv({}), index), /^Error: git-failed$/)
+  } finally { rmSync(root, { recursive: true, force: true }) }
+})
+
+test('A remote shell without Git reads as not found, and an invalid path as invalid', async () => {
+  const subprocess = {
+    async resolveExecutable() { return 'git' },
+    spawn: () => ({ done: Promise.resolve({ exitCode: 127, signal: null }),
+      collected: { stdout: { readFrom: () => ({ text: '' }) }, stderr: { readFrom: () => ({ text: 'sh: git: command not found' }) } } }),
+  }
+  await assert.rejects(__test.fetchGitStatus(subprocess, '/tmp'), /^Error: git-not-found$/)
+  await assert.rejects(__test.fetchGitStatus(subprocess, 'relative/path'), /^Error: git-invalid-cwd$/)
+})
+
+test('Too many untracked files keep the rest of the status, and the full run is not repeated', async () => {
+  const statusCalls = []
+  let trackedOverflow = false
+  const subprocess = {
+    async resolveExecutable() { return '/usr/bin/git' },
+    spawn({ argv }) {
+      const isStatus = argv.includes('status'), skipped = argv.includes('--untracked-files=no')
+      if (isStatus) statusCalls.push(skipped)
+      const lossy = isStatus && (!skipped || trackedOverflow)
+      const text = argv.includes('rev-parse') ? '/tmp/repo\n' : isStatus ? '# branch.head main\0' : '1\t2\ta.ts\n'
+      return { done: Promise.resolve({ exitCode: 0, signal: null }),
+        collected: { stdout: { readFrom: () => ({ text, lossy }) }, stderr: { readFrom: () => ({ text: '' }) } } }
+    },
+  }
+  const lookups = __test.createGitLookups()
+  const first = await __test.fetchGitStatus(subprocess, '/tmp/repo', undefined, undefined, lookups)
+  assert.equal(first.branch, 'main')
+  assert.equal(first.untrackedUnknown, true)
+  assert.deepEqual(first.lineStats, { added: 1, deleted: 2 })
+  assert.deepEqual(statusCalls, [false, true])
+
+  await __test.fetchGitStatus(subprocess, '/tmp/repo', undefined, undefined, lookups)
+  assert.deepEqual(statusCalls, [false, true, true], 'the overflowing run is remembered')
+
+  trackedOverflow = true
+  await assert.rejects(__test.fetchGitStatus(subprocess, '/tmp/repo', undefined, undefined, __test.createGitLookups()), /^Error: git-too-many-files$/)
+})
+
+test('Git UI reports a repository it cannot read, and recovers', async () => {
+  const harness = loadClientPluginForTest({ deferGit: true, initialConfig: { enabled: true, showGit: true, showCwd: false, showContext: false, showTokens: false, showTps: false } })
+  try {
+    const dock = harness.registrations.find(entry => entry.spec.name === 'conversation.composer.dock')
+    const renderer = harness.createRenderer()
+    const element = dock.component({ sessionId: 's1', useSessions: select => select({ byId: { s1: { cwd: '/tmp/repo' } } }), useProjection: () => null })
+    const render = () => renderer.render(element.type, element.props)
+    const gitNode = panel => panel.props.children[0].props.children[0].find(node => node.props.key === 'git')
+    render()
+    harness.gitResolvers[0](null, 'git-unsafe-repo')
+    await new Promise(setImmediate)
+    const failed = gitNode(render())
+    assert.equal(failed.props.errorVisible, true, 'a lasting failure shows at once')
+    const button = failed.type(failed.props).props.children[0]
+    assert.equal(button.props.children[1].props.children[0], '⎇ ?')
+    assert.match(button.props.title, /safe\.directory/)
+
+    failed.props.refresh()
+    assert.equal(JSON.parse(harness.gitRequests[1].options.body).force, true, 'the chip retries on click')
+    assert.equal(gitNode(render()).props.errorVisible, true, 'the chip stays while retrying')
+    harness.gitResolvers[1]({ isRepo: false })
+    await new Promise(setImmediate)
+    const absent = gitNode(render())
+    assert.equal(absent.props.errorVisible, false)
+    assert.equal(absent.type(absent.props), null, 'outside a repository nothing shows')
+
+    absent.props.refresh()
+    harness.gitResolvers[2](null, 'git-failed')
+    await new Promise(setImmediate)
+    const afterAbsent = gitNode(render())
+    assert.equal(afterAbsent.type(afterAbsent.props).props.children[0].props.children[1].props.children[0], '⎇ ?',
+      'an earlier "no repository" answer is not data to fall back on')
+    renderer.unmount()
+  } finally { harness.restore() }
+})
+
+test('Git UI waits for a second failure before reporting a slow answer, without needing activity', async () => {
+  const clock = { now: 1000, tasks: new Map() }
+  const harness = loadClientPluginForTest({ clock, deferGit: true, initialConfig: { enabled: true, showGit: true, showContext: false, showTokens: false, showTps: false } })
+  try {
+    const dock = harness.registrations.find(entry => entry.spec.name === 'conversation.composer.dock')
+    const renderer = harness.createRenderer()
+    const element = dock.component({ sessionId: 's1', useSessions: select => select({ byId: { s1: { cwd: '/tmp/repo' } } }), useProjection: () => null })
+    const render = () => renderer.render(element.type, element.props)
+    const gitProps = panel => panel.props.children[0].props.children[0].find(node => node.props.key === 'git').props
+    const advance = async ms => { clock.now += ms; for (const [token, task] of clock.tasks) if (task.at <= clock.now) { clock.tasks.delete(token); task.fn() } await new Promise(setImmediate) }
+    render()
+    harness.gitResolvers[0](null, 'git-timeout')
+    await new Promise(setImmediate)
+    assert.equal(gitProps(render()).errorVisible, false, 'one slow answer stays quiet')
+
+    await advance(15999); assert.equal(harness.gitRequests.length, 1, 'the retry waits out the Host error cache')
+    await advance(1); assert.equal(harness.gitRequests.length, 2)
+    harness.gitResolvers[1](null, 'git-timeout')
+    await new Promise(setImmediate)
+    assert.equal(gitProps(render()).errorVisible, true, 'a second failure is reported')
+    assert.equal(clock.tasks.size, 0, 'only one automatic retry per failure streak')
+
+    gitProps(render()).refresh()
+    harness.gitResolvers[2]({ isRepo: true, repoRoot: '/tmp/repo', branch: 'main', counts: {}, lineStats: null })
+    await new Promise(setImmediate)
+    const recovered = gitProps(render())
+    assert.equal(recovered.errorVisible, false)
+    assert.equal(recovered.data.branch, 'main')
+    renderer.unmount()
+  } finally { harness.restore() }
+})
+
+test('Git UI names the failure behind a stale mark and marks uncounted untracked files', async () => {
+  const harness = loadClientPluginForTest({ deferGit: true, initialConfig: { enabled: true, showGit: true, showCwd: false, showContext: false, showTokens: false, showTps: false } })
+  try {
+    const dock = harness.registrations.find(entry => entry.spec.name === 'conversation.composer.dock')
+    const renderer = harness.createRenderer()
+    const element = dock.component({ sessionId: 's1', useSessions: select => select({ byId: { s1: { cwd: '/tmp/repo' } } }), useProjection: () => null })
+    const render = () => renderer.render(element.type, element.props)
+    const gitNode = panel => panel.props.children[0].props.children[0].find(node => node.props.key === 'git')
+    const pieces = node => node.type(node.props).props.children[0].props.children[0]
+    render()
+    harness.gitResolvers[0]({ isRepo: true, repoRoot: '/tmp/repo', branch: 'main', untrackedUnknown: true,
+      counts: { staged: 0, unstaged: 0, untracked: 0, conflict: 0 }, lineStats: null })
+    await new Promise(setImmediate)
+    const first = gitNode(render())
+    assert.ok(pieces(first).some(piece => piece.props.key === 'ut' && piece.props.children[0] === '??'))
+    first.props.refresh()
+    harness.gitResolvers[1](null, 'git-failed')
+    await new Promise(setImmediate)
+    const stale = gitNode(render())
+    assert.equal(stale.props.data.branch, 'main')
+    assert.match(pieces(stale).find(piece => piece.props.key === 'stale').props.title, /git status/)
+    renderer.unmount()
+  } finally { harness.restore() }
 })
 
 test('Git keeps branch/file state when optional line statistics fail', async () => {
@@ -1408,7 +1588,7 @@ test('Git keeps found roots and the git path, and resolves a root again when it 
   assert.equal(lookups, 1, 'second refresh reuses the git path')
   commands.length = 0
   rootWorks = false
-  await assert.rejects(__test.fetchGitStatus(subprocess, '/tmp/repo', undefined, undefined, cache), /git status/)
+  await assert.rejects(__test.fetchGitStatus(subprocess, '/tmp/repo', undefined, undefined, cache), /^Error: git-failed$/)
   assert.equal(commands.filter(name => name === 'rev-parse').length, 1, 'a failing cached root is resolved again')
 })
 
@@ -1420,6 +1600,7 @@ test('Git only caches found repositories, so a new git init is seen at once', as
       if (argv.includes('rev-parse')) revParse++
       return { done: Promise.resolve({ exitCode: argv.includes('rev-parse') && !repo ? 128 : 0, signal: null }), collected: {
         stdout: { readFrom: () => ({ text: argv.includes('rev-parse') ? '/tmp/repo' : '' }) },
+        stderr: { readFrom: () => ({ text: argv.includes('rev-parse') && !repo ? 'fatal: not a git repository' : '' }) },
       } }
     },
   }

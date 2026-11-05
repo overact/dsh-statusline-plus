@@ -41,6 +41,13 @@ async function call(route, body = {}, method = 'POST') {
   return res
 }
 
+test('the Git route answers with a stable code, never a raw exception', async t => {
+  const f = await fixture(); t.after(f.close)
+  // The fixture's subprocess service has no spawn, so the host hits a real TypeError.
+  const response = await call(f.routes.get('/statusline/api/git'), { cwd: '/tmp', sessionId: 's1' })
+  assert.deepEqual(response.value, { ok: false, error: 'git-failed' })
+})
+
 test('quota network diagnostics identify transport failures without leaking exception text', async t => {
   const secret = 'fixture-secret-must-not-appear'
   const error = new TypeError('fetch failed ' + secret, { cause: new AggregateError([

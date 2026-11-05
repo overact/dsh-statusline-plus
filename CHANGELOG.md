@@ -1,5 +1,10 @@
 # Release notes
 
+## Unreleased
+
+- The Git chip no longer disappears when Git cannot read a repository. It shows `⎇ ?` with the reason in its tooltip, and clicking it retries; a directory outside any repository still shows nothing. A repository refused by `safe.directory` or with a damaged `.git/HEAD` is no longer mistaken for no repository.
+- A repository with too many untracked files keeps its branch, counts and line totals, and shows `??` for the untracked count.
+
 ## 0.1.13
 
 - Quota works without Magpie or CPA. Every subscription now reads in one order: your choice for that subscription (default none), then Magpie, CPA and similar tools, then the official tool's login file. Codex reads `~/.codex/auth.json`, Claude reads `~/.claude/.credentials.json`, and Antigravity reads its CLI token. Login files are only read: an expired token is reported, never refreshed or written back.

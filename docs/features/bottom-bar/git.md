@@ -52,23 +52,44 @@ cached one waits for the TTL or a manual refresh.
 
 ## Errors
 
-The chip does not display error text. With no data it renders nothing, and with old data it
-adds a stale mark. The route's response is the place to look when debugging. Its messages are
-raw, some in Chinese.
+Being outside a repository is normal, so the chip stays hidden. A repository Git cannot read
+shows `⎇ ?`, muted, with the reason in its tooltip. Clicking it retries. If earlier data
+exists, that data stays with a `!` whose tooltip names the reason.
 
 | Situation | Route result | Chip with no earlier data |
 | --- | --- | --- |
-| Not a repository, or the directory is gone | `isRepo: false` | Hidden, as intended |
-| `safe.directory` refusal, corrupt `.git/HEAD` | `isRepo: false` | Hidden |
-| Corrupt `.git/index` | Error | Hidden |
-| Status output over 262144 bytes, such as 12000 untracked files | `git-output-too-large` | Hidden |
-| Git hangs past the deadline | `git-timeout` | Hidden |
-| No Git executable | Error | Hidden |
+| Not a repository, or the directory is gone | `isRepo: false` | Hidden |
+| `safe.directory` refusal | `git-unsafe-repo` | `⎇ ?` |
+| Corrupt `.git/index`, or corrupt `.git/HEAD` locally | `git-failed` | `⎇ ?` |
+| Git missing | `git-not-found` | `⎇ ?` |
+| Invalid path | `git-invalid-cwd` | `⎇ ?` |
+| Tracked changes alone overflow the output limit | `git-too-many-files` | `⎇ ?` |
+| Git does not answer in time | `git-timeout` | `⎇ ?` after a second failure |
+| The route cannot be reached | `network` (browser only) | `⎇ ?` after a second failure |
 
-**Known gap:** `resolveGitRepo` treats every `rev-parse` failure as "not a repository", so the
-second row is indistinguishable from the first, even on the Host. A hidden chip also has no
-retry button, though later refreshes still run. The only recovery signal is the chip
-returning.
+Rules for this table:
+
+- **Stable codes.** The route answers only with `GIT_ERRORS`, and the wording is in the client's
+  locale table. Git's own output can name private paths, so it stays on the Host. A new code
+  also needs an entry in `GIT_ERROR_TEXT`.
+- **Locale.** `gitFailureCode` reads Git's English wording, so every command runs with
+  `LC_ALL=C`. The SSH route forwards it. Any failure it does not recognize reads as `git-failed`.
+- **Damaged `HEAD`.** Git itself says "not a git repository" here, so `hasGitEntry` looks for a
+  `.git` entry on the way up. A remote workspace has no cheap way to look, so there it still
+  reads as no repository.
+- **Slow answers.** One timeout is common on a network mount. Refreshes follow activity, so an
+  idle session would never ask twice; the client retries once after 16 s, just past the Host's
+  15 s error cache.
+- **`safe.directory`.** The tooltip names the command. The plugin never changes Git config,
+  because trusting a repository is the user's decision.
+
+## Too many untracked files
+
+Status output over 262144 bytes, such as a large unignored directory, would otherwise lose the
+whole chip. `readGitStatus` reads again with `--untracked-files=no`, so the branch, the tracked
+counts and the line counts still show, and the untracked count reads `??`. A full run that
+overflows still costs its whole duration, so the overflow is remembered in the lookups for
+their TTL. A manual refresh tries the full run again.
 
 ## Tests
 
