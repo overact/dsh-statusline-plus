@@ -22,7 +22,8 @@ Settings: `componentOrder`, `hideBottomOnNarrow`, and each component's `show*` s
 - **Wrapping.** All groups sit in one flex row and wrap whole. `useWrapMarkers` sets
   `data-line-start` so separators can follow the actual lines.
 - **Empty groups.** A component with no real reading renders nothing rather than a
-  placeholder.
+  placeholder. A failure is different from having nothing to show: Git reports a repository it
+  cannot read as `⎇ ?`. See [Git](git.md#errors).
 - **Narrow screens.** With `hideBottomOnNarrow`, the row unmounts at an input width of
   480 px or less, which also stops its client activity. It measures the sibling
   `[data-composer-card]`, because the dock shrinks to its contents and would latch the

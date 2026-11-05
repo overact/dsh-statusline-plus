@@ -5,9 +5,10 @@ counts, and added/deleted lines for the session's workspace, locally or over SSH
 
 ## Code
 
-`GitLine` and the refresh logic in `LiveStatusPanel` (`lib/client.js`); `fetchGitStatus`,
-`resolveGitRepo`, `parseGitStatusV2`, `parseNumstat`, `createGitLookups`
-(`lib/git-status.js`); the `git` route (`lib/index.js`).
+`GitLine`, `GIT_ERROR_TEXT`, `gitErrorVisible` and the refresh logic in `LiveStatusPanel`
+(`lib/client.js`); `fetchGitStatus`, `resolveGitRepo`, `gitFailureCode`, `readGitStatus`,
+`parseGitStatusV2`, `parseNumstat`, `createGitLookups` (`lib/git-status.js`); the `git` route
+and `GIT_ERRORS` (`lib/index.js`).
 
 Settings: `showGit`, `showCwd`, `gitCwd`.
 
@@ -19,10 +20,12 @@ from history.
 
 ## When it refreshes
 
-There is no timer. It refreshes on mount, on a change of session or directory, when a step
-ends (`sessionStats.steps` rises), when the page regains visibility or focus, and on manual
-retry. Requests for one session and directory merge, and at most one runs per second; a
-trailing refresh runs after the current one.
+There is no polling. It refreshes on mount, on a change of session or directory, when a step
+ends (`sessionStats.steps` rises), when the page regains visibility or focus, and on click.
+The one automatic retry is after a slow answer; see **Errors**. Requests for one session and
+directory merge, and at most one runs per second; a trailing refresh runs after the current
+one. A refresh keeps what is on screen until its answer arrives, so a retry cannot make the
+chip blink.
 
 ## Rules
 
@@ -34,14 +37,17 @@ trailing refresh runs after the current one.
   `--cached`. Binary files report `-` and are left out; untracked files appear only in the
   untracked count.
 - **Partial failure.** If only the line count fails, the rest still shows with
-  `lineStatsError`. If a refresh fails, the old data stays and is marked stale.
+  `lineStatsError` and `+/− ?`. If a refresh fails, the old data stays and is marked stale.
+- **"No repository" is not data.** An earlier `isRepo: false` must not hold back `⎇ ?` when a
+  later read fails, so `GitLine` treats it the same as having no data.
 
 ## SSH
 
 With a negotiated `sshRemoteHostBridge`, commands go through its routed subprocess.
 `repoRoot` stays the local anchor path, used for links, while the label uses
-`remote.host` and `remote.root`. A root outside the workspace anchor is an error. The
-bridge appearing or leaving clears the Git caches.
+`remote.host` and `remote.root`. A root outside the workspace anchor reads as `git-failed`, and
+a remote shell without Git (exit 127) as `git-not-found`. The bridge appearing or leaving clears
+the Git caches.
 
 ## Caching
 
@@ -93,4 +99,6 @@ their TTL. A manual refresh tries the full run again.
 
 ## Tests
 
-`tests/statusline.test.js`, `tests/client-lifecycle.test.js`.
+`tests/statusline.test.js` runs the failure cases against real Git where it can, and covers the
+chip's states. `tests/dsh-integration.test.js` covers the route's error codes. The browser smoke
+panels do not cover this chip's states, so check a display change in a real page.
