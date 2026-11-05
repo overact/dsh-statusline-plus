@@ -1,7 +1,8 @@
 # Release notes
 
-## Unreleased
+## 0.1.14
 
+- **Updating to this version on DeepSeek Harness Desktop:** use the plugin market if you can. The update button in 0.1.13 and earlier still runs the old installer, which can fail on Windows. The fix below applies from this version on.
 - The Git chip no longer disappears when Git cannot read a repository. It shows `⎇ ?` with the reason in its tooltip, and clicking it retries; a directory outside any repository still shows nothing. A repository refused by `safe.directory` or with a damaged `.git/HEAD` is no longer mistaken for no repository.
 - A repository with too many untracked files keeps its branch, counts and line totals, and shows `??` for the untracked count.
 - The update button on DeepSeek Harness Desktop now installs with the app's own pnpm. It no longer downloads pnpm through `npx`, which failed on Windows with "upgrade failed". With no installer available, it shows the `dsh plugin` command to run instead.
