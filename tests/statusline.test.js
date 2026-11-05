@@ -602,11 +602,13 @@ function makeRepo(root, name) {
 }
 
 function gitWithEnv(extraEnv, seen = []) {
+  // A global `safe.directory = *`, as on CI runners, would hide the unsafe-owner answer.
+  const isolated = { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' }
   return {
     async resolveExecutable() { return 'git' },
     spawn({ argv, cwd, env }) {
       seen.push(env)
-      const child = spawn(argv[0], argv.slice(1), { cwd, env: { ...process.env, ...env, ...extraEnv } })
+      const child = spawn(argv[0], argv.slice(1), { cwd, env: { ...process.env, ...env, ...isolated, ...extraEnv } })
       let stdout = '', stderr = ''
       child.stdout.on('data', chunk => { stdout += chunk })
       child.stderr.on('data', chunk => { stderr += chunk })
