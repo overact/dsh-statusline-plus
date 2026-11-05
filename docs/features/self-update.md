@@ -27,13 +27,26 @@ The check asks the registry directly, so it works on any Host running this plugi
 `POST version` refuses a linked install, a version not newer than the installed one, and a
 concurrent install. Then `applyUpdate` tries installers in this order:
 
-1. The running Host's own `dsh plugin add`. A desktop build ships its package manager
-   internally, so this may be the only installer there.
-2. `pnpm`, then `npx pnpm`, for Hosts on a plain Node install.
+1. `dsh plugin add` through the running CLI, when the Host runs from
+   `@deepseek-ai/dsh`. `hostCliEntry` resolves `process.argv[1]` first, because a Host started
+   through the `dsh` command reports that symlink instead of `bin.js`.
+2. The Host's own pnpm, from `profileContext.packageManager`. This is the desktop route: its
+   entry is `dsh-desktop-host`, so step 1 does not apply, and pnpm is not on PATH. The command,
+   its prefix arguments and its environment all come from the Host; without
+   `ELECTRON_RUN_AS_NODE` the command would start the app.
+3. `pnpm` from PATH.
 
 The first success ends the loop. If all fail, the first real failure is reported, ahead of
 an installer that could not start. When no installer exists at all, the response names the
 `dsh plugin` command to run by hand.
+
+The plugin does not call `pluginManager`: under HMR `installBundle` refuses an installed
+package, and `updateBundle` removes it first, which would kill the request that asked. Steps 2
+and 3 therefore run `pnpm add` without the profile lock and compatibility check that step 1
+gets from `dsh plugin`. The button is already hidden for an incompatible version.
+
+Never fetch an installer here. `npx pnpm` was removed: it pulled an unpinned pnpm that could
+differ from the Host's by a major version, and on Windows its copy had no working entry.
 
 ## Applying
 

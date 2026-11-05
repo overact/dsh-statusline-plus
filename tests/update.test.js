@@ -2,13 +2,13 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } = require('node:fs')
+const { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { dirname, join } = require('node:path')
 
 const {
   PACKAGE_NAME, compareVersions, enginesAllow, readInstalled, resolveInstall, hostVersion,
-  createUpdateChecker, applyUpdate, fetchLatest,
+  createUpdateChecker, applyUpdate, fetchLatest, hostPackageManager,
 } = require('../lib/update.js')
 process.env.SLP_TEST = '1'
 const { __test } = require('../lib/index.js')
@@ -228,7 +228,7 @@ test('a failing HMR lookup or reconcile falls back instead of failing the instal
   assert.match(outcome.reason, /boom/)
 })
 
-test('the running host CLI is preferred, because a desktop build has no pnpm on PATH', async () => {
+test('the running host CLI is preferred, for its profile lock and compatibility check', async () => {
   const previous = process.argv[1]
   const root = mkdtempSync(join(tmpdir(), 'slp-cli-'))
   const entry = join(root, '@deepseek-ai', 'dsh', 'lib', 'bin.js')
@@ -242,13 +242,78 @@ test('the running host CLI is preferred, because a desktop build has no pnpm on 
     assert.equal(result.manager, 'dsh plugin')
     assert.deepEqual(subprocess.runs[0].argv, [
       process.execPath,
-      entry,
+      realpathSync(entry),
       'plugin', '--profile', 'desktop', 'add', 'dsh-statusline-plus@0.1.10',
     ])
   } finally {
     process.argv[1] = previous
     rmSync(root, { recursive: true, force: true })
   }
+})
+
+test('a CLI started through a symlink is still the running host CLI', async t => {
+  const previous = process.argv[1]
+  const root = mkdtempSync(join(tmpdir(), 'slp-cli-'))
+  const entry = join(root, '@deepseek-ai', 'dsh', 'lib', 'bin.js')
+  const link = join(root, 'dsh')
+  mkdirSync(dirname(entry), { recursive: true })
+  writeFileSync(entry, '// dsh entry\n')
+  try {
+    symlinkSync(entry, link)
+  } catch (error) {
+    rmSync(root, { recursive: true, force: true })
+    return t.skip('symlinks are not available here')
+  }
+  process.argv[1] = link
+  try {
+    const subprocess = fakeSubprocess()
+    const result = await applyUpdate({ version: '0.1.10', profileDir: '/profiles/web', profile: 'web', subprocess })
+    assert.equal(result.manager, 'dsh plugin')
+    assert.equal(subprocess.runs[0].argv[1], realpathSync(entry))
+  } finally {
+    process.argv[1] = previous
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('a desktop host installs with its own pnpm, prefix arguments and environment', async () => {
+  const previous = process.argv[1]
+  // A desktop host's entry is dsh-desktop-host, which is not the dsh CLI.
+  process.argv[1] = join(tmpdir(), '@deepseek-ai', 'dsh-desktop-host', 'lib', 'index.js')
+  try {
+    const subprocess = fakeSubprocess()
+    subprocess.resolveExecutable = async () => { throw new Error('not on PATH') }
+    const env = { ELECTRON_RUN_AS_NODE: '1' }
+    const packageManager = { command: 'C:/DSH/DeepSeek Harness.exe', args: ['--expose-internals', 'C:/DSH/pnpm.mjs'], env }
+    const result = await applyUpdate({ version: '0.1.10', profileDir: 'C:/profiles/desktop', profile: 'desktop', subprocess, packageManager })
+    assert.equal(result.exitCode, 0)
+    assert.equal(result.manager, 'host pnpm')
+    assert.deepEqual(subprocess.runs[0].argv, [
+      'C:/DSH/DeepSeek Harness.exe', '--expose-internals', 'C:/DSH/pnpm.mjs', 'add', 'dsh-statusline-plus@0.1.10',
+    ])
+    assert.deepEqual(subprocess.runs[0].env, env)
+  } finally {
+    process.argv[1] = previous
+  }
+})
+
+test('npx is never used to fetch an installer', async () => {
+  const asked = []
+  const subprocess = {
+    resolveExecutable: async name => { asked.push(name); return name === 'npx' ? '/usr/bin/npx' : null },
+    spawn: () => { throw new Error('must not spawn') },
+  }
+  await assert.rejects(() => applyUpdate({ version: '0.1.10', profileDir: '/profiles/web', subprocess }), /no-package-manager/)
+  assert.deepEqual(asked, ['pnpm'])
+})
+
+test('the host package manager is read from profileContext, and absence is not an error', () => {
+  const manager = { command: 'pnpm-host', args: ['--flag', 1], env: { A: '1' } }
+  assert.deepEqual(hostPackageManager({ get: name => (name === 'profileContext' ? { packageManager: manager } : undefined) }), { command: 'pnpm-host', args: ['--flag'], env: { A: '1' } })
+  assert.equal(hostPackageManager({ get: () => ({}) }), null)
+  assert.equal(hostPackageManager({ get: () => undefined }), null)
+  assert.equal(hostPackageManager({ get: () => { throw new Error('no inject') } }), null)
+  assert.equal(hostPackageManager({}), null)
 })
 
 test('a CLI that cannot start falls through to pnpm', async () => {
