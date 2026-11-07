@@ -11,6 +11,32 @@ const { join, resolve } = require('node:path')
 process.env.SLP_TEST = '1'
 const { __test } = require('../lib/index.js')
 
+function createFakeLocale(active = 'en') {
+  const namespaces = {}
+  const listeners = new Set()
+  let current = active
+  const service = {
+    register(ns, dicts) {
+      if (namespaces[ns] !== undefined) throw new Error('locale namespace already registered: ' + ns)
+      namespaces[ns] = dicts
+      return () => { delete namespaces[ns] }
+    },
+    bind(ns) { return key => service.translate(ns, key) },
+    translate(ns, key) {
+      const dicts = namespaces[ns] || {}
+      for (const lang of [current, 'en']) {
+        const value = dicts[lang] && dicts[lang][key]
+        if (value !== undefined) return value
+      }
+      return key
+    },
+    getLocale() { return { active: current } },
+    subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn) },
+    setActive(next) { current = next; for (const fn of [...listeners]) fn() },
+  }
+  return { service, namespaces, listeners }
+}
+
 function loadClientPluginForTest(options = {}) {
   const renderers = []
   const previous = {
@@ -178,6 +204,7 @@ function loadClientPluginForTest(options = {}) {
     const clientSource = require('node:fs').readFileSync(require.resolve('../lib/client.js'), 'utf8')
     new Function(clientSource)()
     const registrations = []
+    const locale = options.locale ? createFakeLocale(options.locale) : null
     const slots = {
       inject(name, setup) { setup() },
       register(spec, component) {
@@ -190,10 +217,11 @@ function loadClientPluginForTest(options = {}) {
         subscribe() { return () => {} }, mutate: async () => {},
       } } }, get(name) {
       if (name === 'slots') return slots
-
+      if (name === 'locale') return locale && locale.service
     }, effect(setup) { setup() } })
     return {
       registrations,
+      locale,
       gitRequests,
       gitResolvers,
       eventCounts,
@@ -294,6 +322,28 @@ test('Git follows the Host workingDirectory projection over the summary cwd', as
     await new Promise(resolve => setImmediate(resolve))
     assert.equal(h.gitRequests.length, 1)
     assert.deepEqual(JSON.parse(h.gitRequests[0].options.body), { cwd: '/tmp/actual', sessionId: 's1' })
+  } finally { renderer.unmount(); h.restore() }
+})
+
+test('locale dictionaries register with the Host service and follow the active language', () => {
+  const h = loadClientPluginForTest({ locale: 'zh', initialConfig: { enabled: true, showGit: false, showContext: false, showTokens: false, showTps: false, gitCwd: '' } })
+  try {
+    assert.ok(h.locale.namespaces.statusline, 'dictionaries registered under the statusline namespace')
+    assert.equal(h.locale.service.translate('statusline', 'setTitle'), '状态栏')
+    h.locale.service.setActive('en')
+    assert.equal(h.locale.service.translate('statusline', 'setTitle'), 'Status line')
+  } finally { h.restore() }
+})
+
+test('locale changes re-render the dock through the locale service', () => {
+  const h = loadClientPluginForTest({ locale: 'en', initialConfig: { enabled: true, showGit: false, showContext: false, showTokens: false, showTps: false, gitCwd: '' } })
+  const renderer = h.createRenderer()
+  try {
+    const dock = h.registrations.find(entry => entry.spec.name === 'conversation.composer.dock')
+    const props = { sessionId: 's1', useSessions: select => select({ byId: { s1: { cwd: '/tmp/repo' } } }), useProjection: () => null }
+    const element = dock.component(props)
+    renderer.render(element.type, element.props)
+    assert.ok(h.locale.listeners.size > 0, 'the dock subscribes to locale changes')
   } finally { renderer.unmount(); h.restore() }
 })
 
