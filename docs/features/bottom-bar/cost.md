@@ -9,9 +9,9 @@ and the view states `billingVerified: false`. Keep that framing in any wording.
 ## Code
 
 `createSessionMetricsProjection`, `quoteUsage`, `possibleTariffs` in
-`lib/session-metrics.js`; `loadPricingCatalog`, `pricingModelId`, `quoteCatalogUsage` and
-`FALLBACK` in `lib/model-pricing.js`; `CostRow`, `estimateCost`, `costPerHour`,
-`costReasons`, `costBreakdownTables` in `lib/client.js`. Setting: `showCost`.
+`lib/session-metrics.js`; `loadPricingCatalog`, `pricingModelId`, `pricingModelAlias`,
+`quoteCatalogUsage` and `FALLBACK` in `lib/model-pricing.js`; `CostRow`, `estimateCost`,
+`costPerHour`, `costReasons`, `costBreakdownTables` in `lib/client.js`. Setting: `showCost`.
 
 ## How a price is chosen
 
@@ -23,6 +23,12 @@ prefix or display name.
 3. `RATES` for DeepSeek, by peak and off-peak tariff, in CNY.
 
 An unrecognized model stays unpriced.
+
+Model identities are explicit, never pattern-matched. `MODEL_ALIASES` lists the verified
+DeepSeek Flash spellings (`deepseek-v4.1-flash`, `deepseek-v4.1-flash-1017` and
+`deepseek-v4-1-flash-1017`) and both the catalog and offline paths share it through
+`pricingModelAlias`. A new snapshot or variant (`-sg`, `-fast`, V4, V4.2) stays unpriced
+until it is added, so a similar name is never silently charged as V4.1 Flash.
 
 ## Scope
 

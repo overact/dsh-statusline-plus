@@ -72,6 +72,17 @@ test('gateway namespaces do not change the model reference card or its exact ver
   assert.equal(c.resolve({ provider: 'custom', model: 'WORKBUDDY-AI/DEEPSEEK-V4.1-FLASH' }), flash)
 })
 
+test('DeepSeek Flash snapshot ids are explicit identities, not a pattern', () => {
+  const direct = { input: 0.3, output: 1.2, cacheRead: 0.006, cacheWrite: 0 }
+  const c = createPricingCatalog([{ provider: 'deepseek', model: 'deepseek-flash', cost: direct }])
+  for (const model of ['deepseek-v4.1-flash', 'deepseek-v4.1-flash-1017', 'deepseek-v4-1-flash-1017']) {
+    assert.equal(c.resolve({ provider: 'magpie-workbuddy', model: 'mistral-vibe/' + model }).cost, direct, model)
+  }
+  for (const model of ['deepseek-v4-flash', 'deepseek-v4.1-flash-sg', 'deepseek-v4.1-flash-fast', 'deepseek-v4.2-flash', 'deepseek-v4.1-flash-1103']) {
+    assert.equal(c.resolve({ provider: 'magpie-workbuddy', model }), null, model)
+  }
+})
+
 test('quotes account for disjoint caches, long prompt thresholds and malformed catalog rates', () => {
   const card = catalog().resolve({ provider: 'codex', model: 'gpt-6-sol' })
   const quote = usage => quoteCatalogUsage(card, usage, units)

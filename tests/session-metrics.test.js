@@ -134,7 +134,7 @@ test('gateway-prefixed usage settles at the same reference price with and withou
     for (const time of [PEAK, OFF_PEAK]) {
       const direct = fold(0, source)
       direct.request(1, 1, route, time); direct.message(1, 1, usage, route, time + 1000)
-      for (const model of ['workbuddy-ai/deepseek-v4.1-flash', 'custom/deepseek-flash', 'proxy/deepseek/deepseek-v4.1-flash']) {
+      for (const model of ['workbuddy-ai/deepseek-v4.1-flash', 'custom/deepseek-flash', 'proxy/deepseek/deepseek-v4.1-flash', 'mistral-vibe/deepseek-v4-1-flash-1017']) {
         const f = fold(0, source), selection = { provider: 'magpie-workbuddy', model }
         f.request(1, 1, selection, time); f.message(1, 1, usage, selection, time + 1000)
         assert.deepEqual(f.view.session, direct.view.session)
@@ -152,6 +152,8 @@ test('verified DeepSeek Flash/Pro prices apply to disjoint input, cache reads an
   assert.deepEqual(cny(quote({ route: { ...route, model: 'deepseek-v4-pro' } })), [36.3, 36.3])
   assert.deepEqual(cny(quote({ route: { ...route, model: 'deepseek-v4-pro' }, startedAt: OFF_PEAK, observedAt: OFF_PEAK + 1000 })), [18.15, 18.15])
   assert.deepEqual(cny(quote({ route: { ...route, model: 'deepseek-v4.1-flash' } })), [10.04, 10.04])
+  assert.deepEqual(cny(quote({ route: { ...route, model: 'deepseek-v4.1-flash-1017' } })), [10.04, 10.04])
+  assert.deepEqual(cny(quote({ route: { ...route, model: 'deepseek-v4-1-flash-1017' } })), [10.04, 10.04])
   assert.equal(quote({ usage: { inputTokens: 10, outputTokens: 20, cacheReadTokens: 30, reasoningTokens: 20 } }).maxUnits, 10 * 200 + 20 * 800 + 30 * 4)
 })
 
