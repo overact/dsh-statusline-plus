@@ -263,6 +263,25 @@ test('composer dock resolves Git cwd from the authoritative useSessions session 
   }
 })
 
+test('Git joins the row only after the first settled message', async () => {
+  const h = loadClientPluginForTest({ initialConfig: { enabled: true, showGit: true, showContext: false, showTokens: false, showTps: false, gitCwd: '' } })
+  const renderer = h.createRenderer()
+  let metrics = { session: { pricedMessages: 0, unpricedMessages: 0 } }
+  try {
+    const dock = h.registrations.find(entry => entry.spec.name === 'conversation.composer.dock')
+    const props = { sessionId: 's1', useSessions: select => select({ byId: { s1: { cwd: '/tmp/repo' } } }),
+      useProjection: key => key === 'statuslineMetrics' ? metrics : null }
+    const element = dock.component(props)
+    const render = () => renderer.render(element.type, element.props)
+    const first = render()
+    assert.ok(!first.props.children[0].props.children[0].some(node => node.props.key === 'git'), 'Git waits for the first settled message')
+    metrics = { session: { pricedMessages: 1, unpricedMessages: 0 } }
+    const panel = render()
+    const groups = panel.props.children[0].props.children[0]
+    assert.ok(groups.some(node => node.props.key === 'git'), 'the first settled message reveals Git')
+  } finally { renderer.unmount(); h.restore() }
+})
+
 test('Git bursts retain one trailing refresh, manual clicks bypass delay, and disposal cancels it', async () => {
   const clock = { now: 1000, tasks: new Map() }
   const h = loadClientPluginForTest({ clock, deferGit: true }), renderer = h.createRenderer()

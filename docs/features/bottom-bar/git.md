@@ -27,6 +27,14 @@ directory merge, and at most one runs per second; a trailing refresh runs after 
 one. A refresh keeps what is on screen until its answer arrives, so a retry cannot make the
 chip blink.
 
+**First appearance.** On a fresh session the chip stays out of the row until the first
+message settles, so it appears together with context and cost instead of sitting alone while
+the first reply streams. The mount refresh still runs, so that first paint is immediate; a
+resumed session with its own settled messages shows the chip at once, while a fork holding
+only inherited history waits for its first new message, matching the cost scope. The gate
+reads the plugin's own `statuslineMetrics` projection; if that read is unavailable the chip
+shows as before.
+
 ## Rules
 
 - **Stay out of the user's way.** Every command runs with `--no-optional-locks` and
