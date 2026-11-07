@@ -282,6 +282,21 @@ test('Git joins the row only after the first settled message', async () => {
   } finally { renderer.unmount(); h.restore() }
 })
 
+test('Git follows the Host workingDirectory projection over the summary cwd', async () => {
+  const h = loadClientPluginForTest({ initialConfig: { enabled: true, showGit: true, showContext: false, showTokens: false, showTps: false, gitCwd: '' }, deferGit: true })
+  const renderer = h.createRenderer()
+  try {
+    const dock = h.registrations.find(entry => entry.spec.name === 'conversation.composer.dock')
+    const props = { sessionId: 's1', useSessions: select => select({ byId: { s1: { cwd: '/tmp/original' } } }),
+      useProjection: key => key === 'workingDirectory' ? '/tmp/actual' : null }
+    const element = dock.component(props)
+    renderer.render(element.type, element.props)
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(h.gitRequests.length, 1)
+    assert.deepEqual(JSON.parse(h.gitRequests[0].options.body), { cwd: '/tmp/actual', sessionId: 's1' })
+  } finally { renderer.unmount(); h.restore() }
+})
+
 test('Git bursts retain one trailing refresh, manual clicks bypass delay, and disposal cancels it', async () => {
   const clock = { now: 1000, tasks: new Map() }
   const h = loadClientPluginForTest({ clock, deferGit: true }), renderer = h.createRenderer()

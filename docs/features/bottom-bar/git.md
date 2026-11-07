@@ -14,9 +14,11 @@ Settings: `showGit`, `showCwd`, `gitCwd`.
 
 ## Which directory
 
-`gitCwd` if set, then the session summary's `cwd`, then the workspace containing the
-session. The current directory is authoritative: the plugin never infers a repository
-from history.
+`gitCwd` if set, then the session's current working directory (the Host's
+`workingDirectory` projection, which follows the `working_directory` tool), then the session
+summary's `cwd`, then the workspace containing the session. The current directory is
+authoritative: the plugin never infers a repository from history. On a Host without the
+`workingDirectory` projection the summary's original `cwd` is used.
 
 ## When it refreshes
 
