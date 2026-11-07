@@ -1,5 +1,12 @@
 # Release notes
 
+## 0.1.15
+
+- The Git chip now appears together with the context and cost chips after the first message settles, instead of sitting alone while the first reply streams.
+- The Git chip follows the session's current working directory, including a `working_directory` change or a worktree, instead of staying on the workspace it started in.
+- DeepSeek V4.1 Flash routes using a dated snapshot id (`deepseek-v4-1-flash-1017` or `deepseek-v4.1-flash-1017`) are now priced; unlisted variants stay unknown.
+- The interface follows the Host's language setting through its locale service. Chinese and English dictionaries are registered there, a language switch repaints the plugin, and a missing key falls back to English. DSH still does not translate the plugin's text; other languages currently read English.
+
 ## 0.1.14
 
 - **Updating to this version on DeepSeek Harness Desktop:** use the plugin market if you can. The update button in 0.1.13 and earlier still runs the old installer, which can fail on Windows. The fix below applies from this version on.
