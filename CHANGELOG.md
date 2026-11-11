@@ -1,6 +1,8 @@
 # Release notes
 
-## 0.1.16
+## 0.1.17
+
+0.1.16 was tagged but never published; its changes ship here.
 
 - A reload button in the sidebar footer applies plugin and config changes. It hot-reloads first, so sessions keep running, and restarts the Host only when a change needs it and the Host runs as a systemd user service; the page reloads once plugins and sessions are ready. It replaces the separate `dsh-restart-button` plugin. After a self-update, "Restart to apply" now restarts from the same dialog where possible.
 - When a newer DSH is published, the same button glows and its dialog offers "Update DSH": it installs DSH with `npm install -g` and restarts. Offered only when the Host runs from a user-writable global npm install under a systemd user service; elsewhere nothing changes.
