@@ -4,7 +4,14 @@ on:
   pull_request:
   push:
     branches: [main]
+  # `npm run release:preflight` asks for a full run on main before any tag exists:
+  #   gh workflow run Verify --ref main -f full=true
   workflow_dispatch:
+    inputs:
+      full:
+        description: Run the browser checks whatever files changed
+        type: boolean
+        default: false
   # The release workflow runs this before it publishes.
   workflow_call:
     inputs:

@@ -1,6 +1,6 @@
 # <img src="icon.svg" width="32" height="32" alt=""> dsh-statusline-plus
 
-[![Version](https://img.shields.io/badge/version-0.1.16-blue)](https://github.com/overact/dsh-statusline-plus/releases/latest)
+[![Version](https://img.shields.io/badge/version-0.1.17-blue)](https://github.com/overact/dsh-statusline-plus/releases/latest)
 [![npm](https://img.shields.io/npm/v/dsh-statusline-plus)](https://www.npmjs.com/package/dsh-statusline-plus)
 [![Verify](https://github.com/overact/dsh-statusline-plus/actions/workflows/verify.yml/badge.svg)](https://github.com/overact/dsh-statusline-plus/actions/workflows/verify.yml)
 
@@ -95,14 +95,15 @@ npm run screenshots
 
 Use explicit paths for the current edit. `--style-only` is for CSS only; `--ui none` skips browser checks; `--plan` previews the selection. Run `verify:all` once at the completed stage. `npm run check` and `npm test` are also available; `DSH_PACKAGE_DIR` selects an installed DSH runtime for integration tests.
 
-Two maintenance checks cover the development profile and releases:
+Three maintenance checks cover the development profile and releases:
 
 ```sh
 npm run dev:runtime     # does the active profile HMR-watch this checkout's lib/?
+npm run release:preflight  # before tagging: metadata, pushed clean main, CI browser checks on HEAD
 npm run release:check   # version, README badge, CHANGELOG, tag, npm dist-tag, assets and latest
 ```
 
-`dev:runtime` reads the active profile's `cordis.patch.yml` (`DSH_PROFILE_DIR` overrides `~/.dsh/profiles/web`) and reports whether host-level edits hot-reload; run it before advising a restart. `release:check` verifies the current package version against the README badge, changelog, git tag, npm dist-tags, GitHub Release assets and `releases/latest`; use `--offline` to skip the npm and GitHub checks.
+`dev:runtime` reads the active profile's `cordis.patch.yml` (`DSH_PROFILE_DIR` overrides `~/.dsh/profiles/web`) and reports whether host-level edits hot-reload; run it before advising a restart. `release:preflight` must pass before a release tag is created; it requires a successful CI `Verify` run on HEAD in which the browser step ran (see `docs/development/releasing.md`). `release:check` verifies the current package version against the README badge, changelog, git tag, npm dist-tags, GitHub Release assets and `releases/latest`; use `--offline` to skip the npm and GitHub checks.
 
 Pushing a `v*` tag runs the full verification, then publishes the version to npm and GitHub Releases through the release workflow; release steps, npm trusted-publishing setup and post-release checks are in [docs/development/releasing.md](docs/development/releasing.md).
 

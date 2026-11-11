@@ -1,6 +1,6 @@
 {
   "name": "dsh-statusline-plus",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "description": "Statusline for DeepSeek Harness Web: DeepSeek balance and peak hours, Kimi / Z.ai / Zhipu / OpenCode / OpenRouter / Codex / Antigravity quotas, Git state, context, cost, agent and tool activity, streaming TPS",
   "keywords": [
     "deepseek-harness",
@@ -50,6 +50,7 @@
     "screenshots": "node scripts/screenshots.mjs",
     "dev:runtime": "node scripts/dev-runtime.mjs",
     "release:check": "node scripts/release-check.mjs",
+    "release:preflight": "node scripts/release-preflight.mjs",
     "ui:install": "npm --prefix tools/ui ci --ignore-scripts"
   },
   "engines": {
