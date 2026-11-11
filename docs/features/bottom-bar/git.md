@@ -20,6 +20,11 @@ summary's `cwd`, then the workspace containing the session. The current director
 authoritative: the plugin never infers a repository from history. On a Host without the
 `workingDirectory` projection the summary's original `cwd` is used.
 
+`gitCwd` is a plugin-wide override, not a per-session one: while it is set, every session's
+chip is pinned to that directory and no longer follows `working_directory` changes. Leave it
+empty (the default) to follow the session. A relative or malformed value is sanitized away,
+so the chip falls back to following instead of staying pinned to nothing.
+
 Git resolves the repository from that directory, so the chip follows the session across
 projects: a subdirectory of a repository shows that repository's root, and a nested
 sub-project repository (a repository inside the workspace repository) shows its own root.

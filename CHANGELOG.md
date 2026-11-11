@@ -4,6 +4,7 @@
 
 - Claude Code and Codex subagents now show a real state and duration. They have no child session, so the panel used to read them as "Status unknown · Mode unknown" forever and the chip stayed at `0/N · ?N` after every run finished. A new parent-session fold reads the child's discovery and settlement records, so a running child counts as running, a finished one as stopped with its elapsed time, and the chip disappears once the last child settles.
 - The Git chip no longer dims on every background refresh. Only a click shows progress, so an agent turn no longer makes the chip flicker; a momentarily unresolved directory also keeps the last answer instead of blanking the chip.
+- A directory below a stray empty `.git` folder no longer shows `⎇ ?`. Git reports "not a repository" there, so the chip hides; a repository Git really cannot read still shows the retryable `⎇ ?`.
 
 ## 0.1.15
 
