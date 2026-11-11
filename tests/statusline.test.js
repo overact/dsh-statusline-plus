@@ -382,6 +382,72 @@ test('Git bursts retain one trailing refresh, manual clicks bypass delay, and di
   } finally { renderer.unmount(); h.restore() }
 })
 
+test('a background Git refresh keeps the chip and never dims it', async () => {
+  const clock = { now: 1000, tasks: new Map() }
+  const h = loadClientPluginForTest({ clock, deferGit: true }), renderer = h.createRenderer()
+  let step = 0
+  try {
+    const dock = h.registrations.find(entry => entry.spec.name === 'conversation.composer.dock')
+    const props = { sessionId: 's1', useSessions: select => select({ byId: { s1: { cwd: '/tmp/repo' } } }),
+      useProjection: key => key === 'statuslineMetrics' ? { session: { pricedMessages: 1, unpricedMessages: 0 } }
+        : key === 'sessionStats' ? { steps: step } : null }
+    const element = dock.component(props), render = () => renderer.render(element.type, element.props)
+    const advance = async ms => { clock.now += ms; for (const [token, task] of clock.tasks) if (task.at <= clock.now) { clock.tasks.delete(token); task.fn() } await new Promise(setImmediate) }
+    const gitOf = panel => panel.props.children[0].props.children[0].find(node => node.props.key === 'git')
+    render()
+    h.gitResolvers[0]({ isRepo: true, repoRoot: '/tmp/repo', branch: 'main', counts: { staged: 0, unstaged: 1, untracked: 0, conflict: 0 } })
+    await new Promise(setImmediate)
+    let git = gitOf(render())
+    assert.equal(git.props.data.branch, 'main')
+    assert.equal(git.props.busy, false)
+    // A step ends and the panel refreshes in the background.
+    step++; render()
+    await advance(1000)
+    assert.equal(h.gitRequests.length, 2)
+    git = gitOf(render())
+    assert.equal(git.props.data.branch, 'main', 'the chip keeps its answer while the refresh runs')
+    assert.equal(git.props.busy, true)
+    assert.equal(git.props.manual, false, 'a background refresh does not dim the chip')
+    h.gitResolvers[1]({ isRepo: true, repoRoot: '/tmp/repo', branch: 'next', counts: {} })
+    await new Promise(setImmediate)
+    git = gitOf(render())
+    assert.equal(git.props.data.branch, 'next')
+    assert.equal(git.props.busy, false)
+    // Only a click dims the chip, so the user gets feedback for their own action.
+    git.props.refresh()
+    git = gitOf(render())
+    assert.equal(git.props.busy, true)
+    assert.equal(git.props.manual, true, 'a manual refresh still shows its progress')
+    h.gitResolvers[2]({ isRepo: true, repoRoot: '/tmp/repo', branch: 'manual', counts: {} })
+    await new Promise(setImmediate)
+    assert.equal(gitOf(render()).props.data.branch, 'manual')
+  } finally { renderer.unmount(); h.restore() }
+})
+
+test('an unresolved directory keeps the Git chip instead of blanking it', async () => {
+  const clock = { now: 1000, tasks: new Map() }
+  const h = loadClientPluginForTest({ clock, deferGit: true }), renderer = h.createRenderer()
+  let cwd = '/tmp/repo'
+  try {
+    const dock = h.registrations.find(entry => entry.spec.name === 'conversation.composer.dock')
+    const props = { sessionId: 's1', useSessions: select => select({ byId: { s1: cwd ? { cwd } : {} } }),
+      useProjection: key => key === 'statuslineMetrics' ? { session: { pricedMessages: 1, unpricedMessages: 0 } } : null }
+    const element = dock.component(props), render = () => renderer.render(element.type, element.props)
+    const gitOf = panel => panel.props.children[0].props.children[0].find(node => node.props.key === 'git')
+    render()
+    h.gitResolvers[0]({ isRepo: true, repoRoot: '/tmp/repo', branch: 'main', counts: {} })
+    await new Promise(setImmediate)
+    assert.equal(gitOf(render()).props.data.branch, 'main')
+    // The Host briefly cannot resolve the directory (list/workspace refresh).
+    cwd = null
+    const git = gitOf(render())
+    assert.ok(git, 'the chip stays mounted')
+    assert.equal(git.props.data.branch, 'main', 'the last answer stays on screen')
+    await new Promise(setImmediate)
+    assert.equal(gitOf(render()).props.data.branch, 'main', 'the no-workspace effect keeps it too')
+  } finally { renderer.unmount(); h.restore() }
+})
+
 test('disabled composer dock does not request Git or install focus listeners', async () => {
   const harness = loadClientPluginForTest({
     initialConfig: { enabled: false, showGit: true, showContext: false, showTokens: false, showTps: false, gitCwd: '/tmp/disabled-repo' },

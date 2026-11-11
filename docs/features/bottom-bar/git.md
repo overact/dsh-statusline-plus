@@ -27,7 +27,10 @@ ends (`sessionStats.steps` rises), when the page regains visibility or focus, an
 The one automatic retry is after a slow answer; see **Errors**. Requests for one session and
 directory merge, and at most one runs per second; a trailing refresh runs after the current
 one. A refresh keeps what is on screen until its answer arrives, so a retry cannot make the
-chip blink.
+chip blink. Only a click dims the chip while its request runs; a refresh that follows
+activity keeps it at full strength, so an agent turn cannot make it flicker. A directory
+that is momentarily unresolved (a session-list or workspace refresh) keeps the last answer
+for that session instead of blanking the chip.
 
 **First appearance.** On a fresh session the chip stays out of the row until the first
 message settles, so it appears together with context and cost instead of sitting alone while
