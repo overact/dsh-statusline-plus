@@ -144,6 +144,10 @@ export async function mountResponsiveFixture(page) {
           instanceId: activity.updateInstance } }) }
       }
       if (url === '/statusline/api/peak-schedule') return { json: async () => ({ ok: false }) }
+      if (url.indexOf('/statusline/api/restart') === 0) {
+        return { status: 200, json: async () => ({ ok: true, data: { soft: true, full: true, unit: 'dsh-web.service', pid: 1, phase: 'idle', active: 0, ready: true,
+          update: { supported: true, available: true, installed: '0.2.2-rc.1', latest: '0.2.2' } } }) }
+      }
       throw new Error('Unexpected responsive fixture request: ' + url)
     }
     const scope = {
@@ -156,9 +160,14 @@ export async function mountResponsiveFixture(page) {
         listeners.forEach(fn => fn())
       },
     }
+    // Like the Host, a slot renders every registration, in `order`.
     const slots = { inject: (_name, setup) => setup(), register: (spec, component) => {
-      registrations.set(spec.name, component); return () => registrations.delete(spec.name)
+      const entry = { id: spec.id, order: spec.order || 0, component }
+      registrations.set(spec.name, [...(registrations.get(spec.name) || []), entry].sort((a, b) => a.order - b.order))
+      return () => registrations.set(spec.name, (registrations.get(spec.name) || []).filter(item => item !== entry))
     } }
+    const slot = (name, props) => React.createElement(React.Fragment, null,
+      ...(registrations.get(name) || []).map(entry => React.createElement(entry.component, { key: entry.id, ...props })))
     components.apply({ configForms: { get: () => scope }, get: name => name === 'slots' ? slots : null,
       effect: setup => { const cleanup = setup(); if (cleanup) cleanups.push(cleanup) } })
     const sessionProps = { sessionId: 'fixture-parent', useProjection: () => ({ steps: 0 }),
@@ -167,14 +176,14 @@ export async function mountResponsiveFixture(page) {
       return React.createElement(React.Fragment, null,
         // Mirrors DSH 0.2.2's title cluster: the actions slot sits inside clip + mask.
         React.createElement('div', { style: { display: 'flex', overflow: 'clip', maskImage: 'linear-gradient(to left, transparent, #000 20px)' } },
-          React.createElement('div', { id: 'fixture-header', className: 'fixture-headerActions' }, React.createElement(registrations.get('conversation.session.header.actions'), sessionProps))),
+          React.createElement('div', { id: 'fixture-header', className: 'fixture-headerActions' }, slot('conversation.session.header.actions', sessionProps))),
         React.createElement('div', { id: 'fixture-dock' },
           React.createElement('div', { 'data-composer-card': true, style: { width: '100%', height: '1px' } }),
           React.createElement('div', { 'data-composer-dock': true, style: { display: 'inline-flex' } },
             React.createElement('div', { id: 'fixture-native', 'data-composer-stat': 'usage' }, 'Native composer stats'),
-            React.createElement('div', { 'data-slot': 'conversation.composer.dock' }, React.createElement(registrations.get('conversation.composer.dock'), sessionProps)))),
-        React.createElement('div', { id: 'fixture-footer' }, React.createElement(registrations.get('sidebar.footer.action'))),
-        React.createElement(registrations.get('settings.section')))
+            React.createElement('div', { 'data-slot': 'conversation.composer.dock' }, slot('conversation.composer.dock', sessionProps)))),
+        React.createElement('div', { id: 'fixture-footer' }, slot('sidebar.footer.action')),
+        slot('settings.section'))
     }
     window.remountResponsiveFixture = () => {
       window.slpFixtureRoot = ReactDOM.createRoot(document.getElementById('root'))

@@ -162,6 +162,8 @@ async function verifyResponsive(page, folder) {
   await assertResources(0, 0)
   await page.locator('#fixture-header .slp-quota-with-age').waitFor()
   await page.locator('#fixture-footer .slp-peak-dot-btn').waitFor()
+  // Both footer actions render side by side; an offered DSH update makes the restart button glow.
+  await page.locator('#fixture-footer .slp-rs-btn[data-update="true"]').waitFor()
   // A failed refresh recovers without activity, with exactly three retries.
   const quota = page.locator('#fixture-header .slp-quota-trigger')
   const quotaCount = count => page.waitForFunction(expected => window.slpResponsive.quotaRequests.length === expected, count)
