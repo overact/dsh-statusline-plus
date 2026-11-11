@@ -817,6 +817,24 @@ test('A stray .git directory above the directory is not a damaged repository', a
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
 
+test('A deleted directory falls back to its nearest existing parent', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'slp-test-'))
+  try {
+    const repo = makeRepo(root, 'repo')
+    const inside = join(repo, 'gone')
+    mkdirSync(inside)
+    rmSync(inside, { recursive: true })
+    const data = await __test.fetchGitStatus(gitWithEnv({}), inside)
+    assert.equal(data.isRepo, true)
+    assert.equal(data.repoRoot, repo, 'a deleted directory inside a repository still shows that repository')
+
+    const outside = join(root, 'outside')
+    mkdirSync(outside)
+    rmSync(outside, { recursive: true })
+    assert.deepEqual(await __test.fetchGitStatus(gitWithEnv({}), outside), { isRepo: false })
+  } finally { rmSync(root, { recursive: true, force: true }) }
+})
+
 test('A remote shell without Git reads as not found, and an invalid path as invalid', async () => {
   const subprocess = {
     async resolveExecutable() { return 'git' },

@@ -88,7 +88,7 @@ exists, that data stays with a `!` whose tooltip names the reason.
 
 | Situation | Route result | Chip with no earlier data |
 | --- | --- | --- |
-| Not a repository, or the directory is gone | `isRepo: false` | Hidden |
+| Not a repository, or a directory that no longer exists outside one | `isRepo: false` | Hidden |
 | `safe.directory` refusal | `git-unsafe-repo` | `⎇ ?` |
 | Corrupt `.git/index`, or corrupt `.git/HEAD` locally | `git-failed` | `⎇ ?` |
 | Git missing | `git-not-found` | `⎇ ?` |
@@ -98,6 +98,10 @@ exists, that data stays with a `!` whose tooltip names the reason.
 | The route cannot be reached | `network` (browser only) | `⎇ ?` after a second failure |
 
 Rules for this table:
+
+- **Deleted directory.** A directory that no longer exists falls back to its nearest existing
+  parent, so a directory removed inside a repository still shows that repository. Outside a
+  repository the result is `isRepo: false` and the chip hides.
 
 - **Stable codes.** The route answers only with `GIT_ERRORS`, and the wording is in the client's
   locale table. Git's own output can name private paths, so it stays on the Host. A new code
