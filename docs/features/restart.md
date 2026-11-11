@@ -62,7 +62,8 @@ A full restart skips the soft step. Use it for a stuck process.
 ## Confirmation dialog
 
 Buttons, left to right: Cancel (focused, so a reflexive Enter does nothing), Full restart,
-Update DSH, Reload. Esc and a press that starts and ends on the backdrop cancel. Above the
+Update DSH, Reload. Esc and a press that starts and ends on the backdrop cancel. Esc is
+caught on `window` in the capture phase, because the Host binds Esc to stopping the turn. Above the
 buttons:
 
 - with an update, a line naming the latest and running versions. The version stays out of
@@ -124,7 +125,8 @@ in that window may come from the new copy. The restart follows at once to keep t
 
 `showRestartButton` (default on) has its own settings section, "Reload and DSH update",
 and switches the whole feature. Off hides the button, makes the Host answer `GET restart`
-with only `{ disabled: true }` (no registry read), and refuse every POST with 409
+with only `{ disabled: true, pid, ready }` (no registry read; `ready` lets a restart already
+under way still finish), and refuse every POST with 409
 `disabled`. "Restart to apply" after a self-update then stays disabled.
 
 ## Capability detection
