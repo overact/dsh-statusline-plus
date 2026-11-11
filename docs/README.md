@@ -22,6 +22,7 @@ record what they cannot show, so correct a page in the same change when it goes 
 | Settings page, saving, validation, reset | [features/settings.md](features/settings.md) |
 | UI language, locale dictionaries, live switch | [features/i18n.md](features/i18n.md) |
 | Update button and in-place install | [features/self-update.md](features/self-update.md) |
+| Reload, restart and DSH update button | [features/restart.md](features/restart.md) |
 | Publishing a version | [development/releasing.md](development/releasing.md) |
 
 ## Layout
@@ -35,7 +36,8 @@ docs/
 |   |-- peak-hours.md         DeepSeek peak indicators
 |   |-- bottom-bar/           Composer row: layout, then one page per component
 |   |-- settings.md           Settings page
-|   `-- self-update.md        Update button
+|   |-- self-update.md        Update button
+|   `-- restart.md            Reload, restart and DSH update
 |-- development/releasing.md  Release steps and checks
 |-- images/                   README screenshots, written by `npm run screenshots`
 `-- market/                   Market listing metadata

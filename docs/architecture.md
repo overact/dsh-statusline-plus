@@ -17,6 +17,7 @@ projections. The browser half (`lib/client.js`) is loaded through `dsh.client` i
 | Session | `session-log.js`, `session-metrics.js`, `model-pricing.js`, `tool-activity.js`, `subagent-activity.js`, `tps.js` |
 | Peak | `peak-schedule.js` |
 | Update | `update.js` |
+| Reload / restart, DSH update | `restart.js`, `host-update.js` |
 | Shared | `request-pool.js`, `http-route.js` |
 
 `lib/client.js` is a single large file. Find a component by searching for its name; the
@@ -28,7 +29,7 @@ feature pages name the ones they own.
 | --- | --- |
 | `conversation.composer.dock` | `StatusPanel`, the bottom row |
 | `conversation.session.header.actions` | `HeaderChip`: quotas and the peak chip |
-| `sidebar.footer.action` | `PeakFooterDot` |
+| `sidebar.footer.action` | `PeakFooterDot`, `RestartFooterButton` |
 | `settings.section` | `SettingsPage` |
 
 `dsh.client.inject` in `package.json` lists the Host client modules the bundle needs.
@@ -48,6 +49,7 @@ All live under `/statusline/api/`.
 | `tps` | GET | Server-sent speed events for one session |
 | `peak-schedule` | GET | Holiday calendar and official-rule check |
 | `version` | GET, POST | Update check, and install |
+| `restart` | GET, POST | Reload/restart capability and progress; start one |
 
 Every route passes `connection.admit` inside `register`, because named routes bypass
 the built-in `/api` transport and its authentication. Handlers then call `guardRequest`

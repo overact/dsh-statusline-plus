@@ -73,7 +73,7 @@ function harness({ hidden = false, wallTime = Date.now(), panelLayout = null } =
       disconnect() { this.nodes.clear() }
     }
   }
-  const source = fs.readFileSync(require.resolve('../lib/client'), 'utf8').replace('return module.exports', 'return { magpieSubscriptionHint, ContextProjection, ContextRow, componentOrder, reorderComponent, layoutPreset, matchingPreset, dockComponents, LayoutEditor, LayoutPreview, ToolActivityRow, toolElapsed, quotaRefreshOnStep, TpsRow, useLiveTps, useQuotaResource, formatPathSegs, fmtResetHours, minutesLabel, primarySubscriptionKind, looksLikeSubscription, providerMatchesModel, fmtMoney, QuotaLine, parseSeconds, PeakPanel, PeakFooterDot, deepseekPeakStatus, HeaderChip, SettingsPage, DeepseekPeakChip, ActivityRow, childActivityRows, childElapsed, CostRow, estimateCost, quotaFreshness, pickFoldLevel, QuotaSource, QUOTA_SOURCES, QuotaChip, quotaState, fmtRetryIn, contextUsage, ContextPanel, STR, publishConfig, apiSetConfig, setScope: function (scope) { settingsScope = scope } }')
+  const source = fs.readFileSync(require.resolve('../lib/client'), 'utf8').replace('return module.exports', 'return { magpieSubscriptionHint, ContextProjection, ContextRow, componentOrder, reorderComponent, layoutPreset, matchingPreset, dockComponents, LayoutEditor, LayoutPreview, ToolActivityRow, toolElapsed, quotaRefreshOnStep, TpsRow, useLiveTps, useQuotaResource, formatPathSegs, fmtResetHours, minutesLabel, primarySubscriptionKind, looksLikeSubscription, providerMatchesModel, fmtMoney, QuotaLine, parseSeconds, PeakPanel, PeakFooterDot, RestartFooterButton, restartStep, restartPollDelay, deepseekPeakStatus, HeaderChip, SettingsPage, DeepseekPeakChip, ActivityRow, childActivityRows, childElapsed, CostRow, estimateCost, quotaFreshness, pickFoldLevel, QuotaSource, QUOTA_SOURCES, QuotaChip, quotaState, fmtRetryIn, contextUsage, ContextPanel, STR, publishConfig, apiSetConfig, setScope: function (scope) { settingsScope = scope } }')
   vm.runInNewContext(source, context)
   exported.setScope(scope)
   return {
@@ -1538,7 +1538,7 @@ test('grouped settings keep advanced controls folded and persist only the change
   h.renderComponent(h.SettingsPage)
   let view = h.renderComponent(h.SettingsPage)
   assert.deepEqual(descendants(view, node => node.type === 'h2').map(node => textContent(node).replace('ⓘ', '').trim()), [
-    'Bottom status line', 'Quota and peak hours', 'Git', 'Quota sources and accounts',
+    'Bottom status line', 'Quota and peak hours', 'Reload and DSH update', 'Git', 'Quota sources and accounts',
   ])
   const folds = descendants(view, node => node.type === 'details')
   assert.ok(folds.some(node => textContent(node).includes('Advanced settings')))
@@ -2101,4 +2101,84 @@ test('a swap unfinished at the deadline asks for a refresh, not a restart', asyn
   await flush()
   assert.match(textContent(button()), /Installed · Refresh to confirm/)
   assert.notEqual(button().props.disabled, true)
+})
+
+test('restart probes map to steps: same process follows the Host phase, a new one must be ready', () => {
+  const h = harness()
+  const probe = (status, data) => ({ status, body: data === undefined ? null : { ok: status === 200, data } })
+  // The client runs in its own realm; compare plain copies.
+  h.restartStep = (step => (...args) => ({ ...step(...args) }))(h.restartStep)
+  assert.deepEqual(h.restartStep(null, 7), { step: 'waiting' }, 'a refused connection is the bounce')
+  assert.deepEqual(h.restartStep(probe(401), 7), { step: 'refused' })
+  assert.deepEqual(h.restartStep(probe(404), 7), { step: 'booting' }, 'the route is not registered yet in a new process')
+  assert.deepEqual(h.restartStep(probe(503, { pid: 8, ready: false }), 7), { step: 'booting' })
+  assert.deepEqual(h.restartStep(probe(200, { pid: 8, ready: true, phase: 'idle' }), 7), { step: 'done' })
+  assert.deepEqual(h.restartStep(probe(200, { pid: 7, phase: 'reloading' }), 7), { step: 'reloading' })
+  assert.deepEqual(h.restartStep(probe(200, { pid: 7, phase: 'reloaded' }), 7), { step: 'done' })
+  assert.deepEqual(h.restartStep(probe(200, { pid: 7, phase: 'restarting' }), 7), { step: 'stopping' })
+  assert.deepEqual(h.restartStep(probe(200, { pid: 7, phase: 'failed', reason: 'systemctl' }), 7), { step: 'failed', reason: 'systemctl' })
+  assert.deepEqual(h.restartStep(probe(200, { pid: 7, phase: 'manual', reason: 'host-module' }), 7), { step: 'manual', reason: 'host-module' })
+  assert.deepEqual(h.restartStep(probe(200, { pid: 7, phase: 'confirm', reason: 'host-module', active: 2 }), 7), { step: 'confirm', reason: 'host-module', active: 2 })
+  assert.deepEqual(h.restartStep(probe(200, { pid: 7, phase: 'updating' }), 7), { step: 'updating' })
+})
+
+test('restart polling is fast while a reload normally finishes, then backs off', () => {
+  const h = harness()
+  assert.equal(h.restartPollDelay(0), 250)
+  assert.equal(h.restartPollDelay(14999), 250)
+  assert.equal(h.restartPollDelay(15000), 1000)
+})
+
+test('the restart button appears only once the Host offers a reload or a restart', async () => {
+  const h = harness()
+  h.setConfig({ enabled: true })
+  assert.equal(h.renderComponent(h.RestartFooterButton), null, 'unknown capability renders nothing')
+  const probe = h.requests.find(request => request.url.startsWith('/statusline/api/restart'))
+  assert.ok(probe, 'capability is asked once on mount')
+  probe.resolve({ ok: true, data: { soft: true, full: false, unit: null, pid: 1 } })
+  await flush()
+  const button = h.renderComponent(h.RestartFooterButton)
+  assert.equal(button.props['aria-haspopup'], 'dialog')
+
+  const none = harness()
+  none.setConfig({ enabled: true })
+  none.renderComponent(none.RestartFooterButton)
+  none.requests.find(request => request.url.startsWith('/statusline/api/restart')).resolve({ ok: true, data: { soft: false, full: false } })
+  await flush()
+  assert.equal(none.renderComponent(none.RestartFooterButton), null, 'a Host that can do neither shows no button')
+
+  const off = harness()
+  off.setConfig({ enabled: true, showRestartButton: false })
+  assert.equal(off.renderComponent(off.RestartFooterButton), null)
+  assert.equal(off.requests.filter(request => request.url.startsWith('/statusline/api/restart')).length, 0, 'a hidden button asks nothing')
+})
+
+test('an available DSH update makes the restart button glow, only where it can restart', async () => {
+  const h = harness()
+  h.setConfig({ enabled: true })
+  h.renderComponent(h.RestartFooterButton)
+  const probe = h.requests.find(request => request.url === '/statusline/api/restart?update=1')
+  assert.ok(probe, 'the mount probe asks for the update state')
+  probe.resolve({ ok: true, data: { soft: true, full: true, unit: 'dsh-web.service', pid: 1, update: { supported: true, available: true, installed: '0.2.2-rc.1', latest: '0.2.2' } } })
+  await flush()
+  const button = h.renderComponent(h.RestartFooterButton)
+  assert.equal(button.props['data-update'], 'true')
+  assert.match(button.props.title, /0\.2\.2/)
+
+  const soft = harness()
+  soft.setConfig({ enabled: true })
+  soft.renderComponent(soft.RestartFooterButton)
+  soft.requests.find(request => request.url === '/statusline/api/restart?update=1')
+    .resolve({ ok: true, data: { soft: true, full: false, pid: 1, update: { available: true, installed: '1', latest: '2' } } })
+  await flush()
+  assert.equal(soft.renderComponent(soft.RestartFooterButton).props['data-update'], undefined, 'no restart, no update offer')
+})
+
+test('a Host with the restart feature switched off shows no button', async () => {
+  const h = harness()
+  h.setConfig({ enabled: true })
+  h.renderComponent(h.RestartFooterButton)
+  h.requests.find(request => request.url.startsWith('/statusline/api/restart')).resolve({ ok: true, data: { disabled: true, pid: 1 } })
+  await flush()
+  assert.equal(h.renderComponent(h.RestartFooterButton), null)
 })

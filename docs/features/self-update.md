@@ -70,7 +70,8 @@ applying disposes this plugin's own fiber. The page polls the `version` route fo
 
 - a new `instanceId` means the swap happened: "Updated · Refresh", which reloads the page;
 - `hotFailed` means this instance could not swap, including a profile without HMR: "Restart to
-  apply";
+  apply", which opens the [restart](restart.md) dialog where the Host runs in a systemd user
+  unit and stays disabled elsewhere;
 - neither by the deadline means the swap may still be running: "Installed · Refresh to confirm".
   Reloading runs the check again, which shows no button or "Restart to apply". The deadline
   alone must not claim a restart is needed.
