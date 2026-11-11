@@ -1045,7 +1045,7 @@ test('releases 0.2.2 session-projection handles with the plugin scope', async ()
   const routes = await installRouteHarness({ sessionProjections })
   assert.deepEqual(released, [], 'registration is awaited before routes are served')
   routes.disposePlugin()
-  assert.deepEqual(released, ['handle', 'handle'])
+  assert.deepEqual(released, ['handle', 'handle', 'handle'])
 })
 
 test('route guards reject wrong methods, cross-origin requests, and non-JSON bodies', async () => {

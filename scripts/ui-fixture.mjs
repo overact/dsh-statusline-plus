@@ -53,17 +53,29 @@ export async function mountFixture(page) {
     const cost = { session: { ...part(10, 0), pricedMessages: 1, unpricedMessages: 0, sources: { 'pi-ai': 1 }, reasons: {},
       breakdown: { input: part(2, 12000), cache: part(3, 1000700), output: part(5, 200) } },
       catalog: { version: 'fixture', generatedAt: 1790105504346 } }
-    const catalog = [{ id: 'one', label: 'Worker 1', mode: 'continuable' }, { id: 'two', label: 'Worker 2', mode: 'one-shot' }]
-    const state = { ids: ['one', 'two'], projectionsBySession: Object.fromEntries(catalog.map(child => [child.id, { values: {
+    const catalog = [{ id: 'one', label: 'Worker 1', mode: 'continuable' }, { id: 'two', label: 'Worker 2', mode: 'one-shot' },
+      { id: 'external', label: 'External worker', mode: 'external' }]
+    const state = { ids: ['one', 'two'], projectionsBySession: Object.fromEntries(catalog.slice(0, 2).map(child => [child.id, { values: {
       modelSelection: { lastUsed: { model: 'fixture-model', reasoningEffort: 'high' }, next: { model: 'pending-model', reasoningEffort: 'max' } },
       subagentTiming: { settledMs: 12000, active: null },
     } }])) }
+    // The parent's own discovery/settlement fold: the external child has no
+    // Session, so this record is its only running state and timing.
+    const createdAt = Date.now() - 12000
     function App() {
       const [running, setRunning] = React.useState([true, true])
+      const [settledAt, setSettledAt] = React.useState(null)
       window.setChildRunning = (index, value) => setRunning(previous => previous.map((item, n) => n === index ? value : item))
+      window.setChildSettled = value => setSettledAt(value ? Date.now() : null)
+      const settlement = { children: [
+        { id: 'one', mode: 'continuable', label: 'Worker 1', createdAt, settledAt: null },
+        { id: 'two', mode: 'one-shot', label: 'Worker 2', createdAt, settledAt: null },
+        { id: 'external', mode: 'external', label: 'External worker', createdAt, settledAt },
+      ] }
       return React.createElement('div', { className: 'slp-row' },
-        React.createElement(components.ActivityRow, { sessionId: 'fixture-parent', useProjection: () => catalog,
-          useSessions: select => select(state), useSessionStatus: select => select(new Map(catalog.map((child, index) => [child.id, { running: running[index] }]))) }),
+        React.createElement(components.ActivityRow, { sessionId: 'fixture-parent',
+          useProjection: key => key === 'statuslineSubagents' ? settlement : catalog,
+          useSessions: select => select(state), useSessionStatus: select => select(new Map(catalog.slice(0, 2).map((child, index) => [child.id, { running: running[index] }]))) }),
         React.createElement(components.CostRow, { useProjection: () => cost }))
     }
     window.slpFixtureRoot = ReactDOM.createRoot(document.getElementById('root'))

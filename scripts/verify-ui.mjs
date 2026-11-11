@@ -119,19 +119,28 @@ async function verifySubagents(page, folder, live, count) {
     const m = await model.boundingBox(), e = await effort.boundingBox()
     if (m && e && e.x - m.x - m.width > 10) throw new Error('Reasoning effort is too far from the model')
   }
+  if (!live) {
+    // An external child has no Session at all: its mode and running state must
+    // come from the parent's settlement fold, never from a session lookup.
+    const external = await panel.locator('.slp-activity-item', { hasText: 'External worker' }).innerText()
+    if (!external.includes('External task')) throw new Error('External child mode is not labelled')
+    if (external.includes('Status unknown')) throw new Error('External child running state is unknown')
+    if (external.includes('—')) throw new Error('External child has no elapsed time')
+  }
   const screenshot = join(folder, 'subagents.png')
   await panel.screenshot({ path: screenshot, animations: 'disabled' }); await trigger.click()
   if (!live) {
     const expect = label => page.waitForFunction(value => document.querySelector('.slp-activity .slp-activity-trigger')?.textContent === value, label)
-    await expect('Subagents 0/2')
-    await page.evaluate(() => window.setChildRunning(0, false)); await expect('Subagents 1/2')
-    await page.clock.runFor(15000); await expect('Subagents 1/2')
-    await page.evaluate(() => window.setChildRunning(1, false)); await expect('Subagents 2/2')
+    await expect('Subagents 0/3')
+    await page.evaluate(() => window.setChildRunning(0, false)); await expect('Subagents 1/3')
+    await page.clock.runFor(15000); await expect('Subagents 1/3')
+    await page.evaluate(() => window.setChildRunning(1, false)); await expect('Subagents 2/3')
+    await page.evaluate(() => window.setChildSettled(true)); await expect('Subagents 3/3')
     await page.clock.runFor(5000)
     await page.waitForFunction(() => document.querySelector('.slp-activity .slp-activity-trigger')?.style.opacity === '0.6')
     await page.clock.runFor(10000)
     await page.waitForFunction(() => !document.querySelector('.slp-activity .slp-activity-trigger'))
-    await page.evaluate(() => window.setChildRunning(0, true)); await expect('Subagents 1/2')
+    await page.evaluate(() => window.setChildRunning(0, true)); await expect('Subagents 2/3')
   }
   return { panel: 'subagents', ...size, lifecycle: live ? 'read-only snapshot' : 'progress/expiry/resumption passed', screenshot: relative(root, screenshot) }
 }

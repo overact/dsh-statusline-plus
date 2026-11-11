@@ -1,5 +1,9 @@
 # Release notes
 
+## Unreleased
+
+- Claude Code and Codex subagents now show a real state and duration. They have no child session, so the panel used to read them as "Status unknown · Mode unknown" forever and the chip stayed at `0/N · ?N` after every run finished. A new parent-session fold reads the child's discovery and settlement records, so a running child counts as running, a finished one as stopped with its elapsed time, and the chip disappears once the last child settles.
+
 ## 0.1.15
 
 - The Git chip now appears together with the context and cost chips after the first message settles, instead of sitting alone while the first reply streams.

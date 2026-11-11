@@ -14,7 +14,7 @@ projections. The browser half (`lib/client.js`) is loaded through `dsh.client` i
 | Settings | `config.js` |
 | Quota | `quota-order.js`, `quota-window.js`, `quota-magpie.js`, `quota-codex.js`, `quota-antigravity.js`, `quota-claude.js`, `quota-providers.js`, `provider-presets.js`, `quota-deepseek-account.js`, `quota-login-files.js`, `cpa-credentials.js`, `quota-http.js`, `quota-transport.js` |
 | Git | `git-status.js` |
-| Session | `session-log.js`, `session-metrics.js`, `model-pricing.js`, `tool-activity.js`, `tps.js` |
+| Session | `session-log.js`, `session-metrics.js`, `model-pricing.js`, `tool-activity.js`, `subagent-activity.js`, `tps.js` |
 | Peak | `peak-schedule.js` |
 | Update | `update.js` |
 | Shared | `request-pool.js`, `http-route.js` |
@@ -77,8 +77,9 @@ client's `requestConfigKey` in `useQuotaResource` if it is a quota setting.
 
 ## Session projections
 
-`statuslineMetrics` (`session-metrics.js`) and `statuslineToolActivity`
-(`tool-activity.js`) are folds over session events, checkpointed natively by the Host.
+`statuslineMetrics` (`session-metrics.js`), `statuslineToolActivity`
+(`tool-activity.js`) and `statuslineSubagents` (`subagent-activity.js`) are folds over
+session events, checkpointed natively by the Host.
 
 - Changing what a fold computes or its state shape requires a `stateVersion` bump, or old
   checkpoints keep the old result. For `statuslineMetrics`, see
