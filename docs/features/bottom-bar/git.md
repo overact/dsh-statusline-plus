@@ -20,6 +20,12 @@ summary's `cwd`, then the workspace containing the session. The current director
 authoritative: the plugin never infers a repository from history. On a Host without the
 `workingDirectory` projection the summary's original `cwd` is used.
 
+Git resolves the repository from that directory, so the chip follows the session across
+projects: a subdirectory of a repository shows that repository's root, and a nested
+sub-project repository (a repository inside the workspace repository) shows its own root.
+The Host commits a `cd` only through the `working_directory` tool, so a `cd` inside a shell
+command does not move the chip.
+
 ## When it refreshes
 
 There is no polling. It refreshes on mount, on a change of session or directory, when a step
@@ -94,8 +100,10 @@ Rules for this table:
 - **Locale.** `gitFailureCode` reads Git's English wording, so every command runs with
   `LC_ALL=C`. The SSH route forwards it. Any failure it does not recognize reads as `git-failed`.
 - **Damaged `HEAD`.** Git itself says "not a git repository" here, so `hasGitEntry` looks for a
-  `.git` entry on the way up. A remote workspace has no cheap way to look, so there it still
-  reads as no repository.
+  `.git` entry on the way up. Only a worktree pointer file or a directory still holding part of
+  a gitdir (`HEAD`, `config`, `objects`, `refs`) counts, so a stray empty `.git` directory above
+  the session directory reads as no repository and the chip hides. A remote workspace has no
+  cheap way to look, so there it still reads as no repository.
 - **Slow answers.** One timeout is common on a network mount. Refreshes follow activity, so an
   idle session would never ask twice; the client retries once after 16 s, just past the Host's
   15 s error cache.

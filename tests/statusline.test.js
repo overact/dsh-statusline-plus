@@ -790,6 +790,33 @@ test('Git tells a missing repository apart from one it cannot read', async () =>
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
 
+test('A stray .git directory above the directory is not a damaged repository', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'slp-test-'))
+  try {
+    // An empty `.git` directory is a stray marker, not a repository: the chip hides
+    // instead of claiming Git cannot read a repository that does not exist.
+    const stray = join(root, 'stray')
+    mkdirSync(join(stray, '.git'), { recursive: true })
+    const child = join(stray, 'project')
+    mkdirSync(child)
+    assert.deepEqual(await __test.fetchGitStatus(gitWithEnv({}), child), { isRepo: false })
+
+    // A gitdir that still carries its parts stays a damaged repository, even when
+    // the session works in a subdirectory of it.
+    const damaged = makeRepo(root, 'damaged')
+    writeFileSync(join(damaged, '.git/HEAD'), 'garbage\n')
+    const nested = join(damaged, 'nested')
+    mkdirSync(nested)
+    await assert.rejects(__test.fetchGitStatus(gitWithEnv({}), nested), /^Error: git-failed$/)
+
+    // A worktree or submodule pointer is a file, so it stays a repository marker.
+    const pointer = join(root, 'pointer')
+    mkdirSync(pointer)
+    writeFileSync(join(pointer, '.git'), 'gitdir: /nonexistent\n')
+    await assert.rejects(__test.fetchGitStatus(gitWithEnv({}), pointer), /^Error: git-failed$/)
+  } finally { rmSync(root, { recursive: true, force: true }) }
+})
+
 test('A remote shell without Git reads as not found, and an invalid path as invalid', async () => {
   const subprocess = {
     async resolveExecutable() { return 'git' },
