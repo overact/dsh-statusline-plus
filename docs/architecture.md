@@ -97,6 +97,12 @@ Code against both sides of a known boundary.
 - **Fiber config cells.** Since DSH 0.2.2, `fiber.config` is raw and the volatile cells
   are in `fiber.effectiveConfig`; earlier they are in `fiber.config`.
   `tests/native-settings-fixture.mjs` supports both.
+- **Anchored panels.** `@deepseek-ai/dsh-client-ui-primitives` 0.2.2-rc.2 removed
+  `useAnchoredPosition` with no public replacement. Calling it threw on click and the
+  Host dropped the whole header chip until reload (issue #1). `AnchoredPanel` uses the
+  Host hook when it exists and otherwise `useBelowAnchorPosition`, which always opens
+  below the anchor. Feature-detect every primitives export used here;
+  `verify-ui --panel responsive` runs the fallback through `hostAnchor: false`.
 - **Test versions.** `package.json` pins an older DSH devDependency than a developer's
   local `node_modules` may hold, and CI installs without a lockfile. A suite can pass
   locally and fail on the tag, so run the fresh-install check in

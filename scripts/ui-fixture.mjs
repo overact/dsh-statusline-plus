@@ -7,8 +7,10 @@ export const uiRequire = createRequire(new URL('../tools/ui/package.json', impor
 
 // Offline stand-ins for the Host-provided client modules. Same contract as the
 // real hooks' common path; the real ones are only exercised against a live Host.
-export async function installHostModules(page) {
-  await page.evaluate(() => {
+// hostAnchor: false mirrors primitives 0.2.2-rc.2+, which no longer export
+// useAnchoredPosition, so the plugin's own placement runs.
+export async function installHostModules(page, { hostAnchor = true } = {}) {
+  await page.evaluate(hostAnchor => {
     const { React, ReactDOM } = window
     const useAnchoredPosition = ({ anchorRef, panelRef, gap, margin }) => {
       const [position, setPosition] = React.useState(null)
@@ -22,13 +24,13 @@ export async function installHostModules(page) {
     window.slpHostModule = name => {
       if (name === 'react') return React
       if (name === 'react-dom') return ReactDOM
-      if (name === '@deepseek-ai/dsh-client-ui-primitives') return { useAnchoredPosition, MenuSurface }
+      if (name === '@deepseek-ai/dsh-client-ui-primitives') return hostAnchor ? { useAnchoredPosition, MenuSurface } : { MenuSurface }
       throw new Error('Unexpected fixture dependency: ' + name)
     }
-  })
+  }, hostAnchor)
 }
 
-export async function mountFixture(page) {
+export async function mountFixture(page, hostOptions) {
   await page.clock.install()
   await page.setContent(`<!doctype html><html lang="en"><head><style>
     :root{--dsw-alias-label-primary:#111;--dsw-alias-label-secondary:#555;--dsw-alias-label-tertiary:#777;--dsw-alias-bg-overlay:#fff;--dsw-alias-bg-layer-2:#fafafa;--dsw-alias-border-l1:#ddd;--dsw-alias-border-l2:#ccc}
@@ -39,7 +41,7 @@ export async function mountFixture(page) {
     const folder = dirname(uiRequire.resolve(name + '/package.json'))
     await page.addScriptTag({ path: join(folder, 'umd', name + '.development.js') })
   }
-  await installHostModules(page)
+  await installHostModules(page, hostOptions)
   await page.evaluate(() => {
     window.__ModuleLoader__ = { load(spec) { window.slpComponents = spec.factory(window.slpHostModule) } }
   })
@@ -85,8 +87,8 @@ export async function mountFixture(page) {
 
 // Exercise the registered settings/header/dock slots together, with native-like
 // configuration updates and observable live-resource cleanup, without accounts.
-export async function mountResponsiveFixture(page) {
-  await mountFixture(page)
+export async function mountResponsiveFixture(page, hostOptions) {
+  await mountFixture(page, hostOptions)
   await page.evaluate(() => {
     window.slpFixtureRoot.unmount()
     document.getElementById('shell').style.cssText = 'position:static;height:auto;overflow:visible'

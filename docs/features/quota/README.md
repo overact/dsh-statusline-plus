@@ -89,6 +89,9 @@ found" rather than as a failure.
 - **Chip width.** The header slot sizes from its content inside a clipping parent, so
   container queries have no width to read. `ChipFold` tries each form from fullest down
   and keeps the first that fits.
+- **Detail panel placement.** Details portal to `document.body`, and the Host hook that
+  placed them is gone from newer primitives. See *Anchored panels* in
+  [architecture.md](../../architecture.md#host-version-differences).
 - **Two gates.** A subscription switch is checked by `enabledKinds` in the browser and
   again by `quota()` on the Host. Update both for a new subscription.
 

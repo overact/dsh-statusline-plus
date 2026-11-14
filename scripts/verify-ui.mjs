@@ -236,6 +236,32 @@ async function verifyResponsive(page, folder) {
     lifecycle: 'three retries/exhaustion hint/focus recovery/container suppression/native stats/settings save/remount/resource cleanup passed', screenshot: relative(root, screenshot) }
 }
 
+// DSH 0.2.2-rc.2 dropped useAnchoredPosition from its primitives. Clicking a
+// header chip then threw and the Host removed the chip until reload (issue #1).
+async function verifyAnchorFallback(folder, errors) {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } })
+  page.setDefaultTimeout(8000)
+  page.on('pageerror', error => errors.push(redact(error.message)))
+  try {
+    await mountResponsiveFixture(page, { hostAnchor: false })
+    const chip = page.locator('#fixture-header .slp-quota-trigger')
+    await chip.waitFor()
+    for (let round = 0; round < 2; round++) {
+      await chip.click()
+      const panel = page.locator('.slp-anchored')
+      await assertPanelVisible(page, panel)
+      const [anchor, box] = [await chip.boundingBox(), await panel.boundingBox()]
+      if (box.y < anchor.y + anchor.height || box.x < 0 || box.x + box.width > 390) throw new Error('Fallback panel is not placed below its chip inside the viewport')
+      if (round === 0) await page.screenshot({ path: join(folder, 'anchor-fallback.png'), animations: 'disabled' })
+      await page.keyboard.press('Escape')
+      await panel.waitFor({ state: 'detached' })
+      if (!await chip.isVisible()) throw new Error('Quota chip disappeared after closing its panel')
+    }
+    await page.evaluate(() => window.disposeResponsiveFixture())
+    return { panel: 'anchor-fallback', lifecycle: 'open/close twice without the Host hook passed', screenshot: relative(root, join(folder, 'anchor-fallback.png')) }
+  } finally { await page.close() }
+}
+
 let browser, folder
 try {
   const opts = options(process.argv.slice(2)), errors = [], started = performance.now()
@@ -257,8 +283,10 @@ try {
     checks.push(await verifyCost(page, folder, opts.live))
   }
   if (['all', 'subagents'].includes(opts.panel)) checks.push(await verifySubagents(page, folder, opts.live, data.subagents))
-  if (!opts.live && ['all', 'responsive'].includes(opts.panel)) checks.push(await verifyResponsive(page, folder))
-  else if (!opts.live) await page.evaluate(() => window.slpFixtureRoot.unmount())
+  if (!opts.live && ['all', 'responsive'].includes(opts.panel)) {
+    checks.push(await verifyResponsive(page, folder))
+    checks.push(await verifyAnchorFallback(folder, errors))
+  } else if (!opts.live) await page.evaluate(() => window.slpFixtureRoot.unmount())
   if (errors.length || !opts.live && network) throw new Error(errors.join('; ') || 'Offline fixture made a network request')
   if (opts.live && await page.evaluate(() => window.slpModules.entries.state.getSnapshot().failures.length)) throw new Error('Native module loader reported failures')
   const report = { ok: true, mode: opts.live ? 'live' : 'fixture', durationMs: Math.round(performance.now() - started), checks, errors: 0 }
