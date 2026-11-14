@@ -246,6 +246,14 @@ async function verifyAnchorFallback(folder, errors) {
     await mountResponsiveFixture(page, { hostAnchor: false })
     const chip = page.locator('#fixture-header .slp-quota-trigger')
     await chip.waitFor()
+    // A changing native tooltip blinks, so the text holds while hovered.
+    await chip.hover()
+    const hovered = await chip.getAttribute('title')
+    await page.clock.runFor(65000)
+    if (await chip.getAttribute('title') !== hovered) throw new Error('Chip tooltip changed while hovered')
+    await page.mouse.move(380, 830)
+    await page.clock.runFor(30000)
+    if (await chip.getAttribute('title') === hovered) throw new Error('Chip tooltip stayed frozen after the pointer left')
     for (let round = 0; round < 2; round++) {
       await chip.click()
       const panel = page.locator('.slp-anchored')
@@ -258,7 +266,7 @@ async function verifyAnchorFallback(folder, errors) {
       if (!await chip.isVisible()) throw new Error('Quota chip disappeared after closing its panel')
     }
     await page.evaluate(() => window.disposeResponsiveFixture())
-    return { panel: 'anchor-fallback', lifecycle: 'open/close twice without the Host hook passed', screenshot: relative(root, join(folder, 'anchor-fallback.png')) }
+    return { panel: 'anchor-fallback', lifecycle: 'hover tooltip held/open/close twice without the Host hook passed', screenshot: relative(root, join(folder, 'anchor-fallback.png')) }
   } finally { await page.close() }
 }
 

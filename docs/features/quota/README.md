@@ -92,6 +92,10 @@ found" rather than as a failure.
 - **Detail panel placement.** Details portal to `document.body`, and the Host hook that
   placed them is gone from newer primitives. See *Anchored panels* in
   [architecture.md](../../architecture.md#host-version-differences).
+- **Tooltip text.** A native `title` that changes while shown blinks. Chip buttons take
+  their title through `dismiss.titleProps(text, key)`, which holds the text while hovered
+  until `key` changes. The key names state, never the clock: a new fetch, an error, a
+  retry attempt or a peak switch updates at once. The peak countdown chip uses it too.
 - **Two gates.** A subscription switch is checked by `enabledKinds` in the browser and
   again by `quota()` on the Host. Update both for a new subscription.
 
