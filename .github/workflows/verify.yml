@@ -23,8 +23,11 @@ on:
 permissions:
   contents: read
 
+# A newer push supersedes an older one, but the release's requested full run
+# (workflow_dispatch) must not cancel the push run on the same commit: GitHub
+# shows a cancelled check as "Some checks were not successful".
 concurrency:
-  group: verify-${{ github.ref }}
+  group: verify-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:

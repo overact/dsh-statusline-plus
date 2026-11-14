@@ -48,6 +48,17 @@ slot in `order`, as the Host does, and mocks each route the client calls. A new 
 registration or route needs the fixture updated in the same change, with an assertion in
 `scripts/verify-ui.mjs` that the new element appears beside the existing ones.
 
+## Issues fixed by a release
+
+Notify a reporter only after the fix is in their hands, because a release can still fail.
+
+1. Fix, release, and wait until `npm run release:check` passes for the new version.
+2. Then reply on the issue: cause, fix, and how to update to that version.
+3. Then close the issue.
+
+Do not write `Fixes #N` or `Closes #N` in a commit message: pushing `main` closes the issue
+before the release exists. Write `Refs #N` instead.
+
 ## When the tag run fails
 
 - **Failed at Verify, or at npm's checks:** nothing was published. With the preflight this should not happen. If it does, prefer fixing on `main` and releasing the next patch version, with the failed version's notes moved under it; moving a pushed tag (`git tag -fa`, `git push -f origin v<version>`) rewrites a public ref and needs the maintainer's explicit go-ahead.
