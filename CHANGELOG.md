@@ -1,5 +1,9 @@
 # Release notes
 
+## 0.1.18
+
+- Clicking a header quota or peak chip on DSH 0.2.2-rc.2 or later no longer makes the chip disappear until reload. That DSH removed the panel-placement helper the details panel relied on; the plugin now places the panel itself, just below the chip, when the helper is missing (#1).
+
 ## 0.1.17
 
 0.1.16 was tagged but never published; its changes ship here.
