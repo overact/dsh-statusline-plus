@@ -93,9 +93,15 @@ found" rather than as a failure.
   placed them is gone from newer primitives. See *Anchored panels* in
   [architecture.md](../../architecture.md#host-version-differences).
 - **Tooltip text.** A native `title` that changes while shown blinks. Chip buttons take
-  their title through `dismiss.titleProps(text, key)`, which holds the text while hovered
+  their title through `useHeldTitle` (on a panel, `dismiss.titleProps(text, key)`), which holds the text while hovered
   until `key` changes. The key names state, never the clock: a new fetch, an error, a
-  retry attempt or a peak switch updates at once. The peak countdown chip uses it too.
+  retry attempt or a peak switch updates at once. `slot` separates several tooltips in
+  one chip. Users: the quota trigger, each window segment (reset countdown), the retry
+  chip (retry countdown), the panel's "updated Ns ago" (`QuotaFreshness`), the header
+  peak chip and the sidebar peak dot. A title built from `now` or a countdown needs it. The dot's
+  clock sleeps while closed, so its key carries the hover time: entry re-renders and
+  takes a current countdown before the tooltip shows, then holds it while the open
+  panel ticks.
 - **Two gates.** A subscription switch is checked by `enabledKinds` in the browser and
   again by `quota()` on the Host. Update both for a new subscription.
 

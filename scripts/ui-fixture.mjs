@@ -87,9 +87,11 @@ export async function mountFixture(page, hostOptions) {
 
 // Exercise the registered settings/header/dock slots together, with native-like
 // configuration updates and observable live-resource cleanup, without accounts.
-export async function mountResponsiveFixture(page, hostOptions) {
+// dockData: the Git route answers and a message has settled, so Git and TPS
+// both show in the dock (the default leaves Git pending for resource checks).
+export async function mountResponsiveFixture(page, { dockData = false, ...hostOptions } = {}) {
   await mountFixture(page, hostOptions)
-  await page.evaluate(() => {
+  await page.evaluate(dockData => {
     window.slpFixtureRoot.unmount()
     document.getElementById('shell').style.cssText = 'position:static;height:auto;overflow:visible'
     document.getElementById('root').style.cssText = 'position:static'
@@ -121,6 +123,7 @@ export async function mountResponsiveFixture(page, hostOptions) {
     window.fetch = async (url, options = {}) => {
       if (url === '/statusline/api/git') {
         const request = { aborted: false }; activity.gitRequests.push(request)
+        if (dockData) return { json: async () => ({ ok: true, data: { isRepo: true, branch: 'main', ahead: 0, behind: 0, counts: { staged: 0, unstaged: 1, untracked: 0, conflict: 0 } } }) }
         return new Promise(resolve => options.signal.addEventListener('abort', () => {
           request.aborted = true; resolve({ json: async () => ({ ok: false, error: 'aborted' }) })
         }))
@@ -172,7 +175,8 @@ export async function mountResponsiveFixture(page, hostOptions) {
       ...(registrations.get(name) || []).map(entry => React.createElement(entry.component, { key: entry.id, ...props })))
     components.apply({ configForms: { get: () => scope }, get: name => name === 'slots' ? slots : null,
       effect: setup => { const cleanup = setup(); if (cleanup) cleanups.push(cleanup) } })
-    const sessionProps = { sessionId: 'fixture-parent', useProjection: () => ({ steps: 0 }),
+    const settled = { session: { pricedMessages: 1, unpricedMessages: 0 } }
+    const sessionProps = { sessionId: 'fixture-parent', useProjection: key => dockData && key === 'statuslineMetrics' ? settled : { steps: 0 },
       useSessions: select => select({ byId: { 'fixture-parent': { cwd: '/fixture-repo' } } }) }
     function App() {
       return React.createElement(React.Fragment, null,
@@ -193,5 +197,5 @@ export async function mountResponsiveFixture(page, hostOptions) {
     }
     window.disposeResponsiveFixture = () => { window.slpFixtureRoot.unmount(); cleanups.forEach(fn => fn()) }
     window.remountResponsiveFixture()
-  })
+  }, dockData)
 }

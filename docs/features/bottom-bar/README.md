@@ -13,6 +13,7 @@ in this folder.
 | Component list and order | `COMPONENTS`, `componentOrder`, `dockComponents` |
 | Presets | `layoutPreset`, `matchingPreset` |
 | Settings editor | `LayoutEditor`, `LayoutPreview` |
+| Drag in the live row | `useDockDrag`, `dockDropTarget`, `.slp-dock-item` |
 | Wrap markers | `useWrapMarkers` |
 
 Settings: `componentOrder`, `hideBottomOnNarrow`, and each component's `show*` switch.
@@ -32,6 +33,29 @@ Settings: `componentOrder`, `hideBottomOnNarrow`, and each component's `show*` s
 - **Hidden pages.** Components stop live work through `usePageVisible`.
 - **Order.** `componentOrder` drops unknown ids and appends missing ones, so a component
   added in a new version appears for users with a saved order.
+- **Text colour.** The row matches the Host's own dock stat (`ContextMeter`): plain
+  text is `--dsw-alias-label-tertiary`, and a trigger turns `--dsw-alias-label-secondary`
+  on hover or while its panel is open. Coloured readings (Git counts, context and cost
+  colours) keep their own colours. `.slp-muted` in the row is a step fainter than
+  tertiary so it still reads as muted. The settings preview uses the same colour.
+- **Drag in the row.** Each live component sits in a `.slp-dock-item` named by its id;
+  the settings preview has no wrappers. A press that moves under 6 px stays a click, so
+  chips still open; a drag swallows the click that ends it, and Escape cancels.
+  While dragging, the row previews the result: the picked item, faint with a dashed
+  outline, takes its new place through CSS `order` and the others slide aside
+  (`previewDockOrder`, a 160 ms FLIP animation; none under reduced motion). Hit
+  testing uses layout boxes (`dockLayoutBox`), not the moving ones, so a target cannot
+  flip mid-slide. A translucent copy (`.slp-dock-ghost`, no pointer events, as wide as
+  its content) is scaled to `DOCK_GHOST_SCALE` around the grabbed point, so that point
+  stays under the pointer and nothing jumps when the drag starts; it stays within the
+  row's height. Outside the row it loses every rule scoped to it, so each element takes
+  its original's text longhands (`DOCK_GHOST_TEXT`); the computed `font` shorthand is
+  empty once tabular figures are set, so it cannot be copied. (Moving it above-right of the pointer
+  was tried and lost the sense of position.) On drop the order is written to
+  `componentOrder` and shown at once; the preview's `order` styles stay until React
+  renders that order, so nothing jumps. A refused write restores the saved order. The
+  settings list follows through the same config. Empty items are `display:none`, and
+  `useWrapMarkers` skips them; separators hide while dragging.
 - **Presets** change only bottom components: `balanced`, `minimal` and `activity`. Any
   other combination reads as `custom`.
 
@@ -51,5 +75,6 @@ needing a new projection also needs a sample there.
 
 ## Tests
 
-`npm run verify -- --files lib/client.js --ui responsive` covers responsive layout and
+`npm run verify -- --files lib/client.js --ui responsive` covers responsive layout,
+in-row dragging (`dock-drag`) and
 resource cleanup. `tests/client-lifecycle.test.js` covers the component logic.

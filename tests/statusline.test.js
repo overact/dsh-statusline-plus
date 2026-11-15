@@ -236,6 +236,9 @@ function loadClientPluginForTest(options = {}) {
   }
 }
 
+// The live row wraps each component in an item named by its id; tests read the components.
+const rowGroups = panel => panel.props.children[0].props.children[0].map(item => item.props.className === 'slp-dock-item' ? item.props.children[0] : item)
+
 test('composer dock resolves Git cwd from the authoritative useSessions session summary', async () => {
   const harness = loadClientPluginForTest({
     initialConfig: { enabled: true, showGit: true, showContext: false, showTokens: false, showTps: false, gitCwd: '' },
@@ -302,10 +305,10 @@ test('Git joins the row only after the first settled message', async () => {
     const element = dock.component(props)
     const render = () => renderer.render(element.type, element.props)
     const first = render()
-    assert.ok(!first.props.children[0].props.children[0].some(node => node.props.key === 'git'), 'Git waits for the first settled message')
+    assert.ok(!rowGroups(first).some(node => node.props.key === 'git'), 'Git waits for the first settled message')
     metrics = { session: { pricedMessages: 1, unpricedMessages: 0 } }
     const panel = render()
-    const groups = panel.props.children[0].props.children[0]
+    const groups = rowGroups(panel)
     assert.ok(groups.some(node => node.props.key === 'git'), 'the first settled message reveals Git')
   } finally { renderer.unmount(); h.restore() }
 })
@@ -367,7 +370,7 @@ test('Git bursts retain one trailing refresh, manual clicks bypass delay, and di
     await advance(1); assert.equal(h.gitRequests.length, 2, 'latest step still receives a fresh trailing snapshot')
     h.gitResolvers[1]({ isRepo: true, repoRoot: '/tmp/repo', branch: 'new', counts: {} })
     await new Promise(setImmediate)
-    let panel = render(), git = panel.props.children[0].props.children[0].find(node => node.props.key === 'git')
+    let panel = render(), git = rowGroups(panel).find(node => node.props.key === 'git')
     assert.equal(git.props.data.branch, 'new')
     step++; panel = render(); assert.equal(clock.tasks.size, 1)
     git.props.refresh()
@@ -393,7 +396,7 @@ test('a background Git refresh keeps the chip and never dims it', async () => {
         : key === 'sessionStats' ? { steps: step } : null }
     const element = dock.component(props), render = () => renderer.render(element.type, element.props)
     const advance = async ms => { clock.now += ms; for (const [token, task] of clock.tasks) if (task.at <= clock.now) { clock.tasks.delete(token); task.fn() } await new Promise(setImmediate) }
-    const gitOf = panel => panel.props.children[0].props.children[0].find(node => node.props.key === 'git')
+    const gitOf = panel => rowGroups(panel).find(node => node.props.key === 'git')
     render()
     h.gitResolvers[0]({ isRepo: true, repoRoot: '/tmp/repo', branch: 'main', counts: { staged: 0, unstaged: 1, untracked: 0, conflict: 0 } })
     await new Promise(setImmediate)
@@ -433,7 +436,7 @@ test('an unresolved directory keeps the Git chip instead of blanking it', async 
     const props = { sessionId: 's1', useSessions: select => select({ byId: { s1: cwd ? { cwd } : {} } }),
       useProjection: key => key === 'statuslineMetrics' ? { session: { pricedMessages: 1, unpricedMessages: 0 } } : null }
     const element = dock.component(props), render = () => renderer.render(element.type, element.props)
-    const gitOf = panel => panel.props.children[0].props.children[0].find(node => node.props.key === 'git')
+    const gitOf = panel => rowGroups(panel).find(node => node.props.key === 'git')
     render()
     h.gitResolvers[0]({ isRepo: true, repoRoot: '/tmp/repo', branch: 'main', counts: {} })
     await new Promise(setImmediate)
@@ -880,7 +883,7 @@ test('Git UI reports a repository it cannot read, and recovers', async () => {
     const renderer = harness.createRenderer()
     const element = dock.component({ sessionId: 's1', useSessions: select => select({ byId: { s1: { cwd: '/tmp/repo' } } }), useProjection: () => null })
     const render = () => renderer.render(element.type, element.props)
-    const gitNode = panel => panel.props.children[0].props.children[0].find(node => node.props.key === 'git')
+    const gitNode = panel => rowGroups(panel).find(node => node.props.key === 'git')
     render()
     harness.gitResolvers[0](null, 'git-unsafe-repo')
     await new Promise(setImmediate)
@@ -917,7 +920,7 @@ test('Git UI waits for a second failure before reporting a slow answer, without 
     const renderer = harness.createRenderer()
     const element = dock.component({ sessionId: 's1', useSessions: select => select({ byId: { s1: { cwd: '/tmp/repo' } } }), useProjection: () => null })
     const render = () => renderer.render(element.type, element.props)
-    const gitProps = panel => panel.props.children[0].props.children[0].find(node => node.props.key === 'git').props
+    const gitProps = panel => rowGroups(panel).find(node => node.props.key === 'git').props
     const advance = async ms => { clock.now += ms; for (const [token, task] of clock.tasks) if (task.at <= clock.now) { clock.tasks.delete(token); task.fn() } await new Promise(setImmediate) }
     render()
     harness.gitResolvers[0](null, 'git-timeout')
@@ -948,7 +951,7 @@ test('Git UI names the failure behind a stale mark and marks uncounted untracked
     const renderer = harness.createRenderer()
     const element = dock.component({ sessionId: 's1', useSessions: select => select({ byId: { s1: { cwd: '/tmp/repo' } } }), useProjection: () => null })
     const render = () => renderer.render(element.type, element.props)
-    const gitNode = panel => panel.props.children[0].props.children[0].find(node => node.props.key === 'git')
+    const gitNode = panel => rowGroups(panel).find(node => node.props.key === 'git')
     const pieces = node => node.type(node.props).props.children[0].props.children[0]
     render()
     harness.gitResolvers[0]({ isRepo: true, repoRoot: '/tmp/repo', branch: 'main', untrackedUnknown: true,
@@ -992,7 +995,7 @@ test('Git UI labels the resolved repository and marks retained results stale', a
     const renderer = harness.createRenderer()
     const element = dock.component({ sessionId: 's1', useSessions: select => select({ byId: { s1: { cwd: '/tmp/repo/nested' } } }), useProjection: () => null })
     const render = () => renderer.render(element.type, element.props)
-    const gitProps = panel => panel.props.children[0].props.children[0].find(node => node.props.key === 'git').props
+    const gitProps = panel => rowGroups(panel).find(node => node.props.key === 'git').props
     render()
     harness.gitResolvers[0]({ isRepo: true, repoRoot: '/tmp/repo', branch: 'main', counts: {}, lineStats: null })
     await new Promise(setImmediate)

@@ -246,6 +246,16 @@ async function verifyAnchorFallback(folder, errors) {
     await mountResponsiveFixture(page, { hostAnchor: false })
     const chip = page.locator('#fixture-header .slp-quota-trigger')
     await chip.waitFor()
+    // The open quota panel's "updated Ns ago" ticks every second while under a
+    // minute old; its tooltip holds.
+    await chip.click()
+    const age = page.locator('.slp-anchored .slp-quota-age')
+    await age.waitFor(); await age.hover()
+    const ageTitle = await age.getAttribute('title')
+    await page.clock.runFor(3000)
+    if (await age.getAttribute('title') !== ageTitle) throw new Error('Quota age tooltip changed while hovered')
+    await page.keyboard.press('Escape'); await page.locator('.slp-anchored').waitFor({ state: 'detached' })
+    if (!/\d+s/.test(ageTitle)) throw new Error('Quota age was not in seconds, so the hold went untested: ' + ageTitle)
     // A changing native tooltip blinks, so the text holds while hovered.
     await chip.hover()
     const hovered = await chip.getAttribute('title')
@@ -254,6 +264,14 @@ async function verifyAnchorFallback(folder, errors) {
     await page.mouse.move(380, 830)
     await page.clock.runFor(30000)
     if (await chip.getAttribute('title') === hovered) throw new Error('Chip tooltip stayed frozen after the pointer left')
+    // The sidebar peak dot: its open panel ticks every second, the tooltip holds.
+    const dot = page.locator('#fixture-footer .slp-peak-dot-btn')
+    await dot.click(); await page.locator('.slp-panel-fixed').waitFor()
+    await page.mouse.move(380, 830); await dot.hover()
+    const dotTitle = await dot.getAttribute('title')
+    await page.clock.runFor(3000)
+    if (await dot.getAttribute('title') !== dotTitle) throw new Error('Peak dot tooltip changed while hovered with its panel open')
+    await dot.click(); await page.mouse.move(380, 830)
     for (let round = 0; round < 2; round++) {
       await chip.click()
       const panel = page.locator('.slp-anchored')
@@ -266,7 +284,86 @@ async function verifyAnchorFallback(folder, errors) {
       if (!await chip.isVisible()) throw new Error('Quota chip disappeared after closing its panel')
     }
     await page.evaluate(() => window.disposeResponsiveFixture())
-    return { panel: 'anchor-fallback', lifecycle: 'hover tooltip held/open/close twice without the Host hook passed', screenshot: relative(root, join(folder, 'anchor-fallback.png')) }
+    return { panel: 'anchor-fallback', lifecycle: 'hover tooltips held (chip, peak dot, panel age)/open/close twice without the Host hook passed', screenshot: relative(root, join(folder, 'anchor-fallback.png')) }
+  } finally { await page.close() }
+}
+
+// Reorder the live bottom row by dragging: the row, the saved order and the
+// settings list all follow, a drag never clicks the chip it ends on, and a
+// plain click still does.
+async function verifyDockDrag(folder, errors) {
+  const page = await browser.newPage({ viewport: { width: 768, height: 844 } })
+  page.setDefaultTimeout(8000)
+  page.on('pageerror', error => errors.push(redact(error.message)))
+  try {
+    await mountResponsiveFixture(page, { dockData: true })
+    const dock = page.locator('#fixture-dock .slp-row')
+    const git = dock.locator('[data-component="git"]'), tps = dock.locator('[data-component="tps"]')
+    await git.locator('.slp-git-branch').waitFor(); await tps.locator('.slp-tps').waitFor()
+    const shown = () => dock.locator('.slp-dock-item').evaluateAll(items => items.filter(item => item.getClientRects().length).map(item => item.dataset.component))
+    const listed = () => page.locator('.slp-order-list .slp-order-item').evaluateAll(items => items.map(item => item.dataset.component))
+    const requests = () => page.evaluate(() => window.slpResponsive.gitRequests.length)
+    if ((await shown()).join() !== 'git,tps') throw new Error('Unexpected initial dock order: ' + (await shown()).join())
+    // Text matches the Host's own dock stat: tertiary, secondary on hover.
+    const token = name => page.evaluate(name => { const probe = document.createElement('span'); probe.style.color = 'var(' + name + ')'; document.body.appendChild(probe); const color = getComputedStyle(probe).color; probe.remove(); return color }, name)
+    const colorOf = locator => locator.evaluate(node => getComputedStyle(node).color)
+    const [tertiary, secondary] = [await token('--dsw-alias-label-tertiary'), await token('--dsw-alias-label-secondary')]
+    if (await colorOf(tps.locator('.slp-tps')) !== tertiary || await colorOf(git.locator('.slp-git-branch')) !== tertiary) throw new Error('Bottom-row text is not the Host dock stat colour')
+    await git.locator('button').hover()
+    // The colour eases in, so wait for the transition to land.
+    await page.waitForFunction(expected => getComputedStyle(document.querySelector('#fixture-dock [data-component="git"] .slp-git-branch')).color === expected, secondary, { timeout: 2000 })
+      .catch(() => { throw new Error('Bottom-row trigger does not brighten on hover like the Host stat') })
+    await page.mouse.move(700, 800)
+    const before = await requests()
+    // A short wobble stays a click candidate; nothing moves.
+    const from = await tps.boundingBox(), to = await git.boundingBox()
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2); await page.mouse.down()
+    await page.mouse.move(from.x + from.width / 2 + 3, from.y + from.height / 2)
+    if (await dock.getAttribute('data-reordering')) throw new Error('A 3 px wobble started a drag')
+    await page.mouse.move(to.x + 4, to.y + to.height / 2, { steps: 6 })
+    // The row previews the result: TPS (faint, outlined) already sits before Git
+    // while the DOM keeps its order until the drop is saved.
+    const visual = () => dock.locator('.slp-dock-item').evaluateAll(items => items.filter(item => item.getClientRects().length)
+      .map(item => ({ id: item.dataset.component, left: item.offsetLeft })).sort((a, b) => a.left - b.left).map(item => item.id).join())
+    await page.waitForFunction(() => document.querySelector('#fixture-dock [data-component="tps"]').style.order !== '')
+    if (await visual() !== 'tps,git' || await tps.getAttribute('data-dragging') !== 'true') throw new Error('The row did not preview TPS before Git while dragging')
+    if ((await shown()).join() !== 'git,tps') throw new Error('The preview changed the DOM order before the drop')
+    // A translucent copy of the picked component follows the pointer.
+    const ghost = await page.locator('.slp-dock-ghost').evaluate(node => {
+      const box = node.getBoundingClientRect(), style = getComputedStyle(node)
+      return { text: node.textContent, opacity: Number(style.opacity), events: style.pointerEvents, left: box.left, right: box.right, top: box.top, bottom: box.bottom }
+    })
+    if (!ghost.text.includes('TPS') || !(ghost.opacity > 0.5 && ghost.opacity < 1) || ghost.events !== 'none') throw new Error('Drag ghost is missing, opaque or catches the pointer')
+    // A size smaller than the original (scaled around the grab point), as wide
+    // as its content, with the grabbed point (TPS's centre) under the pointer
+    // and within the row's height.
+    const pointer = { x: to.x + 4, y: to.y + to.height / 2 }, row = await dock.boundingBox(), scale = 0.88
+    const near = (a, b) => Math.abs(a - b) <= 2
+    if (!near(ghost.right - ghost.left, from.width * scale) || !near(ghost.bottom - ghost.top, from.height * scale) || !near(pointer.x - ghost.left, from.width / 2 * scale) ||
+        ghost.top < row.y - 1 || ghost.bottom > row.y + row.height + 1) throw new Error('Drag ghost is not a size smaller, left the grab point or the row: ' + JSON.stringify({ ghost, pointer, from, row }))
+    const screenshot = join(folder, 'dock-drag.png')
+    const area = await dock.boundingBox()
+    await page.screenshot({ path: screenshot, animations: 'disabled', clip: { x: Math.max(0, area.x - 24), y: Math.max(0, area.y - 8), width: area.width + 48, height: area.height + 40 } })
+    await page.mouse.up()
+    await page.waitForFunction(() => [...document.querySelectorAll('#fixture-dock .slp-dock-item')].map(item => item.dataset.component).join() === 'tps,git')
+    const saved = await page.evaluate(() => window.slpResponsive.mutations.flat().filter(op => op.path[0] === 'componentOrder').map(op => op.value))
+    if (saved.length !== 1 || saved[0].indexOf('tps') > saved[0].indexOf('git')) throw new Error('Drag did not save one componentOrder with TPS before Git')
+    await page.waitForFunction(() => { const ids = [...document.querySelectorAll('.slp-order-list .slp-order-item')].map(item => item.dataset.component); return ids.indexOf('tps') < ids.indexOf('git') })
+    if ((await listed()).indexOf('tps') > (await listed()).indexOf('git')) throw new Error('Settings order list did not follow the drag')
+    if (await requests() !== before) throw new Error('The click ending a drag refreshed the Git chip under it')
+    if (await dock.getAttribute('data-reordering') || await dock.locator('[data-dragging]').count() || await page.locator('.slp-dock-ghost').count() ||
+        await dock.locator('.slp-dock-item').evaluateAll(items => items.some(item => item.style.order))) throw new Error('Drag state was left on the row')
+    await git.locator('button').click()
+    await page.waitForFunction(count => window.slpResponsive.gitRequests.length > count, before)
+    // Escape abandons a drag in progress without saving.
+    const box = await tps.boundingBox(), target = await git.boundingBox()
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down()
+    await page.mouse.move(target.x + target.width - 4, target.y + target.height / 2, { steps: 6 })
+    await page.keyboard.press('Escape'); await page.mouse.up()
+    if ((await shown()).join() !== 'tps,git' || await visual() !== 'tps,git' || await page.locator('.slp-dock-ghost').count()) throw new Error('Escape did not cancel the drag')
+    if (await dock.locator('.slp-dock-item').evaluateAll(items => items.some(item => item.style.order))) throw new Error('Preview order styles were left on the row')
+    await page.evaluate(() => window.disposeResponsiveFixture())
+    return { panel: 'dock-drag', lifecycle: 'Host text colours/live preview/grab-anchored ghost/save/settings sync/no stray click/click/Escape passed', screenshot: relative(root, screenshot) }
   } finally { await page.close() }
 }
 
@@ -294,6 +391,7 @@ try {
   if (!opts.live && ['all', 'responsive'].includes(opts.panel)) {
     checks.push(await verifyResponsive(page, folder))
     checks.push(await verifyAnchorFallback(folder, errors))
+    checks.push(await verifyDockDrag(folder, errors))
   } else if (!opts.live) await page.evaluate(() => window.slpFixtureRoot.unmount())
   if (errors.length || !opts.live && network) throw new Error(errors.join('; ') || 'Offline fixture made a network request')
   if (opts.live && await page.evaluate(() => window.slpModules.entries.state.getSnapshot().failures.length)) throw new Error('Native module loader reported failures')
