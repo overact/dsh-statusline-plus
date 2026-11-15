@@ -166,6 +166,27 @@ test('verified DeepSeek Flash/Pro prices apply to disjoint input, cache reads an
   assert.equal(quote({ usage: { inputTokens: 10, outputTokens: 20, cacheReadTokens: 30, reasoningTokens: 20 } }).maxUnits, 10 * 200 + 20 * 800 + 30 * 4)
 })
 
+test('cache misses count requests with input but no cache read', () => {
+  assert.equal(quote({ usage: { inputTokens: 100, outputTokens: 10 } }).cacheMiss, true)
+  assert.equal(quote({ usage: { inputTokens: 100, outputTokens: 10, cacheReadTokens: 1 } }).cacheMiss, false)
+  assert.equal(quote({ usage: { inputTokens: 0, outputTokens: 10 } }).cacheMiss, false, 'no prompt input: no miss')
+  assert.equal(quote({ usage: { inputTokens: 100, outputTokens: 10, cacheReadTokens: -1 } }).cacheMiss, false, 'invalid usage is not a miss')
+})
+
+test('session metrics count cache misses and replace a corrected settlement', () => {
+  const f = fold(0)
+  f.request(1, 1)
+  f.message(1, 1, { inputTokens: 100, outputTokens: 10 })
+  assert.equal(f.view.session.cacheMisses, 1)
+  f.message(1, 1, { inputTokens: 100, outputTokens: 10, cacheReadTokens: 50 })
+  assert.equal(f.view.session.cacheMisses, 0, 'a corrected settlement replaces the earlier miss')
+  f.event('step/end', { turn: 1, step: 1 })
+  f.event('step/start', { turn: 1, step: 2 })
+  f.message(1, 2, { inputTokens: 100, outputTokens: 10 })
+  assert.equal(f.view.session.cacheMisses, 1)
+  assert.equal(f.view.session.pricedMessages, 2)
+})
+
 test('official fallback reference is channel-independent and unknown model versions stay unpriced', () => {
   for (const provider of ['openrouter', 'opencode', 'opencode-go', 'deepseek-custom', 'reseller-deepseek']) assert.deepEqual(cny(quote({ route: { ...route, provider } })), [10.04, 10.04])
   for (const model of ['deepseek-chat', 'deepseek-reasoner', 'deepseek-v3', 'deepseek-v4-flash', 'deepseek-v4-flash-vision-exp',

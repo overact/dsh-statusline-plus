@@ -1,7 +1,8 @@
 # Context chip
 
 Shows used and total context tokens. Its panel adds the percentage bar, the remaining
-tokens, the session's token split with cache hit rate, and the number of compactions.
+tokens, the session's token split with cache hit rate and request-level cache misses, and
+the number of compactions.
 
 ## Code
 
@@ -16,7 +17,7 @@ The chip reads projections and has no route of its own.
 | --- | --- | --- |
 | `contextPressure` | Host | `projectedTokens`, or `pressureTokens`, and `contextWindow` |
 | `tokenUsage` | Host's token meter | Input, cache read, cache write and output split |
-| `statuslineMetrics` | This plugin | `compactions` |
+| `statuslineMetrics` | This plugin | `compactions`, `session.cacheMisses` |
 
 ## Rules
 
@@ -25,6 +26,12 @@ The chip reads projections and has no route of its own.
 - The chip shows counts, not a percentage, because the native ring beside it already shows
   one. The percentage is in the panel.
 - Most providers never report cache writes, so that row appears only when it has tokens.
+- **Cache misses are requests, not tokens.** A miss is one settled request with prompt
+  input and no cache read, shown after the `Cache read` label as `(N misses)`, and only
+  when the count is above zero. It uses the same session-only scope as cost, so
+  fork-inherited history is excluded. A provider that never reports cache fields makes
+  every request count as a miss; the number is a reading, never an inferred reason. A
+  corrected settlement replaces the earlier miss instead of adding another.
 - A failed compaction does not count: `compaction/end` with an error is ignored.
 
 ## Tests

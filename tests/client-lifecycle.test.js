@@ -1988,6 +1988,18 @@ test('CTX details show occupancy, remaining room and the cache read/write split'
   assert.match(text, /85% used/); assert.match(text, /150K left/)
   assert.match(text, /Uncached input 10K/); assert.match(text, /Cache read 80K/); assert.match(text, /Cache write 10K/); assert.match(text, /Output 4K/)
   assert.match(text, /Input cache hit 80%/)
+  assert.doesNotMatch(text, /misses/, 'no miss count without the metrics projection')
+  assert.match(textContent(h.ContextPanel({ ...panel.props, cacheMisses: 3 })), /Cache read \(3 misses\) 80K/)
+  const hm = harness()
+  const withMetrics = hm.renderComponent(hm.ContextProjection, { useProjection: key => key === 'contextPressure' ? { projectedTokens: 850000, contextWindow: 1000000 }
+    : key === 'tokenUsage' ? usage : key === 'statuslineMetrics' ? { session: { cacheMisses: 4 } } : null })
+  let metricsView = hm.renderComponent(withMetrics.type, withMetrics.props)
+  metricsView.children[0].props.onClick()
+  metricsView = hm.renderComponent(withMetrics.type, withMetrics.props)
+  const metricsPanel = metricsView.children[1]
+  assert.equal(metricsPanel.props.cacheMisses, 4, 'the context projection reads the session miss count')
+  assert.match(textContent(metricsPanel.type(metricsPanel.props)), /Cache read \(4 misses\) 80K/)
+  hm.unmount()
   assert.doesNotMatch(text, /Compacted/, 'no compaction yet: no row')
   assert.match(textContent(h.ContextPanel({ ...panel.props, compactions: 2 })), /Compacted 2×/)
   assert.doesNotMatch(text, /Estimated from the latest request/, 'the estimate caveat sits behind the heading hint')

@@ -78,8 +78,8 @@ route for 8 seconds:
   apply", which opens the [restart](restart.md) dialog where the Host runs in a systemd user
   unit and stays disabled elsewhere;
 - neither by the deadline means the swap may still be running: "Installed · Refresh to confirm".
-  Reloading runs the check again, which shows no button or "Restart to apply". The deadline
-  alone must not claim a restart is needed.
+  Reloading runs the check again: no button after a successful swap, or "Restart to apply"
+  when the swap failed. The deadline alone must not claim a restart is needed.
 
 ## Rules
 
