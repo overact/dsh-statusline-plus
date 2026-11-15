@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createPricingCatalog, loadPricingCatalog, quoteCatalogUsage } = require('../lib/model-pricing')
+const { createPricingCatalog, loadPricingCatalog, pricingModelAlias, quoteCatalogUsage } = require('../lib/model-pricing')
 const { hostPiVersion } = require('./native-pricing-fixture.cjs')
 const units = 100000000
 const cost = { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5, tiers: [{ inputTokensAbove: 272000, input: 4, output: 15, cacheRead: 0.4, cacheWrite: 5 }] }
@@ -65,20 +65,40 @@ test('gateway namespaces do not change the model reference card or its exact ver
     assert.equal(c.resolve({ provider: 'magpie-workbuddy', model: prefix + 'deepseek-v4.1-flash' }), flash)
     assert.equal(c.resolve({ provider: 'anything', model: prefix + 'gpt-6-sol' }).cost, cost)
     assert.equal(c.resolve({ provider: 'anything', model: prefix + 'gpt-6.1-sol' }).source, 'fallback')
-    for (const unknown of ['deepseek-v4-flash', 'deepseek-v4.1-flash-sg', 'gpt-6-sol-fast', 'unknown', '']) {
+    for (const unknown of ['deepseek-v4-flash', 'deepseek-v4.1-flashlight', 'gpt-6-sol-fast', 'unknown', '']) {
       assert.equal(c.resolve({ provider: 'deepseek', model: prefix + unknown }), null)
     }
   }
   assert.equal(c.resolve({ provider: 'custom', model: 'WORKBUDDY-AI/DEEPSEEK-V4.1-FLASH' }), flash)
 })
 
-test('DeepSeek Flash snapshot ids are explicit identities, not a pattern', () => {
+test('DeepSeek plan, snapshot and tier spellings all fold to the standard vendor card', () => {
   const direct = { input: 0.3, output: 1.2, cacheRead: 0.006, cacheWrite: 0 }
-  const c = createPricingCatalog([{ provider: 'deepseek', model: 'deepseek-flash', cost: direct }])
-  for (const model of ['deepseek-v4.1-flash', 'deepseek-v4.1-flash-1017', 'deepseek-v4-1-flash-1017']) {
-    assert.equal(c.resolve({ provider: 'magpie-workbuddy', model: 'mistral-vibe/' + model }).cost, direct, model)
+  const pro = { input: 1.32, output: 3.96, cacheRead: 0.044, cacheWrite: 0 }
+  const c = createPricingCatalog([
+    { provider: 'deepseek', model: 'deepseek-flash', cost: direct },
+    { provider: 'deepseek', model: 'deepseek-v4-pro', cost: pro },
+  ])
+  const flash = c.resolve({ provider: 'deepseek', model: 'deepseek-v4.1-flash' })
+  assert.deepEqual(flash.cost, direct)
+  assert.equal(pricingModelAlias('DeepSeek-V4p1-Flash-1017-SG'), 'deepseek-flash')
+  assert.equal(pricingModelAlias('deepseek-v4.1-flash-fast'), 'deepseek-flash')
+  for (const model of ['deepseek-v4.1-flash', 'deepseek-v4.1-flash-1017', 'deepseek-v4-1-flash-1017',
+    'deepseek-v4p1-flash', 'deepseek-v4p1-flash-1017', 'deepseek-v4.1-flash-sg', 'deepseek-v4.1-flash-1103',
+    'deepseek_v4.1_flash', 'deepseek-v4.1-flash-1017-sg', 'deepseek-v4.1-flash-latest', 'deepseek-v4.1-flash-thinking',
+    'deepseek-v4.2-flash', 'deepseek-v5-flash', 'deepseek-flash-latest', 'DeepSeek-V4.1-Flash',
+    'deepseek-v4.1-flash-fast', 'deepseek-v4.1-flash-1017-fast', 'deepseek-v4.1-flash-spot',
+    'deepseek-v4.1-flash-1017-spot', 'deepseek-v4p1-flash-spot', 'deepseek-v4.1-flash-free',
+    'deepseek-v4.1-flash:batch', 'deepseek-v4.1-flash-vision-exp', 'deepseek-v4.1-flash-preview',
+    'deepseek-v4.1-flash-lite', 'deepseek-v4.1-flash-vl']) {
+    assert.deepEqual(c.resolve({ provider: 'magpie-workbuddy', model: 'mistral-vibe/' + model }).cost, direct, model)
   }
-  for (const model of ['deepseek-v4-flash', 'deepseek-v4.1-flash-sg', 'deepseek-v4.1-flash-fast', 'deepseek-v4.2-flash', 'deepseek-v4.1-flash-1103']) {
+  const v4Pro = c.resolve({ provider: 'deepseek', model: 'deepseek-v4-pro' })
+  for (const model of ['deepseek-v4-pro', 'deepseek-v4-pro-0813', 'deepseek-v4.1-pro', 'deepseek-pro-latest']) {
+    assert.deepEqual(c.resolve({ provider: 'magpie-workbuddy', model }).cost, v4Pro.cost, model)
+  }
+  for (const model of ['deepseek-v4-flash', 'deepseek-v4-flash-0731', 'deepseek-v4-flash-vision-exp',
+    'deepseek-v3-pro', 'deepseek-chat', 'deepseek-reasoner', 'deepseek-v4.1-flashlight']) {
     assert.equal(c.resolve({ provider: 'magpie-workbuddy', model }), null, model)
   }
 })

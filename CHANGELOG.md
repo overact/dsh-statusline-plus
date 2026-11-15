@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- DeepSeek cost estimates now recognize the same Flash/Pro card across plan and snapshot spellings (`deepseek-v4-1-flash-1017`, `deepseek-v4p1-flash`, `deepseek-flash-latest`, a later V4.2/V5, and region codes such as `-sg`). Subscription tiers such as `-fast`, `-spot`, `-free` and `:batch` are estimated at the standard card, so the figure is a reference rather than a bill; the older V4 Flash stays unpriced.
+
 - The sidebar button now checks for a new DSH version at most every ten minutes instead of every minute. A failed check is still retried after one minute.
 - Other plugins can add their own items to the bottom row by registering a component into the `statusline-plus.dock.item` slot, or replace a built-in item by registering its id. Added items can be dragged, reordered and switched off in Settings like the built-ins, and are tagged there as "Extension" or "Replaced". The guide for plugin authors and their agents is in `docs/extending/README.md`.
 - Bottom-row text now uses the same colour as DSH's own context meter beside it, a lighter grey, and brightens on hover or while its details are open. Coloured readings are unchanged.

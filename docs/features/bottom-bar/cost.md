@@ -24,11 +24,19 @@ prefix or display name.
 
 An unrecognized model stays unpriced.
 
-Model identities are explicit, never pattern-matched. `MODEL_ALIASES` lists the verified
-DeepSeek Flash spellings (`deepseek-v4.1-flash`, `deepseek-v4.1-flash-1017` and
-`deepseek-v4-1-flash-1017`) and both the catalog and offline paths share it through
-`pricingModelAlias`. A new snapshot or variant (`-sg`, `-fast`, V4, V4.2) stays unpriced
-until it is added, so a similar name is never silently charged as V4.1 Flash.
+Model identities are normalized, never guessed from a similar name. `MODEL_ALIASES` keeps
+the verified non-DeepSeek aliases, and `pricingModelAlias` folds DeepSeek's plan and
+snapshot spellings to the vendor card, so pi-ai supplies the price: `deepseek-v4.1-flash`,
+`deepseek-v4-1-flash-1017`, `deepseek-v4p1-flash`, `deepseek-v4.1-flash-sg`,
+`deepseek-flash-latest` and a later `deepseek-v4.2-flash`/`deepseek-v5-flash` all use
+`deepseek-flash`; `deepseek-v4-pro`, `deepseek-v4.1-pro` and `deepseek-pro-latest` use
+`deepseek-v4-pro`. The version may use `.`, `-`, `_` or the fireworks `p`.
+
+Every trailing qualifier is ignored and priced at the standard card, including snapshot
+dates, region codes and subscription tiers such as `-fast`, `-spot`, `-free`, `:batch`,
+`-vision` and `-exp`. Those tiers can cost 2x or 0.7x, so the result stays a reference
+estimate rather than a bill. V4 Flash (no minor) is the previous generation at a lower
+price, so the version gate keeps it out of the V4.1 Flash card.
 
 ## Scope
 
@@ -58,9 +66,9 @@ Only this session's own requests count: no child sessions, no inherited fork his
 
 `stateVersion` is a hash of a hand-written number, the catalog revision and the peak
 snapshot, so new catalog or calendar data refolds by itself. The hash does not see `RATES`,
-`FALLBACK` or the fold's code. After changing those, raise the hand-written number in
-`createSessionMetricsProjection` and say why in its comment, or native checkpoints keep the
-old semantics.
+`FALLBACK`, the fold's code or the DeepSeek alias rules. After changing those, raise the
+hand-written number in `createSessionMetricsProjection` and say why in its comment, or
+native checkpoints keep the old semantics.
 
 Update the as-of date with the table. `viewSchema` pins `PRICING_AS_OF`, and the preview
 sample in `LayoutPreview` carries the date too.

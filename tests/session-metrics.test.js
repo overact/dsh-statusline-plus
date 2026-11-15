@@ -134,7 +134,9 @@ test('gateway-prefixed usage settles at the same reference price with and withou
     for (const time of [PEAK, OFF_PEAK]) {
       const direct = fold(0, source)
       direct.request(1, 1, route, time); direct.message(1, 1, usage, route, time + 1000)
-      for (const model of ['workbuddy-ai/deepseek-v4.1-flash', 'custom/deepseek-flash', 'proxy/deepseek/deepseek-v4.1-flash', 'mistral-vibe/deepseek-v4-1-flash-1017']) {
+      for (const model of ['workbuddy-ai/deepseek-v4.1-flash', 'custom/deepseek-flash', 'proxy/deepseek/deepseek-v4.1-flash',
+        'mistral-vibe/deepseek-v4-1-flash-1017', 'mistral-vibe/deepseek-v4p1-flash', 'custom/DeepSeek-V4.1-Flash',
+        'proxy/deepseek/deepseek-v4.1-flash-sg', 'proxy/deepseek/deepseek-flash-latest']) {
         const f = fold(0, source), selection = { provider: 'magpie-workbuddy', model }
         f.request(1, 1, selection, time); f.message(1, 1, usage, selection, time + 1000)
         assert.deepEqual(f.view.session, direct.view.session)
@@ -142,7 +144,10 @@ test('gateway-prefixed usage settles at the same reference price with and withou
         assert.deepEqual(f.state.request.route, selection, 'pricing normalization must not rewrite the request route')
       }
     }
-    assert.equal(quote({ catalog: source, route: { provider: 'deepseek', model: 'workbuddy-ai/deepseek-v4.1-flash-sg' } }).reason, 'unsupported-model')
+    for (const model of ['deepseek-v4.1-flash-sg', 'deepseek-v4.1-flash-fast', 'deepseek-v4.1-flash-spot',
+      'deepseek-v4.1-flash-free', 'deepseek-v4.1-flash:batch', 'deepseek-v4.1-flash-vision-exp']) {
+      assert.equal(quote({ catalog: source, route: { provider: 'deepseek', model: 'workbuddy-ai/' + model } }).reason, null, model)
+    }
   }
 })
 
@@ -154,12 +159,17 @@ test('verified DeepSeek Flash/Pro prices apply to disjoint input, cache reads an
   assert.deepEqual(cny(quote({ route: { ...route, model: 'deepseek-v4.1-flash' } })), [10.04, 10.04])
   assert.deepEqual(cny(quote({ route: { ...route, model: 'deepseek-v4.1-flash-1017' } })), [10.04, 10.04])
   assert.deepEqual(cny(quote({ route: { ...route, model: 'deepseek-v4-1-flash-1017' } })), [10.04, 10.04])
+  for (const model of ['deepseek-v4.1-flash-fast', 'deepseek-v4.1-flash-spot', 'deepseek-v4.1-flash-free',
+    'deepseek-v4.1-flash:batch', 'deepseek-v4.1-flash-vision-exp']) {
+    assert.deepEqual(cny(quote({ route: { ...route, model } })), [10.04, 10.04], model)
+  }
   assert.equal(quote({ usage: { inputTokens: 10, outputTokens: 20, cacheReadTokens: 30, reasoningTokens: 20 } }).maxUnits, 10 * 200 + 20 * 800 + 30 * 4)
 })
 
 test('official fallback reference is channel-independent and unknown model versions stay unpriced', () => {
   for (const provider of ['openrouter', 'opencode', 'opencode-go', 'deepseek-custom', 'reseller-deepseek']) assert.deepEqual(cny(quote({ route: { ...route, provider } })), [10.04, 10.04])
-  for (const model of ['deepseek-chat', 'deepseek-reasoner', 'deepseek-v3', 'deepseek-v4-flash', 'deepseek-v4-flash-vision-exp', 'gpt-5', '__proto__', 'constructor']) assert.equal(quote({ route: { ...route, model } }).reason, 'unsupported-model')
+  for (const model of ['deepseek-chat', 'deepseek-reasoner', 'deepseek-v3', 'deepseek-v4-flash', 'deepseek-v4-flash-vision-exp',
+    'gpt-5', '__proto__', 'constructor']) assert.equal(quote({ route: { ...route, model } }).reason, 'unsupported-model')
   assert.equal(quote({ route: { ...route, provider: 'DEEPSEEK-OFFICIAL' } }).reason, null)
 })
 
