@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Upgrading from the settings page no longer falls back to "Restart to apply" after a successful hot swap. The Host records the version it reconciled, so the next settings visit sees no pending restart even when the module that reads the loaded version was cached.
 - DeepSeek cost estimates now recognize the same Flash/Pro card across plan and snapshot spellings (`deepseek-v4-1-flash-1017`, `deepseek-v4p1-flash`, `deepseek-flash-latest`, a later V4.2/V5, and region codes such as `-sg`). Subscription tiers such as `-fast`, `-spot`, `-free` and `:batch` are estimated at the standard card, so the figure is a reference rather than a bill; the older V4 Flash stays unpriced.
 
 - The sidebar button now checks for a new DSH version at most every ten minutes instead of every minute. A failed check is still retried after one minute.

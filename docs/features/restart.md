@@ -163,8 +163,10 @@ update. `restartStep` maps a probe:
   session list is loaded before the page reloads. A 503 or a missing route is still
   booting.
 
-After a self-update of this plugin, the settings header's "Restart to apply" opens the
-same dialog where a full restart is available, and stays disabled elsewhere.
+After a self-update of this plugin whose hot apply failed, the settings header's "Restart to
+apply" opens the same dialog where a full restart is available, and stays disabled elsewhere.
+A successful hot apply records the reconciled version, so the prompt does not return on the
+next settings visit.
 
 ## Tests
 

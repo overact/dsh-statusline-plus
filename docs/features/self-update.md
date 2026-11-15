@@ -25,7 +25,8 @@ The settings header shows the first that applies:
 1. **Button: update to a version.** A newer version exists and the running Host accepts it
    (`compatible` null, meaning unknown, counts as accepted).
 2. **Disabled: restart to apply.** `restartRequired`, meaning the version on disk is newer than
-   the one loaded when this module was evaluated. It stays until the new copy is really running.
+   the one loaded when this module was evaluated, and this process has not reconciled it. It
+   stays until the new copy is really running.
 3. **Note: the version and the DSH it needs.** A newer version exists, but `compatible` is false.
 4. **Nothing.** The install is linked, because a development checkout is not the registry's to
    replace; the registry failed, because an error must not read as "up to date"; or the plugin
@@ -66,7 +67,11 @@ The install is an overlay rather than remove-then-install, because unloading thi
 would kill the request that asked for the update.
 
 `hotApplyUpdate` then runs `hmr.reconcileProfile()` 80 ms after the response is sent, because
-applying disposes this plugin's own fiber. The page polls the `version` route for 8 seconds:
+applying disposes this plugin's own fiber. A new instance id proves the swap happened, even
+when the reconciliation also reports a profile-wide restart reason. A successful apply records
+the installed version in process-wide state, so the next check clears `restartRequired` even
+when the cached module that read the loaded version is older. The page polls the `version`
+route for 8 seconds:
 
 - a new `instanceId` means the swap happened: "Updated · Refresh", which reloads the page;
 - `hotFailed` means this instance could not swap, including a profile without HMR: "Restart to

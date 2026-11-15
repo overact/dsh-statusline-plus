@@ -178,6 +178,21 @@ test('a running copy matching the disk needs no restart, and an unknown version 
   ))
 })
 
+test('a version this process reconciled needs no restart, and a later install still does', async () => {
+  await withHostVersion('0.2.1-rc.5', () => withFetch(
+    () => registryResponse({ version: '0.1.13' }),
+    async () => {
+      let applied = null
+      const check = createUpdateChecker({ installedVersion: () => '0.1.13', loadedVersion: '0.1.12', appliedVersion: () => applied })
+      assert.equal((await check({})).restartRequired, true, 'the disk is ahead of the cached loaded version')
+      applied = '0.1.13'
+      assert.equal((await check({})).restartRequired, false, 'the hot swap already ran for this version')
+      const newer = createUpdateChecker({ installedVersion: () => '0.1.14', loadedVersion: '0.1.12', appliedVersion: () => '0.1.13' })
+      assert.equal((await newer({})).restartRequired, true, 'a newer install is not covered by the old swap')
+    },
+  ))
+})
+
 test('a version the running host would refuse is not offered', async () => {
   await withHostVersion('0.2.0', () => withFetch(
     () => registryResponse({ version: '99.0.0', engines: { dsh: '>=0.2.1-rc.2' } }),
@@ -252,6 +267,35 @@ test('a hot apply reconciles the profile instead of asking for a restart', async
   }
   assert.deepEqual(await hotApplyUpdate(ctx), { applied: true })
   assert.deepEqual(calls, ['reconcile'])
+})
+
+test('a successful hot apply records the version for the next settings visit', async () => {
+  const key = Symbol.for('dsh-statusline-plus.update')
+  delete globalThis[key]
+  const ctx = { get: () => ({ runExclusive: run => run(), reconcileProfile: async () => ({ warnings: [], pending: [] }) }) }
+  assert.deepEqual(await hotApplyUpdate(ctx, '0.1.19'), { applied: true })
+  assert.equal(globalThis[key].appliedVersion, '0.1.19')
+  delete globalThis[key]
+})
+
+test('a new instance counts as applied even when reconcile also reports a restart reason', async () => {
+  const instance = Symbol.for('dsh-statusline-plus.instance')
+  const update = Symbol.for('dsh-statusline-plus.update')
+  const previous = globalThis[instance]
+  delete globalThis[update]
+  globalThis[instance] = 'old'
+  try {
+    const ctx = { get: () => ({ runExclusive: run => run(), reconcileProfile: async () => {
+      globalThis[instance] = 'new'
+      return { warnings: [], restartReason: 'package-moved' }
+    } }) }
+    assert.deepEqual(await hotApplyUpdate(ctx, '0.1.19'), { applied: true })
+    assert.equal(globalThis[update].appliedVersion, '0.1.19')
+  } finally {
+    if (previous === undefined) delete globalThis[instance]
+    else globalThis[instance] = previous
+    delete globalThis[update]
+  }
 })
 
 test('a profile without HMR keeps the restart path', async () => {
