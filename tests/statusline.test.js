@@ -71,6 +71,9 @@ function loadClientPluginForTest(options = {}) {
     useEffect(effect, deps) { if (!activeRenderer) throw new Error('React hook used outside renderer'); return activeRenderer.useEffect(effect, deps) },
     useRef(initial) { if (!activeRenderer) throw new Error('React hook used outside renderer'); return activeRenderer.useRef(initial) },
     useLayoutEffect() {},
+    // Recomputed on every render: these tests check output, not memoization.
+    useMemo(fn) { return fn() },
+    memo: component => component,
   }
   function createRenderer() {
     const hookSlots = []

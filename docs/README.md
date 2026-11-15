@@ -14,6 +14,7 @@ record what they cannot show, so correct a page in the same change when it goes 
 | A quota source, its endpoint, parser or reading order | [features/quota/sources.md](features/quota/sources.md) |
 | DeepSeek peak status, countdown, holiday calendar | [features/peak-hours.md](features/peak-hours.md) |
 | Bottom row order, wrapping, presets, preview | [features/bottom-bar/README.md](features/bottom-bar/README.md) |
+| The `statusline-plus.dock.item` slot other plugins register into | [extending/README.md](extending/README.md) |
 | Git chip | [features/bottom-bar/git.md](features/bottom-bar/git.md) |
 | Context chip | [features/bottom-bar/context.md](features/bottom-bar/context.md) |
 | TPS | [features/bottom-bar/tps.md](features/bottom-bar/tps.md) |
@@ -38,6 +39,7 @@ docs/
 |   |-- settings.md           Settings page
 |   |-- self-update.md        Update button
 |   `-- restart.md            Reload, restart and DSH update
+|-- extending/README.md       Guide for other plugins adding bottom-row items
 |-- development/releasing.md  Release steps and checks
 |-- images/                   README screenshots, written by `npm run screenshots`
 `-- market/                   Market listing metadata

@@ -16,6 +16,12 @@ function harness({ hidden = false, wallTime = Date.now(), panelLayout = null } =
       return [states[i], value => { states[i] = typeof value === 'function' ? value(states[i]) : value }]
     },
     useRef(initial) { const i = cursor++; return refs[i] || (refs[i] = { current: initial }) },
+    useMemo(fn, deps) {
+      const i = cursor++, old = refs[i]
+      if (!old || deps.some((v, n) => !Object.is(v, old.deps[n]))) refs[i] = { deps, value: fn() }
+      return refs[i].value
+    },
+    memo: component => component,
     useEffect(fn, deps) {
       const i = cursor++, old = effects[i]
       if (!old || deps.some((v, n) => !Object.is(v, old.deps[n]))) pending.push(() => {
@@ -73,7 +79,7 @@ function harness({ hidden = false, wallTime = Date.now(), panelLayout = null } =
       disconnect() { this.nodes.clear() }
     }
   }
-  const source = fs.readFileSync(require.resolve('../lib/client'), 'utf8').replace('return module.exports', 'return { magpieSubscriptionHint, ContextProjection, ContextRow, componentOrder, reorderComponent, layoutPreset, matchingPreset, dockComponents, LayoutEditor, LayoutPreview, ToolActivityRow, toolElapsed, quotaRefreshOnStep, TpsRow, useLiveTps, useQuotaResource, formatPathSegs, fmtResetHours, minutesLabel, primarySubscriptionKind, looksLikeSubscription, providerMatchesModel, fmtMoney, QuotaLine, parseSeconds, PeakPanel, PeakFooterDot, RestartFooterButton, restartStep, restartPollDelay, deepseekPeakStatus, HeaderChip, SettingsPage, DeepseekPeakChip, ActivityRow, childActivityRows, childElapsed, CostRow, estimateCost, quotaFreshness, pickFoldLevel, QuotaSource, QUOTA_SOURCES, QuotaChip, quotaState, fmtRetryIn, contextUsage, ContextPanel, STR, publishConfig, apiSetConfig, setScope: function (scope) { settingsScope = scope } }')
+  const source = fs.readFileSync(require.resolve('../lib/client'), 'utf8').replace('return module.exports', 'return { magpieSubscriptionHint, ContextProjection, ContextRow, componentOrder, layoutOrder, isExtensionId, dockExtensionsOf, componentEnabled, reorderComponent, layoutPreset, matchingPreset, dockComponents, LayoutEditor, LayoutPreview, ToolActivityRow, toolElapsed, quotaRefreshOnStep, TpsRow, useLiveTps, useQuotaResource, formatPathSegs, fmtResetHours, minutesLabel, primarySubscriptionKind, looksLikeSubscription, providerMatchesModel, fmtMoney, QuotaLine, parseSeconds, PeakPanel, PeakFooterDot, RestartFooterButton, restartStep, restartPollDelay, deepseekPeakStatus, HeaderChip, SettingsPage, DeepseekPeakChip, ActivityRow, childActivityRows, childElapsed, CostRow, estimateCost, quotaFreshness, pickFoldLevel, QuotaSource, QUOTA_SOURCES, QuotaChip, quotaState, fmtRetryIn, contextUsage, ContextPanel, STR, publishConfig, apiSetConfig, setScope: function (scope) { settingsScope = scope } }')
   vm.runInNewContext(source, context)
   exported.setScope(scope)
   return {
@@ -479,6 +485,38 @@ test('ordering normalizes stale/duplicate ids and is shared by preview and actua
   assert.deepEqual(Array.from(h.dockComponents(chosen, {}, {}).map(node => node.props.key)), ['tools', 'cost'])
   const preview = h.renderComponent(h.LayoutPreview, { config: chosen })
   assert.deepEqual(Array.from(descendants(preview, node => node.props?.key === 'tools' || node.props?.key === 'cost').map(node => node.props.key)), ['tools', 'cost'])
+  h.unmount()
+})
+
+test('dock extensions: namespaced ids keep their place, replace built-ins and hide by their own switch', () => {
+  const h = harness()
+  assert.equal(h.isExtensionId('my-ci.status'), true)
+  for (const bad of ['status', 'my ci.status', '.status', 'a.' + 'x'.repeat(40), 42, null]) assert.equal(h.isExtensionId(bad), false, String(bad))
+  // A saved extension id survives even while its plugin is not loaded; malformed ids do not.
+  assert.deepEqual(Array.from(h.componentOrder(['my-ci.status', 'tools', 'bogus', 'my-ci.status'])), ['my-ci.status', 'tools', 'git', 'context', 'tps', 'cost', 'activity'])
+  // Loaded extensions the saved order has not seen go to the end.
+  assert.deepEqual(Array.from(h.layoutOrder(['tools'], [{ id: 'new.one' }, { id: 'tools' }])).slice(-1), ['new.one'])
+  // At the 48-id cap, unloaded ids give way (last saved first), so a new item stays movable.
+  const stale = Array.from({ length: 42 }, (_, i) => 'gone.p' + i)
+  const full = h.layoutOrder([...stale, 'git', 'context', 'tps', 'cost', 'activity', 'tools'], [{ id: 'gone.p0' }, { id: 'new.one' }])
+  assert.equal(full.length, 48)
+  assert.deepEqual([full[0], full.at(-1), full.includes('gone.p41'), full.includes('gone.p40')], ['gone.p0', 'new.one', false, true])
+  const moved = h.reorderComponent(full, 'new.one', 'gone.p0', false)
+  assert.deepEqual(Array.from(moved).slice(0, 2), ['new.one', 'gone.p0'])
+  // A throwing label falls back to the id instead of crashing the row.
+  const slotsStub = { entriesOfSlot: () => [{ options: { id: 'bad.label', label: () => { throw new Error('boom') } } }, { options: { id: 'ok.label', label: () => 'OK' } }] }
+  assert.deepEqual(h.dockExtensionsOf(slotsStub).map(item => item.label), ['bad.label', 'OK'])
+  assert.equal(h.componentEnabled({ hiddenComponents: ['my-ci.status'] }, 'my-ci.status'), false)
+  assert.equal(h.componentEnabled({}, 'my-ci.status'), true)
+  const config = { componentOrder: ['my-ci.status', 'tps', 'gone.plugin', 'git'], showGit: true, showTps: true, showContext: false, showCost: false, showActivity: false, showTools: false }
+  const drawn = []
+  const nodes = h.dockComponents(config, {}, { data: null }, [{ id: 'my-ci.status', label: 'CI' }, { id: 'tps', label: 'Better TPS' }], id => { drawn.push(id); return { key: id, props: { key: id } } })
+  // Order follows the saved list; an unloaded id draws nothing; `tps` is the extension, under showTps.
+  assert.deepEqual(Array.from(nodes.map(node => node.key || node.props.key)), ['my-ci.status', 'tps', 'git'])
+  assert.deepEqual(drawn, ['my-ci.status', 'tps'])
+  assert.equal(h.dockComponents({ ...config, showTps: false }, {}, {}, [{ id: 'tps', label: 'Better TPS' }], id => ({ key: id, props: { key: id } })).some(node => node.props.key === 'tps'), false)
+  // Extensions between built-ins do not turn a preset layout into "custom".
+  assert.equal(h.matchingPreset({ ...h.layoutPreset('balanced'), componentOrder: ['my-ci.status', ...h.layoutPreset('balanced').componentOrder] }), 'balanced')
   h.unmount()
 })
 

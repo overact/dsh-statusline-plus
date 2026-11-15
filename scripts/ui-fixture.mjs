@@ -165,14 +165,56 @@ export async function mountResponsiveFixture(page, { dockData = false, ...hostOp
         listeners.forEach(fn => fn())
       },
     }
-    // Like the Host, a slot renders every registration, in `order`.
-    const slots = { inject: (_name, setup) => setup(), register: (spec, component) => {
-      const entry = { id: spec.id, order: spec.order || 0, component }
-      registrations.set(spec.name, [...(registrations.get(spec.name) || []), entry].sort((a, b) => a.order - b.order))
-      return () => registrations.set(spec.name, (registrations.get(spec.name) || []).filter(item => item !== entry))
-    } }
-    const slot = (name, props) => React.createElement(React.Fragment, null,
-      ...(registrations.get(name) || []).map(entry => React.createElement(entry.component, { key: entry.id, ...props })))
+    // Like the Host, a list slot renders the winner of each id (lowest
+    // `priority`) in `order`. A registration that declares `children` gets
+    // `renderSlot`, which honours `only` and guards each entry: a crash leaves
+    // the Host's `data-slot-error` anchor. `entriesOfSlot`, `subscribe` and
+    // `getVersion` let the owner follow registrations that come and go.
+    const versions = new Map(), slotListeners = new Map()
+    const bump = name => {
+      versions.set(name, (versions.get(name) || 0) + 1)
+      queueMicrotask(() => (slotListeners.get(name) || new Set()).forEach(fn => fn()))
+    }
+    const winners = name => {
+      const byId = new Map()
+      for (const entry of registrations.get(name) || []) {
+        const held = byId.get(entry.id)
+        if (!held || entry.priority < held.priority) byId.set(entry.id, entry)
+      }
+      return [...byId.values()].sort((a, b) => a.order - b.order)
+    }
+    class EntryGuard extends React.Component {
+      constructor(props) { super(props); this.state = { failed: false } }
+      static getDerivedStateFromError() { return { failed: true } }
+      // The Host retires a crashed list entry: it leaves entriesOfSlot, and another
+      // registration under its id (or the owner's own fallback) takes its place.
+      componentDidCatch(error) { console.error("slot entry crashed in '" + this.props.slot + "':", error); this.props.retire() }
+      render() { return this.state.failed ? React.createElement('span', { 'data-slot-error': this.props.slot }) : this.props.children }
+    }
+    const slots = {
+      inject: (_name, setup) => setup(),
+      register: (spec, component) => {
+        const entry = { id: spec.id, order: spec.order || 0, priority: spec.priority || 0, children: spec.children, component, options: { id: spec.id, order: spec.order, label: spec.label } }
+        registrations.set(spec.name, [...(registrations.get(spec.name) || []), entry])
+        bump(spec.name)
+        return () => { registrations.set(spec.name, (registrations.get(spec.name) || []).filter(item => item !== entry)); bump(spec.name) }
+      },
+      entriesOfSlot: name => winners(name).map(entry => ({ options: entry.options })),
+      subscribe: (name, fn) => {
+        if (!slotListeners.has(name)) slotListeners.set(name, new Set())
+        slotListeners.get(name).add(fn)
+        return () => slotListeners.get(name).delete(fn)
+      },
+      getVersion: name => versions.get(name) || 0,
+    }
+    window.slpSlots = slots
+    const renderEntry = (entry, props) => React.createElement(entry.component, { key: entry.id, ...props,
+      // The Host wraps a child slot in a display:contents anchor named by the slot.
+      ...(entry.children ? { renderSlot: (child, owner, opts) => React.createElement('span', { 'data-slot': child, style: { display: 'contents' } },
+        ...winners(child).filter(item => !opts || opts.only === undefined || item.id === opts.only)
+          .map(item => React.createElement(EntryGuard, { key: item.id, slot: child, retire: () => {
+            registrations.set(child, (registrations.get(child) || []).filter(other => other !== item)); bump(child) } }, React.createElement(item.component, { ...props, ...owner })))) } : {}) })
+    const slot = (name, props) => React.createElement(React.Fragment, null, ...winners(name).map(entry => renderEntry(entry, props)))
     components.apply({ configForms: { get: () => scope }, get: name => name === 'slots' ? slots : null,
       effect: setup => { const cleanup = setup(); if (cleanup) cleanups.push(cleanup) } })
     const settled = { session: { pricedMessages: 1, unpricedMessages: 0 } }

@@ -296,6 +296,12 @@ test('native settings round-trip component order and reject unknown widgets with
   assert.equal(value().showTools, false)
   assert.equal(JSON.stringify(value().providers), accounts)
   await assert.rejects(f.ctx.settings.update('statusline-plus', { componentOrder: ['invented-widget'] }))
+  // Other plugins' namespaced dock items keep their place; their switches live in hiddenComponents.
+  await f.ctx.settings.update('statusline-plus', { componentOrder: ['my-ci.status', 'tools'], hiddenComponents: ['my-ci.status', 'my-ci.status'] })
+  assert.deepEqual(value().componentOrder.slice(0, 2), ['my-ci.status', 'tools'])
+  assert.deepEqual(value().hiddenComponents, ['my-ci.status'])
+  await assert.rejects(f.ctx.settings.update('statusline-plus', { hiddenComponents: ['git'] }))
+  await f.ctx.settings.update('statusline-plus', { componentOrder: ['tools', 'activity'], hiddenComponents: [] })
   assert.equal(value().componentOrder[0], 'tools')
   await f.ctx.settings.update('statusline-plus', { componentOrder: ['tokens', 'context', 'tools', 'tokens'] })
   assert.deepEqual(value().componentOrder, ['context', 'tools', 'git', 'tps', 'cost', 'activity'])

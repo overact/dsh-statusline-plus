@@ -367,6 +367,81 @@ async function verifyDockDrag(folder, errors) {
   } finally { await page.close() }
 }
 
+// Another plugin's dock items: they render in the row through the
+// `statusline-plus.dock.item` child slot, list in settings with a tag, show in
+// the preview, hide by their own switch, drag like built-ins, may replace a
+// built-in by its id, and come and go with their registration. A crashing item
+// is hidden instead of leaving a gap.
+async function verifyDockExtension(folder, errors) {
+  const page = await browser.newPage({ viewport: { width: 768, height: 844 } })
+  page.setDefaultTimeout(8000)
+  // React's development build reports the boundary-caught crash too; only that one is expected.
+  page.on('pageerror', error => { if (error.message !== 'demo item failed') errors.push(redact(error.message)) })
+  try {
+    await mountResponsiveFixture(page, { dockData: true })
+    const dock = page.locator('#fixture-dock .slp-row')
+    await dock.locator('[data-component="git"] .slp-git-branch').waitFor()
+    await page.evaluate(() => {
+      const { React, slpSlots } = window, name = 'statusline-plus.dock.item'
+      const add = (spec, component) => slpSlots.register({ name, ...spec }, component)
+      window.slpExt = {
+        ci: add({ id: 'demo.ci', order: 50, label: 'CI' }, props => React.createElement('span', { className: 'demo-ci', 'data-session': props.sessionId }, 'CI ok')),
+        crash: add({ id: 'demo.crash', order: 60, label: 'Crash' }, () => { throw new Error('demo item failed') }),
+        empty: add({ id: 'demo.empty', order: 65, label: 'Empty' }, () => null),
+        add,
+      }
+    })
+    const shown = () => dock.locator('.slp-dock-item').evaluateAll(items => items.filter(item => item.getClientRects().length).map(item => item.dataset.component).join())
+    const listed = () => page.locator('.slp-order-list .slp-order-item').evaluateAll(items => items.map(item => item.dataset.component))
+    const item = id => page.locator('.slp-order-list .slp-order-item[data-component="' + id + '"]')
+    await dock.locator('[data-component="demo.ci"] .demo-ci').waitFor()
+    if (await dock.locator('.demo-ci').getAttribute('data-session') !== 'fixture-parent') throw new Error('Dock extension did not receive the session props')
+    if (await shown() !== 'git,tps,demo.ci') throw new Error('Unexpected dock with extensions: ' + await shown())
+    // Like the Host, a crashed entry is retired: it leaves the row and the settings list.
+    await page.waitForFunction(() => !document.querySelector('#fixture-dock [data-component="demo.crash"], .slp-order-item[data-component="demo.crash"]'))
+    await page.waitForFunction(() => document.querySelector('.slp-order-list .slp-order-item[data-component="demo.empty"]'))
+    if (await dock.locator('[data-component="demo.empty"]').evaluate(node => node.getClientRects().length)) throw new Error('An extension rendering null still takes a place in the row')
+    if ((await listed()).slice(-2).join() !== 'demo.ci,demo.empty' || !await item('demo.ci').locator('.slp-ext-tag').count()) throw new Error('Settings did not list the extensions with a tag: ' + (await listed()).join())
+    if (!(await page.locator('.slp-preview .slp-ext-sample').allTextContents()).includes('CI')) throw new Error('Preview has no placeholder for the extension')
+    // Registering a built-in id replaces that built-in in place.
+    await page.evaluate(() => { window.slpExt.tps = window.slpExt.add({ id: 'tps', label: 'My TPS' }, () => window.React.createElement('span', { className: 'my-tps' }, 'my tps')) })
+    await dock.locator('[data-component="tps"] .my-tps').waitFor()
+    if (await dock.locator('.slp-tps').count() || !await item('tps').locator('.slp-ext-tag').count()) throw new Error('Replacement did not stand in for TPS or lacks the Replaced tag')
+    await page.evaluate(() => window.slpExt.tps())
+    await dock.locator('[data-component="tps"] .slp-tps').waitFor()
+    // A replacement that crashes is retired too, and the built-in comes back.
+    await page.evaluate(() => { window.slpExt.badTps = window.slpExt.add({ id: 'tps', label: 'Bad TPS' }, () => { throw new Error('demo item failed') }) })
+    await dock.locator('[data-component="tps"] .slp-tps').waitFor()
+    await page.waitForFunction(() => !document.querySelector('.slp-order-item[data-component="tps"] .slp-ext-tag'))
+    if (await item('tps').locator('.slp-ext-tag').count()) throw new Error('TPS kept the Replaced tag after the replacement left')
+    // Its own switch hides it and is saved as hiddenComponents.
+    const ops = key => page.evaluate(key => window.slpResponsive.mutations.flat().filter(op => op.path[0] === key).map(op => op.value), key)
+    await item('demo.ci').locator('input[type="checkbox"]').uncheck()
+    await page.waitForFunction(() => !document.querySelector('#fixture-dock .demo-ci'))
+    if (JSON.stringify((await ops('hiddenComponents')).at(-1)) !== '["demo.ci"]') throw new Error('Hiding the extension did not save hiddenComponents')
+    await item('demo.ci').locator('input[type="checkbox"]').check()
+    await dock.locator('.demo-ci').waitFor()
+    // Dragged before Git like any built-in.
+    const from = await dock.locator('[data-component="demo.ci"]').boundingBox(), to = await dock.locator('[data-component="git"]').boundingBox()
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2); await page.mouse.down()
+    await page.mouse.move(to.x + 4, to.y + to.height / 2, { steps: 8 }); await page.mouse.up()
+    await page.waitForFunction(() => [...document.querySelectorAll('#fixture-dock .slp-dock-item')].map(item => item.dataset.component)[0] === 'demo.ci')
+    const order = (await ops('componentOrder')).at(-1) || []
+    if (!(order.indexOf('demo.ci') >= 0 && order.indexOf('demo.ci') < order.indexOf('git'))) throw new Error('Drag did not save the extension id before Git: ' + JSON.stringify(order))
+    const screenshot = join(folder, 'dock-extension.png')
+    const area = await dock.boundingBox()
+    await page.screenshot({ path: screenshot, animations: 'disabled', clip: { x: Math.max(0, area.x - 24), y: Math.max(0, area.y - 8), width: area.width + 48, height: area.height + 24 } })
+    // Late registrations appear; unregistered items leave the row and settings.
+    await page.evaluate(() => { window.slpExt.late = window.slpExt.add({ id: 'demo.late', order: 70, label: 'Late' }, () => window.React.createElement('span', { className: 'demo-late' }, 'late')) })
+    await dock.locator('.demo-late').waitFor()
+    await page.evaluate(() => { window.slpExt.late(); window.slpExt.ci() })
+    await page.waitForFunction(() => !document.querySelector('#fixture-dock .demo-late, #fixture-dock .demo-ci, .slp-order-item[data-component="demo.late"], .slp-order-item[data-component="demo.ci"]'))
+    if (await shown() !== 'git,tps') throw new Error('Unregistered extensions left the dock as: ' + await shown())
+    await page.evaluate(() => { window.slpExt.crash(); window.slpExt.empty(); window.disposeResponsiveFixture() })
+    return { panel: 'dock-extension', lifecycle: 'child slot render/session props/crash retired/crashed replacement restores built-in/empty hidden/settings tag/preview/replace built-in/hide switch/drag save/late add/unregister passed', screenshot: relative(root, screenshot) }
+  } finally { await page.close() }
+}
+
 let browser, folder
 try {
   const opts = options(process.argv.slice(2)), errors = [], started = performance.now()
@@ -392,6 +467,7 @@ try {
     checks.push(await verifyResponsive(page, folder))
     checks.push(await verifyAnchorFallback(folder, errors))
     checks.push(await verifyDockDrag(folder, errors))
+    checks.push(await verifyDockExtension(folder, errors))
   } else if (!opts.live) await page.evaluate(() => window.slpFixtureRoot.unmount())
   if (errors.length || !opts.live && network) throw new Error(errors.join('; ') || 'Offline fixture made a network request')
   if (opts.live && await page.evaluate(() => window.slpModules.entries.state.getSnapshot().failures.length)) throw new Error('Native module loader reported failures')

@@ -27,7 +27,8 @@ feature pages name the ones they own.
 
 | Slot | Content |
 | --- | --- |
-| `conversation.composer.dock` | `StatusPanel`, the bottom row |
+| `conversation.composer.dock` | `StatusPanel`, the bottom row. Declares the child slot `statusline-plus.dock.item` when the Host's slots have `entriesOfSlot`, `subscribe` and `getVersion` |
+| `statusline-plus.dock.item` | Owned by this plugin, filled by others: see [extending/README.md](extending/README.md) |
 | `conversation.session.header.actions` | `HeaderChip`: quotas and the peak chip |
 | `sidebar.footer.action` | `PeakFooterDot`, `RestartFooterButton` |
 | `settings.section` | `SettingsPage` |

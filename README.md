@@ -58,7 +58,8 @@ Open **DSH Web → Settings → Statusline**. Settings are saved under `statusli
 | `showCwd` | `true` | Repository path in the Git chip |
 | `gitCwd` | `''` | Fixed repository directory for every session; empty follows the session's working directory. While set, the chip no longer follows `working_directory` |
 | `showTps` | `false` | Streaming speed |
-| `componentOrder` | Git, context, TPS, cost, activity, tools | Bottom component order |
+| `componentOrder` | Git, context, TPS, cost, activity, tools | Bottom component order, including items other plugins add ([docs/extending](docs/extending/README.md)) |
+| `hiddenComponents` | `[]` | Ids of other plugins' bottom-row items that are switched off |
 | `showQuota`, `quotaAuto`, `quotaOnStep` | `true` | Header quotas, provider selection and shared step refresh |
 | `showDeepseekPeak`, `deepseekPeakCountdown`, `showPeakDot` | `true` | DeepSeek peak indicators and countdown |
 | `showRestartButton` | `true` | Reload/restart/DSH-update feature; off also stops the Host's DSH release check and restart route. Sidebar button: hot-reloads changes, restarts the systemd user unit only when needed. Hidden when the Host supports neither. Where DSH is a writable global npm install, it glows when a newer DSH is published and offers the update |
