@@ -96,8 +96,8 @@ The Host then:
    about 70 bytes, not a manifest and never a tarball, and runs asynchronously with an 8 s
    deadline;
 2. takes its `latest` tag, the same channel as `dsh-update`;
-3. caches the answer for one minute, after a failure too, so several tabs or a burst of
-   reloads read the registry once.
+3. caches the answer for ten minutes (one minute after a failure), so several tabs or a
+   burst of reloads read the registry once.
 
 `npm root -g` runs once per process (about 0.1 s and 65 MB for that moment). A failed read
 is unknown, never "up to date". Only a strictly newer version is offered, so a prerelease

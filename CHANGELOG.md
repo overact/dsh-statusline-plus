@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The sidebar button now checks for a new DSH version at most every ten minutes instead of every minute. A failed check is still retried after one minute.
 - Bottom-row text now uses the same colour as DSH's own context meter beside it, a lighter grey, and brightens on hover or while its details are open. Coloured readings are unchanged.
 - Bottom-row components can be reordered by dragging them in place, below the composer. While dragging, the row shows the result: the picked component, faint and outlined, moves into its new place and the others slide aside, and a smaller translucent copy of it stays under the pointer where it was grabbed. A short press still opens a chip as before, Escape cancels a drag, and the settings list follows the new order.
 - Hovering a header chip or the sidebar peak dot no longer makes its tooltip blink while a countdown runs, including quota segments with a reset countdown, a chip waiting to retry and the "updated Ns ago" line in quota details. The tooltip keeps the text it opened with until the pointer leaves, and the next hover shows the current countdown and fetch age.
