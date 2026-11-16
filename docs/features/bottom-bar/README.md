@@ -25,6 +25,10 @@ Settings: `componentOrder`, `hideBottomOnNarrow`, and each component's `show*` s
 - **Empty groups.** A component with no real reading renders nothing rather than a
   placeholder. A failure is different from having nothing to show: Git reports a repository it
   cannot read as `⎇ ?`. See [Git](git.md#errors).
+- **Entry timing.** The live row waits for the same first usage sample as the Host's
+  `ContextMeter`: a new session knows its context window but has no usage yet, so the row
+  stays out instead of showing a lone TPS. A Host without `contextPressure` keeps the row
+  ungated.
 - **Narrow screens.** With `hideBottomOnNarrow`, the row unmounts at an input width of
   480 px or less, which also stops its client activity. It measures the sibling
   `[data-composer-card]`, because the dock shrinks to its contents and would latch the

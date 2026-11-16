@@ -430,6 +430,28 @@ test('a background Git refresh keeps the chip and never dims it', async () => {
   } finally { renderer.unmount(); h.restore() }
 })
 
+test('the row enters with the Host context meter after the first usage sample', async () => {
+  const clock = { now: 1000, tasks: new Map() }
+  const h = loadClientPluginForTest({ clock, deferGit: true }), renderer = h.createRenderer()
+  try {
+    const dock = h.registrations.find(entry => entry.spec.name === 'conversation.composer.dock')
+    const base = { sessionId: 's1', useSessions: select => select({ byId: { s1: { cwd: '/tmp/repo' } } }) }
+    const render = pressure => {
+      const element = dock.component({ ...base, useProjection: key => key === 'contextPressure' ? pressure
+        : key === 'statuslineMetrics' ? { session: { pricedMessages: 1, unpricedMessages: 0 } } : null })
+      return renderer.render(element.type, element.props)
+    }
+    // A Host without the projection has no official meter to wait for.
+    render(null)
+    h.gitResolvers[0]({ isRepo: true, repoRoot: '/tmp/repo', branch: 'main', counts: {} })
+    await new Promise(setImmediate)
+    assert.ok(render(null), 'the row stays ungated when contextPressure is missing')
+    // Window known, no usage yet: the official meter is hidden, so the row waits.
+    assert.equal(render({ contextWindow: 200000 }), null, 'a lone TPS waits for the first usage sample')
+    assert.ok(render({ contextWindow: 200000, pressureTokens: 12000 }), 'the first usage sample brings the row in')
+  } finally { renderer.unmount(); h.restore() }
+})
+
 test('an unresolved directory keeps the Git chip instead of blanking it', async () => {
   const clock = { now: 1000, tasks: new Map() }
   const h = loadClientPluginForTest({ clock, deferGit: true }), renderer = h.createRenderer()

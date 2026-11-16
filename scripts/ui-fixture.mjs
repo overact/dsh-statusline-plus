@@ -218,7 +218,8 @@ export async function mountResponsiveFixture(page, { dockData = false, ...hostOp
     components.apply({ configForms: { get: () => scope }, get: name => name === 'slots' ? slots : null,
       effect: setup => { const cleanup = setup(); if (cleanup) cleanups.push(cleanup) } })
     const settled = { session: { pricedMessages: 1, unpricedMessages: 0 } }
-    const sessionProps = { sessionId: 'fixture-parent', useProjection: key => dockData && key === 'statuslineMetrics' ? settled : { steps: 0 },
+    const sessionProps = { sessionId: 'fixture-parent', useProjection: key => key === 'contextPressure' ? { pressureTokens: 12000, contextWindow: 200000 }
+      : dockData && key === 'statuslineMetrics' ? settled : { steps: 0 },
       useSessions: select => select({ byId: { 'fixture-parent': { cwd: '/fixture-repo' } } }) }
     function App() {
       return React.createElement(React.Fragment, null,

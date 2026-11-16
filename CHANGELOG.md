@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The bottom row now enters together with the Host's own context meter: in a new session it waits for the first usage sample instead of showing a lone TPS while the model reasons. A Host without the `contextPressure` projection keeps the previous behaviour.
 - DeepSeek cost estimates now use one tariff per request: the tariff in effect when its first stream record arrives. A request that starts just before a peak/off-peak switch no longer shows a range; it is estimated at the later tariff, so the figure can differ from the bill by that request's peak/off-peak difference.
 - The CTX panel now shows how many requests missed the prompt cache after the "Cache read" row. It counts requests, not tokens, and follows the same session-only scope as the cost estimate.
 - Upgrading from the settings page no longer falls back to "Restart to apply" after a successful hot swap. The Host records the version it reconciled, so the next settings visit sees no pending restart even when the module that reads the loaded version was cached.
