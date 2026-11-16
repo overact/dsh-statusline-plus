@@ -5,7 +5,7 @@ const assert = require('node:assert/strict')
 const { createRequire } = require('node:module')
 const { join } = require('node:path')
 const { pathToFileURL } = require('node:url')
-const { createSessionMetricsProjection, quoteUsage, tariffAt, possibleTariffs, COVERAGE_START, PRICING_AS_OF, MONEY_UNITS } = require('../lib/session-metrics')
+const { createSessionMetricsProjection, quoteUsage, tariffAt, COVERAGE_START, PRICING_AS_OF, MONEY_UNITS } = require('../lib/session-metrics')
 const { createPricingCatalog } = require('../lib/model-pricing')
 const { PeakScheduleSource } = require('../lib/peak-schedule')
 
@@ -229,26 +229,26 @@ test('missing, malformed or inconsistent usage is unknown and cache writes have 
 })
 
 test('price verification cut prevents current rates from being applied to earlier history', () => {
-  assert.equal(quote({ startedAt: COVERAGE_START - 1, observedAt: COVERAGE_START }).reason, 'historical-price-unknown')
-  assert.equal(quote({ startedAt: COVERAGE_START, observedAt: COVERAGE_START + 1 }).reason, null)
-  for (const startedAt of [undefined, null, NaN, Infinity]) assert.equal(quote({ startedAt }).reason, 'request-time-unknown')
-  assert.equal(quote({ observedAt: PEAK - 1 }).reason, 'tariff-window-unknown')
+  assert.equal(quote({ observedAt: COVERAGE_START - 1 }).reason, 'historical-price-unknown')
+  assert.equal(quote({ observedAt: COVERAGE_START }).reason, null)
+  for (const observedAt of [undefined, null, NaN, Infinity]) assert.equal(quote({ observedAt }).reason, 'request-time-unknown')
 })
 
-test('request-start uncertainty across tariff boundaries produces a bounded range', () => {
-  const start = beijing('2026-10-08T11:59:59'), end = beijing('2026-10-08T12:00:01')
-  assert.deepEqual(cny(quote({ startedAt: start, observedAt: end })), [5.02, 10.04])
-  assert.equal(tariffAt(start), 'peak'); assert.equal(tariffAt(end), 'offPeak')
-  assert.deepEqual(new Set(possibleTariffs(OFF_PEAK, beijing('2026-10-09T19:00:00'))), new Set(['offPeak', 'peak']))
-  assert.equal(quote({ observedAt: PEAK + 8 * 86400000 }).reason, 'tariff-window-unknown')
-  assert.equal(quote({ startedAt: beijing('2027-01-04T10:00:00'), observedAt: beijing('2027-01-04T10:00:01') }).reason, 'tariff-window-unknown')
-  const f = fold(); f.request(1, 1, route, start); f.message(1, 1, usage, route, end)
-  assert.equal(f.view.session.amountCny, null)
-  assert.equal(f.view.session.minCny, 5.02); assert.equal(f.view.session.maxCny, 10.04)
-  assert.deepEqual([f.view.session.breakdown.input.minCny, f.view.session.breakdown.input.maxCny], [1, 2])
-  assert.deepEqual([f.view.session.breakdown.cache.minCny, f.view.session.breakdown.cache.maxCny], [0.02, 0.04])
-  assert.deepEqual([f.view.session.breakdown.output.minCny, f.view.session.breakdown.output.maxCny], [4, 8])
-  assert.equal(f.view.session.breakdown.input.tokensCny, 1000000, 'tariff uncertainty does not make token counts uncertain')
+test('a request is priced at the tariff in effect at its first stream record', () => {
+  const peakStart = beijing('2026-10-08T11:59:59'), offPeakEnd = beijing('2026-10-08T12:00:01')
+  assert.equal(tariffAt(peakStart), 'peak'); assert.equal(tariffAt(offPeakEnd), 'offPeak')
+  // Dispatched in peak, first stream record in off-peak: the whole request is off-peak.
+  assert.deepEqual(cny(quote({ observedAt: offPeakEnd })), [5.02, 5.02])
+  // Dispatched in off-peak, first stream record in peak: the whole request is peak.
+  assert.deepEqual(cny(quote({ observedAt: beijing('2026-10-08T14:00:01') })), [10.04, 10.04])
+  assert.equal(quote({ observedAt: beijing('2027-01-04T10:00:00') }).reason, 'tariff-window-unknown')
+  const f = fold(); f.request(1, 1, route, peakStart); f.message(1, 1, usage, route, offPeakEnd)
+  assert.equal(f.view.session.amountCny, 5.02)
+  assert.equal(f.view.session.minCny, 5.02); assert.equal(f.view.session.maxCny, 5.02)
+  assert.deepEqual([f.view.session.breakdown.input.minCny, f.view.session.breakdown.input.maxCny], [1, 1])
+  assert.deepEqual([f.view.session.breakdown.cache.minCny, f.view.session.breakdown.cache.maxCny], [0.02, 0.02])
+  assert.deepEqual([f.view.session.breakdown.output.minCny, f.view.session.breakdown.output.maxCny], [4, 4])
+  assert.equal(f.view.session.breakdown.input.tokensCny, 1000000, 'one tariff keeps token counts unchanged')
 })
 
 test('published holiday ranges and weekends suppress peak pricing independently of host timezone', () => {

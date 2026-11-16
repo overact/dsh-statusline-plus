@@ -8,7 +8,7 @@ and the view states `billingVerified: false`. Keep that framing in any wording.
 
 ## Code
 
-`createSessionMetricsProjection`, `quoteUsage`, `possibleTariffs` in
+`createSessionMetricsProjection`, `quoteUsage` in
 `lib/session-metrics.js`; `loadPricingCatalog`, `pricingModelId`, `pricingModelAlias`,
 `quoteCatalogUsage` and `FALLBACK` in `lib/model-pricing.js`; `CostRow`, `estimateCost`,
 `costPerHour`, `costReasons`, `costBreakdownTables` in `lib/client.js`. Setting: `showCost`.
@@ -47,15 +47,18 @@ Only this session's own requests count: no child sessions, no inherited fork his
 
 - **Money is integers.** Amounts are stored in 1e-8 units, so no floating-point error
   accumulates in the fold. USD and CNY stay separate and are never converted.
-- **Peak ranges.** A request that may span a tariff switch is quoted across every tariff
-  between its start and its first stream record, so the result can be a range. Timing comes
-  from `step/start` or `llm/retry-started`. No generated content is inspected.
+- **Billing instant.** The first compact stream record fixes the tariff for the whole
+  request: a request dispatched just before a peak/off-peak switch and answered after it is
+  priced at the tariff in effect when the stream starts, so one request always gets one
+  amount. The hourly span still starts at `step/start` or `llm/retry-started`. No generated
+  content is inspected.
 - **Unknown stays unknown.** Each unpriced message records a reason, and the panel lists
   them. A reason added to `quoteUsage` also needs a label in `costReasons`.
 - **No cache-write guess.** The DeepSeek card has no cache-creation rate, so a request with
   cache writes stays unpriced rather than being priced as a read.
 - **Coverage start.** `RATES` applies from `PRICING_AS_OF`, a verified snapshot date rather
-  than a historical effective date. Earlier requests read `historical-price-unknown`.
+  than a historical effective date. A request whose first stream record predates it reads
+  `historical-price-unknown`.
 - **Stable calendar.** The fold uses the peak snapshot taken at `apply()`, so a refresh
   during a run cannot change money already folded. A different snapshot at the next load
   changes `stateVersion`, and sessions refold once. See [peak hours](../peak-hours.md).

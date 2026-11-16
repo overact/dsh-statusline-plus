@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- DeepSeek cost estimates now use one tariff per request: the tariff in effect when its first stream record arrives. A request that starts just before a peak/off-peak switch no longer shows a range; it is estimated at the later tariff, so the figure can differ from the bill by that request's peak/off-peak difference.
 - The CTX panel now shows how many requests missed the prompt cache after the "Cache read" row. It counts requests, not tokens, and follows the same session-only scope as the cost estimate.
 - Upgrading from the settings page no longer falls back to "Restart to apply" after a successful hot swap. The Host records the version it reconciled, so the next settings visit sees no pending restart even when the module that reads the loaded version was cached.
 - DeepSeek cost estimates now recognize the same Flash/Pro card across plan and snapshot spellings (`deepseek-v4-1-flash-1017`, `deepseek-v4p1-flash`, `deepseek-flash-latest`, a later V4.2/V5, and region codes such as `-sg`). Subscription tiers such as `-fast`, `-spot`, `-free` and `:batch` are estimated at the standard card, so the figure is a reference rather than a bill; the older V4 Flash stays unpriced.
