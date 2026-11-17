@@ -89,9 +89,11 @@ export async function mountFixture(page, hostOptions) {
 // configuration updates and observable live-resource cleanup, without accounts.
 // dockData: the Git route answers and a message has settled, so Git and TPS
 // both show in the dock (the default leaves Git pending for resource checks).
-export async function mountResponsiveFixture(page, { dockData = false, ...hostOptions } = {}) {
+// deepseek: the session reports a direct DeepSeek model, so the header also
+// renders the peak chip; overrides: config values set before the first paint.
+export async function mountResponsiveFixture(page, { dockData = false, deepseek = false, overrides = {}, ...hostOptions } = {}) {
   await mountFixture(page, hostOptions)
-  await page.evaluate(dockData => {
+  await page.evaluate(({ dockData, deepseek, overrides }) => {
     window.slpFixtureRoot.unmount()
     document.getElementById('shell').style.cssText = 'position:static;height:auto;overflow:visible'
     document.getElementById('root').style.cssText = 'position:static'
@@ -100,7 +102,7 @@ export async function mountResponsiveFixture(page, { dockData = false, ...hostOp
       showContext: false, showCost: false, showActivity: false, showTools: false, showCwd: false,
       showQuota: true, quotaAuto: false, showDeepseekPeak: false, showPeakDot: true, providers: [],
       cacheTtlMs: 60000, fetchTimeoutMs: 10000 }
-    let config = { ...defaults, hideBottomOnNarrow: true }
+    let config = { ...defaults, hideBottomOnNarrow: true, ...overrides }
     const listeners = new Set(), registrations = new Map(), cleanups = []
     window.slpResponsive = { sources: [], gitRequests: [], quotaRequests: [], quotaFailures: 0, mutations: [], observers: [], updateRequests: [], updateInstance: 'fixture-before-install' }
     const activity = window.slpResponsive
@@ -219,6 +221,7 @@ export async function mountResponsiveFixture(page, { dockData = false, ...hostOp
       effect: setup => { const cleanup = setup(); if (cleanup) cleanups.push(cleanup) } })
     const settled = { session: { pricedMessages: 1, unpricedMessages: 0 } }
     const sessionProps = { sessionId: 'fixture-parent', useProjection: key => key === 'contextPressure' ? { pressureTokens: 12000, contextWindow: 200000 }
+      : deepseek && key === 'modelSelection' ? { next: { provider: 'deepseek', model: 'deepseek-chat' } }
       : dockData && key === 'statuslineMetrics' ? settled : { steps: 0 },
       useSessions: select => select({ byId: { 'fixture-parent': { cwd: '/fixture-repo' } } }) }
     function App() {
@@ -240,5 +243,5 @@ export async function mountResponsiveFixture(page, { dockData = false, ...hostOp
     }
     window.disposeResponsiveFixture = () => { window.slpFixtureRoot.unmount(); cleanups.forEach(fn => fn()) }
     window.remountResponsiveFixture()
-  }, dockData)
+  }, { dockData, deepseek, overrides })
 }

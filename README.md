@@ -111,7 +111,7 @@ Pushing a `v*` tag runs the full verification, then publishes the version to npm
 
 Per-feature design notes, including quota protocols, start at [docs/README.md](docs/README.md). Read the page for an area before changing it.
 
-Browser checks use real React and the client bundle with offline fixtures. Coverage includes cost, Subagents and responsive settings/resource cleanup. Install browser tooling only if missing:
+Browser checks use real React and the client bundle with offline fixtures. Coverage includes cost, Subagents, responsive settings/resource cleanup and header detail widths. Install browser tooling only if missing:
 
 ```sh
 npm run ui:install

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Header quota and peak details now cap at 380px and wrap long text. On a wide window the peak rule used to run as one ~980px line, and a long quota note could stretch the panel the same way (#2). The sidebar peak popover also keeps its 240px cap instead of being widened to the viewport.
 - The bottom row now enters together with the Host's own context meter: in a new session it waits for the first usage sample instead of showing a lone TPS while the model reasons. A Host without the `contextPressure` projection keeps the previous behaviour.
 - DeepSeek cost estimates now use one tariff per request: the tariff in effect when its first stream record arrives. A request that starts just before a peak/off-peak switch no longer shows a range; it is estimated at the later tariff, so the figure can differ from the bill by that request's peak/off-peak difference.
 - The CTX panel now shows how many requests missed the prompt cache after the "Cache read" row. It counts requests, not tokens, and follows the same session-only scope as the cost estimate.

@@ -288,6 +288,56 @@ async function verifyAnchorFallback(folder, errors) {
   } finally { await page.close() }
 }
 
+// Header details used to shrink-wrap to their longest line: on a wide window
+// the peak rule ran as one ~980px line, and a long quota note would stretch the
+// same way. Both anchored panels now cap at 380px and wrap; a narrow window
+// still keeps them inside the viewport.
+async function verifyPanelWidth(folder, errors) {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
+  page.setDefaultTimeout(8000)
+  page.on('pageerror', error => errors.push(redact(error.message)))
+  try {
+    await mountResponsiveFixture(page, { hostAnchor: false, deepseek: true, overrides: { showDeepseekPeak: true } })
+    const peak = page.locator('#fixture-header .slp-peak-trigger')
+    await peak.waitFor()
+    await peak.click()
+    const peakPanel = page.locator('.slp-anchored')
+    await peakPanel.waitFor()
+    const peakBox = await peakPanel.boundingBox()
+    if (peakBox.width > 380.5) throw new Error('Peak panel stretched to ' + peakBox.width + 'px instead of wrapping at 380px')
+    if (peakBox.height < 100) throw new Error('Peak panel rule did not wrap: ' + peakBox.height + 'px tall')
+    await page.screenshot({ path: join(folder, 'panel-width-peak.png'), animations: 'disabled' })
+    await page.keyboard.press('Escape')
+    await peakPanel.waitFor({ state: 'detached' })
+    const quota = page.locator('#fixture-header .slp-quota-trigger:not(.slp-peak-trigger)')
+    await quota.click()
+    const quotaPanel = page.locator('.slp-anchored')
+    await quotaPanel.waitFor()
+    const quotaBox = await quotaPanel.boundingBox()
+    if (quotaBox.width > 380.5) throw new Error('Quota panel stretched to ' + quotaBox.width + 'px instead of wrapping at 380px')
+    await page.keyboard.press('Escape')
+    await quotaPanel.waitFor({ state: 'detached' })
+    // The footer popover is fixed and keeps its own 240px design cap; the
+    // viewport-fitting code must not replace it with a wider one.
+    const dot = page.locator('#fixture-footer .slp-peak-dot-btn')
+    await dot.click()
+    const compact = page.locator('.slp-panel-fixed')
+    await compact.waitFor()
+    const compactMax = await compact.evaluate(node => parseFloat(getComputedStyle(node).maxWidth))
+    if (!(compactMax <= 240.5)) throw new Error('Footer peak popover lost its 240px cap: ' + compactMax + 'px')
+    await dot.click()
+    await compact.waitFor({ state: 'detached' })
+    await page.setViewportSize({ width: 320, height: 640 })
+    await peak.click()
+    await peakPanel.waitFor()
+    const narrow = await peakPanel.boundingBox()
+    if (narrow.width > 296.5 || narrow.x < 0 || narrow.x + narrow.width > 320) throw new Error('Peak panel does not fit a 320px window: ' + JSON.stringify(narrow))
+    await page.keyboard.press('Escape')
+    await page.evaluate(() => window.disposeResponsiveFixture())
+    return { panel: 'panel-width', lifecycle: 'peak and quota details cap at 380px on a wide window and fit 320px', screenshot: relative(root, join(folder, 'panel-width-peak.png')) }
+  } finally { await page.close() }
+}
+
 // Reorder the live bottom row by dragging: the row, the saved order and the
 // settings list all follow, a drag never clicks the chip it ends on, and a
 // plain click still does.
@@ -466,6 +516,7 @@ try {
   if (!opts.live && ['all', 'responsive'].includes(opts.panel)) {
     checks.push(await verifyResponsive(page, folder))
     checks.push(await verifyAnchorFallback(folder, errors))
+    checks.push(await verifyPanelWidth(folder, errors))
     checks.push(await verifyDockDrag(folder, errors))
     checks.push(await verifyDockExtension(folder, errors))
   } else if (!opts.live) await page.evaluate(() => window.slpFixtureRoot.unmount())

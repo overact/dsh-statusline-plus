@@ -54,6 +54,11 @@ treated as a broken file.
   together.
 - **A new year needs a calendar.** Add it to both holiday tables once the State Council
   publishes it. Until then, a fetched calendar or "unknown" covers the year.
+- **Panel width.** The details panel is a reading column capped at 380px. The base
+  `.slp-panel` rule sets a viewport-wide `max-width` later in the sheet, so the panel
+  rule needs `.slp-panel.slp-peak-panel` to win; otherwise the long rule sentence runs
+  on one line across the window (issue #2). The compact footer popover keeps its own
+  240px cap.
 - **Pricing uses a snapshot.** `apply()` hands `pricingSnapshot()` to the cost projection
   once, so a calendar refresh during a run cannot silently change folded money. See
   [cost](bottom-bar/cost.md#rules).

@@ -104,6 +104,10 @@ Code against both sides of a known boundary.
   Host hook when it exists and otherwise `useBelowAnchorPosition`, which always opens
   below the anchor. Feature-detect every primitives export used here;
   `verify-ui --panel responsive` runs the fallback through `hostAnchor: false`.
+  A fixed surface shrink-wraps to its content up to the viewport, so header details cap
+  their own width (380px): a long rule sentence or error note must wrap in a reading
+  column, not stretch across the window (issue #2). The cap has to outrank the base
+  `.slp-panel` max-width.
 - **Test versions.** `package.json` pins an older DSH devDependency than a developer's
   local `node_modules` may hold, and CI installs without a lockfile. A suite can pass
   locally and fail on the tag, so run the fresh-install check in
