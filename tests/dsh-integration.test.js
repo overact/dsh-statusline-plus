@@ -508,7 +508,8 @@ test('native settings JSON is accepted by the installed browser schema validator
   const fs = require('node:fs'), vm = require('node:vm')
   const clientPath = fromDsh.resolve('@deepseek-ai/dsh-client-ui-settings/client')
   // Expose the real bundled validator only inside an isolated test VM.
-  const source = fs.readFileSync(clientPath, 'utf8').replace('exports.apply = apply;', 'exports.auditSchema = Schema; exports.apply = apply;')
+  const source = fs.readFileSync(clientPath, 'utf8').replace(/exports\.apply\s*=\s*apply;/, 'exports.auditSchema = Schema; exports.apply = apply;')
+  if (!source.includes('exports.auditSchema')) throw new Error('Settings client bundle did not expose its schema validator; update the test adapter')
   let entry
   vm.runInNewContext(source, { window: { __ModuleLoader__: { load(value) { entry = value } } } })
   const browser = entry.factory(name => name === '@deepseek-ai/cordis' ? { Service: class {} } : {})

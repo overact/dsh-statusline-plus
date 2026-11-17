@@ -26,7 +26,7 @@ Screenshots use the actual UI with sample data, without account or conversation 
 
 ## Installation
 
-Requires DSH **0.2.0-rc.2 or later**, with no upper bound, so a DSH upgrade never disables the plugin; tested on **0.2.0-rc.2**, **0.2.1-rc.2** and the Windows Desktop build (**0.2.1-rc.3**). Install from npm:
+Requires DSH **0.2.0-rc.2 or later**, with no upper bound, so a DSH upgrade never disables the plugin; tested on **0.2.0-rc.2**, **0.2.1-rc.2**, **0.2.2-rc.3** and the Windows Desktop build (**0.2.1-rc.3**). Install from npm:
 
 ```sh
 dsh plugin --profile web add dsh-statusline-plus
@@ -130,7 +130,7 @@ DSH 网页端状态行：顶部显示账号余额与套餐额度，输入区显�
 
 **截图：** [总览（额度、峰谷、会话指标与详情面板）](docs/images/overview.png)、[设置选项](docs/images/settings.png)。截图使用英文界面与演示数据，不包含真实账号或对话数据。
 
-**安装：** 需要 DSH 0.2.0-rc.2 或更高版本，不设上限，升级 DSH 不会让插件被跳过；已在 0.2.0-rc.2、0.2.1-rc.2 与 Windows 桌面版（0.2.1-rc.3）上测试，使用上面的安装命令；插件自带预构建文件和注册配置。启用 HMR 后，插件启停与设置实时生效；本地源码目录纳入监听时也可热加载，之后刷新浏览器。安装或升级提示 `restart-required` 时，才需等待无活跃会话后重启。旧版手动安装请先移除 `@local/dsh-statusline-plus` 注册行和依赖，避免重复。
+**安装：** 需要 DSH 0.2.0-rc.2 或更高版本，不设上限，升级 DSH 不会让插件被跳过；已在 0.2.0-rc.2、0.2.1-rc.2、0.2.2-rc.3 与 Windows 桌面版（0.2.1-rc.3）上测试，使用上面的安装命令；插件自带预构建文件和注册配置。启用 HMR 后，插件启停与设置实时生效；本地源码目录纳入监听时也可热加载，之后刷新浏览器。安装或升级提示 `restart-required` 时，才需等待无活跃会话后重启。旧版手动安装请先移除 `@local/dsh-statusline-plus` 注册行和依赖，避免重复。
 
 **设置：** 打开 **DSH 网页端 → 设置 → 状态栏**，调整显示、排序、预设、顶部额度、账号来源及缓存。有新版本时右上角出现更新按钮（打开设置页时检查，缓存一分钟；悬停显示当前与最新版本），点一次即原地覆盖安装（优先用宿主自带的 `dsh plugin add`，其次 `pnpm`），随后由宿主通过 HMR 把新副本换进运行中的 profile，刷新页面即可；没有 HMR 的 profile 才提示重启。`link:` 安装的本地副本不显示。密钥仅在宿主侧解析，设置里填写凭据引用。DeepSeek 有两种计费方式：`deepseek`／`deepseek-official` 使用 `DEEPSEEK_API_KEY` 查询按量余额；使用 DSH 登录账号（`deepseek-account`）时，状态栏通过宿主 `deepseekAccount` 服务读取登录账号的充值余额与赠送余额，不需要 API Key。
 
