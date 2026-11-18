@@ -33,7 +33,7 @@ export async function installHostModules(page, { hostAnchor = true } = {}) {
 export async function mountFixture(page, hostOptions) {
   await page.clock.install()
   await page.setContent(`<!doctype html><html lang="en"><head><style>
-    :root{--dsw-alias-label-primary:#111;--dsw-alias-label-secondary:#555;--dsw-alias-label-tertiary:#777;--dsw-alias-bg-overlay:#fff;--dsw-alias-bg-layer-2:#fafafa;--dsw-alias-border-l1:#ddd;--dsw-alias-border-l2:#ccc}
+    :root{--dsw-alias-label-primary:#111;--dsw-alias-label-secondary:#555;--dsw-alias-label-tertiary:#777;--dsw-alias-bg-overlay:#fff;--dsw-alias-bg-layer-1:#fff;--dsw-alias-bg-layer-2:#fafafa;--dsw-alias-border-l1:#ddd;--dsw-alias-border-l2:#ccc;--dsw-alias-brand-primary:#4d6bfe;--dsw-alias-state-business-primary:#4d6bfe;--dsw-alias-state-success-primary:#3f9b6a;--dsw-alias-state-warn-primary:#d97706;--dsw-alias-state-warn-label:#b45309;--dsw-alias-state-error-primary:#d92d20;--dsw-alias-interactive-bg-hover:#0000000d}
     body{font:14px sans-serif;margin:0}#shell{position:fixed;left:56px;right:8px;bottom:24px;height:340px;overflow:auto}
     #root{position:absolute;bottom:16px;left:16px;right:16px}
   </style></head><body><div id="shell"><div id="root"></div></div></body></html>`)
@@ -47,7 +47,7 @@ export async function mountFixture(page, hostOptions) {
   })
   const source = await readFile(join(root, 'lib/client.js'), 'utf8')
   if (!source.includes('return module.exports')) throw new Error('Client factory format changed; update UI fixture adapter')
-  await page.addScriptTag({ content: source.replace('return module.exports', 'return { apply, ActivityRow, CostRow, CSS }') })
+  await page.addScriptTag({ content: source.replace('return module.exports', 'return { apply, ActivityRow, CostRow, QuotaUnavailable, ModelQuotaLabel, publishConfig, setComposerStarted, CSS }') })
   await page.evaluate(() => {
     const { React, ReactDOM, slpComponents: components } = window
     const style = document.createElement('style'); style.textContent = components.CSS; document.head.appendChild(style)
@@ -244,4 +244,66 @@ export async function mountResponsiveFixture(page, { dockData = false, deepseek 
     window.disposeResponsiveFixture = () => { window.slpFixtureRoot.unmount(); cleanups.forEach(fn => fn()) }
     window.remountResponsiveFixture()
   }, { dockData, deepseek, overrides })
+}
+
+// The "no such subscription" status on its own, inside a header-sized (14px)
+// container: the chip must take the shared 13px chip metric, fade for 10 s and
+// then leave the tree instead of staying in the header forever.
+export async function mountChipFixture(page) {
+  await page.evaluate(() => {
+    window.slpFixtureRoot.unmount()
+    const { React, ReactDOM, slpComponents } = window
+    document.getElementById('shell').style.cssText = 'position:static;height:auto;overflow:visible'
+    const host = document.getElementById('root')
+    host.style.cssText = 'position:static;font-size:14px;font-family:sans-serif;padding:16px'
+    window.slpChipRoot = ReactDOM.createRoot(host)
+    window.slpChipRoot.render(React.createElement(slpComponents.QuotaUnavailable,
+      { title: 'Subscription not found', detail: 'no-credential' }))
+  })
+}
+
+// The model seat's quota rail, inside buttons shaped like the Host's own
+// (`background: 0 0` plus a hover rule that sets the `background` shorthand —
+// the rule that used to clear a stylesheet-written rail).
+export async function mountModelBarFixture(page) {
+  await mountFixture(page)
+  await page.evaluate(() => {
+    window.slpFixtureRoot.unmount()
+    const { React, ReactDOM, slpComponents } = window
+    document.getElementById('shell').style.cssText = 'position:static;height:auto;overflow:visible'
+    const root = document.getElementById('root')
+    root.style.cssText = 'position:static;font-size:14px;font-family:sans-serif;padding:16px'
+    document.head.insertAdjacentHTML('beforeend', `<style>
+      .mq-host{display:flex;flex-direction:column;gap:10px;width:320px}
+      .mq-trigger,.mq-row{border-radius:8px;height:28px;padding:0 4px 0 8px;display:flex;align-items:center;background:0 0;border:none;font:13px sans-serif;cursor:pointer}
+      .mq-row{width:100%;height:34px;padding:5px 7px}
+      @media (hover:hover){.mq-trigger:hover:not(:disabled){background:#0000000d}}
+    </style>`)
+    root.innerHTML = '<div class="mq-host">'
+      + '<button id="mq-trigger" class="mq-trigger"><span id="mq-trigger-label"></span></button>'
+      + '<button id="mq-row-claude" class="mq-row"><span id="mq-row-claude-label"></span></button>'
+      + '<button id="mq-row-deepseek" class="mq-row"><span id="mq-row-deepseek-label"></span></button>'
+      + '</div>'
+    slpComponents.publishConfig({ enabled: true, showQuota: true, modelQuotaBar: true, modelQuotaRows: true,
+      showClaudeQuota: true, showCodexQuota: true, showAntigravityQuota: true, showOpenCodeQuota: true,
+      quotaPercentMode: 'used', cacheTtlMs: 60000,
+      providers: [{ id: 'deepseek', label: 'DeepSeek', enabled: true, match: { providerExact: ['deepseek-account'] } }] })
+    window.fetch = async url => {
+      if (String(url).indexOf('/statusline/api/claude-quota') !== -1) {
+        return { json: async () => ({ ok: true, data: { style: 'windows', chipWindows: 2, fetchedAt: Date.now(),
+          windows: [{ id: '5h', minutes: 300, usedPercent: 34, remainingPercent: 66, resetInSec: 3600 }] } }) }
+      }
+      if (String(url).indexOf('/statusline/api/provider-quota') !== -1) {
+        return { json: async () => ({ ok: true, data: { style: 'balance', remaining: 51.43, currency: 'CNY', fetchedAt: Date.now() } }) }
+      }
+      return { json: async () => ({ ok: false, error: 'not-found' }) }
+    }
+    const mount = (id, props) => ReactDOM.createRoot(document.getElementById(id)).render(React.createElement(slpComponents.ModelQuotaLabel, props))
+    window.slpModelBarRoots = [
+      mount('mq-trigger-label', { provider: { id: 'claude', name: 'Claude' }, model: { id: 'claude-opus-4-5', name: 'Claude Opus 4.5' }, placement: 'trigger', selected: true }),
+      mount('mq-row-claude-label', { provider: { id: 'claude', name: 'Claude' }, model: { id: 'claude-opus-4-5', name: 'Claude Opus 4.5' }, placement: 'option', selected: false }),
+      mount('mq-row-deepseek-label', { provider: { id: 'deepseek-account', name: 'DeepSeek' }, model: { id: 'deepseek-v4', name: 'DeepSeek V4' }, placement: 'option', selected: false }),
+    ]
+    window.setComposerStarted = value => slpComponents.setComposerStarted(value)
+  })
 }

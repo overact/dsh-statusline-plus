@@ -73,6 +73,10 @@ Each state has a reason:
 - Durations run from the call record, so they include approval and waiting. The tooltip says
   so.
 
+**When the row shows.** One rule, read positively: a running call, a running session that
+has not reported a count yet (`?`), or an open panel. Everything else hides the row, so an
+idle session with a populated history stays quiet instead of keeping a `0` chip around.
+
 Changing the fold requires a `stateVersion` bump. See
 [architecture](../../architecture.md#session-projections).
 

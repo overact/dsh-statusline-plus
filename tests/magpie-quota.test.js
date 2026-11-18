@@ -326,6 +326,39 @@ test('Magpie subscriptions are read whatever they are called, and unreadable row
   assert.ok(!JSON.stringify(list).includes('example.invalid'))
 })
 
+test('a credit pool reported as parts plus a total leads with the total, and the chip shows only it', () => {
+  // Shaped like a live WorkBuddy AI row: the free credits are spent, the extra
+  // credits are not, and the service also reports their sum as a total.
+  const list = api.parseMagpieSubscriptions([{
+    provider: 'workbuddy-ai', name: 'WorkBuddy AI', plan: 'Free plan',
+    windows: [
+      { name: 'Credits', used: 100, remaining: 0, limit: 100 },
+      { name: 'Extra credits', used: 23.811111011111112, remaining: 76.18888898888889, limit: 90 },
+      { name: 'Total credits', used: 63.910526268421044, remaining: 36.089473731578956, limit: 190 },
+      { name: 'Free model tokens', used: 10.110211, remaining: 89.88978900000001, limit: 100000000 },
+    ],
+  }], now)
+  assert.equal(list.length, 1)
+  const [sub] = list
+  // One chip segment: the total, not the exhausted component beside it.
+  assert.equal(sub.chipWindows, 1)
+  assert.deepEqual(sub.windows.map(win => win.label), ['Total credits', 'Credits', 'Extra credits', 'Free model tokens'])
+  assert.equal(sub.windows[0].usedPercent, 64)
+  // A word name keeps its words instead of being cut at ten characters.
+  assert.equal(sub.windows[0].short, 'Total credits')
+  // The components stay available to the details panel, with their own numbers.
+  assert.equal(sub.windows[1].usedPercent, 100)
+  assert.equal(sub.windows[2].usedPercent, 24)
+})
+
+test('a pool without a reported total keeps its windows in the order Magpie sent them', () => {
+  const list = api.parseMagpieSubscriptions([{
+    provider: 'kimi', windows: [{ name: '5 hours', used: 10, limit: 100 }, { name: '7 days', used: 20, limit: 400 }],
+  }], now)
+  assert.equal(list[0].chipWindows, 2)
+  assert.deepEqual(list[0].windows.map(win => win.short), ['5h', '7d'])
+})
+
 test('a model namespace finds its Magpie subscription, with an exact name winning', () => {
   const list = [{ id: 'workbuddy-ai' }, { id: 'kimi' }, { id: 'kimi-code' }]
   assert.equal(api.matchMagpieSubscription(list, ['workbuddy']).id, 'workbuddy-ai')

@@ -2,6 +2,14 @@
 
 ## 0.1.19
 
+- The header chip and the model-seat rail now resolve a model to its subscription through one function (`modelQuotaSource`), so the two surfaces cannot disagree, and a switched-off source no longer reads as "subscription not found".
+- The context chip no longer prints `1000K` at 999,999 tokens: the unit follows the rounded value.
+- The Git request no longer crashes on a browser that has `AbortSignal.timeout` but not `AbortSignal.any`; it keeps the 10-second bound and its own abort signal instead.
+- Removed the unused `intervalSec` setting: it was stored, validated and reset but nothing read it since quota refresh moved to steps, focus and manual refresh.
+- The model button now carries the subscription's quota while the session is empty: a 3px rail along its bottom edge, tinted per subscription, so a new session shows the quota before the header exists. It disappears once the conversation starts, when the header chip takes over.
+- Opening the model picker shows the same rail on every row, one request per subscription however many models share it. A balance source (DeepSeek wallet, OpenRouter credits) shows its amount instead of a ratio; only a low or unavailable balance becomes a full warning stripe. Both are settings, on by default.
+- The "subscription not found" header chip now uses the same 13px chip metric as every other chip, and leaves after ten seconds: it stays readable for about eight, fades for the rest, and is then removed instead of sitting in the header forever. A different model starts a fresh ten seconds; reduced-motion users get the removal without the fade.
+- A WorkBuddy-style credit pool now leads with its total. When Magpie reports parts plus a total (the total's limit is the sum of its parts, e.g. `Credits` + `Extra credits` = `Total credits`), the chip shows only the total, so spent free credits no longer read as an exhausted subscription while extra credits remain. The parts keep their own numbers in the details panel.
 - Header quota and peak details now cap at 380px and wrap long text. On a wide window the peak rule used to run as one ~980px line, and a long quota note could stretch the panel the same way (#2). The sidebar peak popover also keeps its 240px cap instead of being widened to the viewport.
 - The bottom row now enters together with the Host's own context meter: in a new session it waits for the first usage sample instead of showing a lone TPS while the model reasons. A Host without the `contextPressure` projection keeps the previous behaviour.
 - DeepSeek cost estimates now use one tariff per request: the tariff in effect when its first stream record arrives. A request that starts just before a peak/off-peak switch no longer shows a range; it is estimated at the later tariff, so the figure can differ from the bill by that request's peak/off-peak difference.

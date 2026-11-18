@@ -11,6 +11,7 @@ record what they cannot show, so correct a page in the same change when it goes 
 | --- | --- |
 | Module boundaries, routes, pools, Host compatibility | [architecture.md](architecture.md) |
 | Which quota chip appears, refresh, retries, error text | [features/quota/README.md](features/quota/README.md) |
+| The quota rail on the model button and in the model picker | [features/model-quota-bar.md](features/model-quota-bar.md) |
 | A quota source, its endpoint, parser or reading order | [features/quota/sources.md](features/quota/sources.md) |
 | DeepSeek peak status, countdown, holiday calendar | [features/peak-hours.md](features/peak-hours.md) |
 | Bottom row order, wrapping, presets, preview | [features/bottom-bar/README.md](features/bottom-bar/README.md) |
@@ -34,6 +35,7 @@ docs/
 |-- architecture.md           How the host and browser halves fit together
 |-- features/
 |   |-- quota/                Header chips: behavior, then source protocols
+|   |-- model-quota-bar.md   Composer model seat: quota rail, picker rows
 |   |-- peak-hours.md         DeepSeek peak indicators
 |   |-- bottom-bar/           Composer row: layout, then one page per component
 |   |-- settings.md           Settings page

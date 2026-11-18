@@ -172,7 +172,7 @@ test('one invalid stored provider is skipped with a warning instead of failing t
     }
   }
   // Numeric fields coerce through a guarded reader too: Number({toString:1}) throws.
-  for (const key of ['intervalSec', 'cacheTtlMs', 'fetchTimeoutMs']) {
+  for (const key of ['cacheTtlMs', 'fetchTimeoutMs']) {
     assert.doesNotThrow(() => plugin.__test.sanitizeConfig({ [key]: { toString: 1 } }), key + ' must survive an unstringifiable stored value')
   }
   assert.doesNotThrow(() => plugin.__test.sanitizeConfig({ providers: [{ id: 'zai', redBelow: { toString: 1 }, endpoints: [{ url: { toString: 1 }, parse: { mode: 'zai-quota' } }] }] }),
@@ -193,7 +193,7 @@ test('provider endpoints reject internal hosts in their fully-qualified and mapp
 test('the raw pre-persistence validator covers every declared field', async t => {
   const f = await fixture(); t.after(f.close)
   const rejected = [
-    { showGit: 'yes' }, { quotaOnStep: 1 }, { intervalSec: 'soon' }, { intervalSec: 10.5 },
+    { showGit: 'yes' }, { quotaOnStep: 1 },
     { cacheTtlMs: 999 }, { fetchTimeoutMs: 60001 }, { quotaPercentMode: 'weird' },
     { componentOrder: 'nope' }, { componentOrder: ['git', 'bogus'] },
     { apiKeyEnv: 'sk-literal-secret' }, { usageUrl: 'https://example.invalid/usage' },

@@ -18,6 +18,7 @@ Screenshots use the actual UI with sample data, without account or conversation 
 ## Features
 
 - **Balances and quotas:** DeepSeek, Kimi Code, Z.ai / Zhipu, Claude, Antigravity, Codex, OpenCode Go and OpenRouter, plus other subscriptions your Magpie reports. Click a chip for details and refresh.
+- **Model seat quota:** in an empty session the composer's model button carries a thin rail for the subscription paying for the current model; every row of the model picker shows its own subscription's rail, or its balance amount. Both follow the same model-to-source rule as the header chip, so a new session shows the quota before the header exists. Switch the button and the picker rows separately under **Quota and peak hours**.
 - **DeepSeek peak hours:** status, countdown and daily timeline, plus a sidebar indicator. In a year with no calendar, a weekday inside a peak window stays unknown while weekends and hours outside the windows are still off-peak; when the official rule wording no longer matches, the schedule is still applied and the indicator warns that rules may have changed.
 - **Workspace and session:** Git branch and changes, context usage, streaming TPS, API reference cost, direct child agents and tool activity.
 - **Layout:** component switches, ordering, presets and an interactive preview. Groups wrap on narrow screens; an optional switch disables this plugin's bottom status line when the input area is at most 480px wide, including when sidebars narrow it.
@@ -61,13 +62,20 @@ Open **DSH Web → Settings → Statusline**. Settings are saved under `statusli
 | `componentOrder` | Git, context, TPS, cost, activity, tools | Bottom component order, including items other plugins add ([docs/extending](docs/extending/README.md)) |
 | `hiddenComponents` | `[]` | Ids of other plugins' bottom-row items that are switched off |
 | `showQuota`, `quotaAuto`, `quotaOnStep` | `true` | Header quotas, provider selection and shared step refresh |
+| `modelQuotaBar` | `true` | Quota rail on the composer's model button while the session is empty; it hides once the conversation starts and the header chip takes over |
+| `modelQuotaRows` | `true` | Quota rail on every row of the model picker (a balance source shows its amount instead) |
 | `showDeepseekPeak`, `deepseekPeakCountdown`, `showPeakDot` | `true` | DeepSeek peak indicators and countdown |
 | `showRestartButton` | `true` | Reload/restart/DSH-update feature; off also stops the Host's DSH release check and restart route. Sidebar button: hot-reloads changes, restarts the systemd user unit only when needed. Hidden when the Host supports neither. Where DSH is a writable global npm install, it glows when a newer DSH is published and offers the update |
 | `cacheTtlMs` | `60000` | Quota result reuse; UI displays seconds, effective minimum 15s |
 | `fetchTimeoutMs` | `10000` | Request timeout; UI displays seconds |
+| `showCodexQuota`, `showAntigravityQuota`, `showClaudeQuota`, `showOpenCodeQuota` | `true` | Allow each of those subscriptions as a quota chip. A switched-off source shows nothing, never a "not found" placeholder |
+| `quotaShowAll` | `false` | Show every enabled subscription chip and other subscriptions Magpie reports, instead of selecting one from the model |
+| `quotaPercentMode` | `used` | Read percentages as consumed or remaining, in chips and details alike |
+| `codexQuotaOnTurn`, `antigravityQuotaOnTurn` | `true` | Legacy per-source refresh switches, read once to migrate into `quotaOnStep`; the settings page writes `quotaOnStep` |
 | `quotaSources` | `{}` | Per-subscription source pin, e.g. `{ "codex": "cpa" }`, set in each source card. With none set: Magpie, then CPA, then the official tool's login file (read only, never refreshed). A pinned source has no fallback. See `docs/features/quota/sources.md`. |
-| `showClaudeQuota` | `true` | Allow the Claude subscription chip. |
-| `quotaShowAll` | `false` | Show every enabled subscription chip (Codex / Antigravity / Claude / OpenCode) and other subscriptions Magpie reports, instead of selecting one from the model |
+| `codexAccount`, `antigravityAccount` | `''` | CPA account id to read that subscription from, instead of the account the tool logged in with. `''` follows the login file |
+| `apiKeyEnv` | `OPENCODE_GO_API_KEY` | Credential **reference** for the OpenCode Go usage endpoint, never a literal key |
+| `usageUrl` | `https://opencode.ai/zen/go/v1/usage` | Override the OpenCode Go usage endpoint; an internal host is rejected |
 | `providers` | Built-in sources | Credential references, source switches and endpoint overrides |
 
 The narrow-screen switch is in **Bottom status line**. It affects this plugin's bottom components; header quotas, peak indicators and native composer stats remain available.
@@ -79,6 +87,7 @@ Presets change bottom components only. Reset restores display, layout and refres
 ## Limits
 
 - Quota requests use a plugin-owned connection pool with a 5-second address-attempt window; request timeouts still bound the whole operation (Codex: 15 seconds), and Host network defaults stay unchanged. Successful queries update the display immediately, without waiting for the connection window to end. Quota refreshes reuse cached results; expiry alone does not poll. Network failures retry at most three times after 15/30/60 seconds; rate-limit retries wait 60/120/240 seconds. Going offline pauses recovery; coming online, becoming visible, a new step or a manual refresh starts a fresh query cycle. Regaining focus resumes failed recovery once the active retry cycle has ended. Successful data remains visible during retries; chips explain network errors and exhausted retries. Credential and invalid-response errors require correction. Manual refresh bypasses successful cache, while error/rate-limit backoff still applies. Missing or invalid data stays unknown.
+- The model seat's rail reads the same source as the header chip: the window that blocks first, one subscription per model, and a balance amount instead of a proportion. Rows ask once per subscription; a picker full of models on one subscription is one request.
 - Cost is an estimate from actual usage and the model vendor's public API prices, including cache rates where known. Subscriptions use the same reference prices. Pricing matches the model ID after the final `/`, independent of the route provider, gateway prefix or display name. DeepSeek plan, snapshot and subscription-tier spellings fold to the standard Flash/Pro card; other unrecognized models stay unknown. USD and CNY remain separate; missing prices stay unpriced. It excludes child sessions, inherited fork history and extra fees, and does not represent an account charge.
 - The CTX panel counts requests that had prompt input but no cache read, shown after the `Cache read` row. It is a request count, not a token count; a provider that never reports cache makes every request count, and the number never claims a reason.
 - The Git chip shows nothing outside a repository. When Git cannot read a repository, it shows `⎇ ?` with the reason in its tooltip, and clicking it retries; the plugin never changes Git config. With too many untracked files, the untracked count reads `??` and the rest of the status still shows.

@@ -79,7 +79,7 @@ function harness({ hidden = false, wallTime = Date.now(), panelLayout = null } =
       disconnect() { this.nodes.clear() }
     }
   }
-  const source = fs.readFileSync(require.resolve('../lib/client'), 'utf8').replace('return module.exports', 'return { magpieSubscriptionHint, ContextProjection, ContextRow, componentOrder, layoutOrder, isExtensionId, dockExtensionsOf, componentEnabled, reorderComponent, layoutPreset, matchingPreset, dockComponents, LayoutEditor, LayoutPreview, ToolActivityRow, toolElapsed, quotaRefreshOnStep, TpsRow, useLiveTps, useQuotaResource, formatPathSegs, fmtResetHours, minutesLabel, primarySubscriptionKind, looksLikeSubscription, providerMatchesModel, fmtMoney, QuotaLine, parseSeconds, PeakPanel, PeakFooterDot, RestartFooterButton, restartStep, restartPollDelay, deepseekPeakStatus, HeaderChip, SettingsPage, DeepseekPeakChip, ActivityRow, childActivityRows, childElapsed, CostRow, estimateCost, quotaFreshness, pickFoldLevel, QuotaSource, QUOTA_SOURCES, QuotaChip, quotaState, fmtRetryIn, contextUsage, ContextPanel, STR, publishConfig, apiSetConfig, setScope: function (scope) { settingsScope = scope } }')
+  const source = fs.readFileSync(require.resolve('../lib/client'), 'utf8').replace('return module.exports', 'return { magpieSubscriptionHint, ContextProjection, ContextRow, componentOrder, layoutOrder, isExtensionId, dockExtensionsOf, componentEnabled, reorderComponent, layoutPreset, matchingPreset, dockComponents, LayoutEditor, LayoutPreview, ToolActivityRow, toolElapsed, quotaRefreshOnStep, TpsRow, useLiveTps, useQuotaResource, formatPathSegs, fmtResetHours, minutesLabel, primarySubscriptionKind, looksLikeSubscription, providerMatchesModel, modelQuotaSource, modelQuotaMeter, meterPaint, modelQuotaTitle, planColor, fmtMoney, QuotaLine, parseSeconds, PeakPanel, PeakFooterDot, RestartFooterButton, restartStep, restartPollDelay, deepseekPeakStatus, HeaderChip, SettingsPage, DeepseekPeakChip, ActivityRow, childActivityRows, childElapsed, CostRow, estimateCost, quotaFreshness, pickFoldLevel, QuotaSource, QUOTA_SOURCES, QuotaChip, QuotaUnavailable, quotaState, fmtRetryIn, contextUsage, ContextPanel, formatTokens, STR, publishConfig, apiSetConfig, setScope: function (scope) { settingsScope = scope } }')
   vm.runInNewContext(source, context)
   exported.setScope(scope)
   return {
@@ -90,6 +90,9 @@ function harness({ hidden = false, wallTime = Date.now(), panelLayout = null } =
     tick() { timers.forEach(timer => timer.fn()) },
     setConfig(value) { scopeValue = value; exported.publishConfig(value) },
     renderComponent(component, props = {}) { cursor = 0; const result = component(props); while (pending.length) pending.shift()(); return result },
+    // A component rendered on its own: hook slots are per harness, so a second
+    // component must not inherit the first one's state.
+    renderIsolated(component, props = {}) { states.length = 0; cursor = 0; const result = component(props); while (pending.length) pending.shift()(); return result },
     renderTps(sessionId) { cursor = 0; const result = exported.TpsRow({ sessionId }); while (pending.length) pending.shift()(); return result },
     advance(ms) { now += ms; for (const [token, task] of timeouts) if (task.at <= now) { timeouts.delete(token); task.fn() } },
     renderLive(sessionId, enabled = true) { cursor = 0; const result = exported.useLiveTps(sessionId, enabled); while (pending.length) pending.shift()(); return result },
@@ -97,7 +100,7 @@ function harness({ hidden = false, wallTime = Date.now(), panelLayout = null } =
     unmount() { effects.forEach(e => e.cleanup?.()) },
   }
 }
-const config = { enabled: true, showQuota: true, intervalSec: 60 }
+const config = { enabled: true, showQuota: true }
 const resource = { kind: 'provider', id: 'openrouter', key: 'provider:openrouter', onStep: true }
 const flush = () => new Promise(resolve => setImmediate(resolve))
 
@@ -837,12 +840,84 @@ test('QuotaChip passes the saved percentage mode, defaulting to used', () => {
 
 test('QuotaChip shows the absent subscription instead of advancing to another source', async () => {
   const h = harness()
-  h.renderComponent(h.QuotaChip, { resource: { kind: 'antigravity', key: 'antigravity' }, config, stepCount: 0, subscriptionOnly: true })
+  const props = { resource: { kind: 'antigravity', key: 'antigravity' }, config, stepCount: 0, subscriptionOnly: true }
+  h.renderComponent(h.QuotaChip, props)
   h.requests[0].resolve({ ok: false, error: 'no-credential' }); await flush()
-  const view = h.renderComponent(h.QuotaChip, { resource: { kind: 'antigravity', key: 'antigravity' }, config, stepCount: 0, subscriptionOnly: true })
+  const chip = h.renderComponent(h.QuotaChip, props)
+  // The status is its own component so it can hold the 10 s fade timer.
+  const view = h.renderIsolated(h.QuotaUnavailable, chip.props)
   assert.equal(textContent(view), 'Subscription not found')
   assert.match(view.children[0].props.title, /not set up/)
   assert.equal(h.requests.length, 1, 'no request for another subscription kind')
+  h.unmount()
+})
+
+test('the absent-subscription status leaves the header after ten seconds', () => {
+  const h = harness()
+  const props = { title: 'Subscription not found' }
+  assert.equal(textContent(h.renderIsolated(h.QuotaUnavailable, props)), 'Subscription not found')
+  h.advance(9999)
+  assert.equal(textContent(h.renderComponent(h.QuotaUnavailable, props)), 'Subscription not found')
+  h.advance(1)
+  assert.equal(h.renderComponent(h.QuotaUnavailable, props), null, 'the chip must be removed, not just faded')
+  h.unmount()
+})
+
+test('the model seat resolves the subscription the header chip would, and nothing else', () => {
+  const h = harness()
+  const cfg = { ...config, showCodexQuota: true, showAntigravityQuota: true, showClaudeQuota: true, showOpenCodeQuota: true, providers: [] }
+  assert.equal(h.modelQuotaSource({ provider: 'codex', model: 'gpt-5-codex' }, cfg).kind, 'codex')
+  assert.equal(h.modelQuotaSource({ provider: 'claude', model: 'claude-opus-4-5' }, cfg).kind, 'claude')
+  assert.equal(h.modelQuotaSource({ provider: 'magpie-workbuddy', model: 'workbuddy-ai/glm-5' }, cfg).key, 'magpie:workbuddy-ai')
+  // One model, one subscription: a disabled source leaves the seat empty rather
+  // than borrowing another subscription's figure.
+  assert.equal(h.modelQuotaSource({ provider: 'codex', model: 'gpt-5-codex' }, { ...cfg, showCodexQuota: false }), null)
+  assert.equal(h.modelQuotaSource({ provider: 'openai', model: 'gpt-4o' }, cfg), null)
+  const providers = [{ id: 'deepseek', label: 'DeepSeek', enabled: true, match: { providerExact: ['deepseek-account'] } }]
+  const source = h.modelQuotaSource({ provider: 'deepseek-account', model: 'deepseek-v4' }, { ...cfg, providers })
+  assert.equal(source.kind, 'provider')
+  assert.equal(source.key, 'provider:deepseek')
+  h.unmount()
+})
+
+test('the model rail shows the window that blocks first, and never fakes a balance ratio', () => {
+  const h = harness()
+  const windows = { style: 'windows', chipWindows: 2, windows: [
+    { id: '5h', label: '5 hours', usedPercent: 30, remainingPercent: 70, resetInSec: 3600 },
+    { id: 'week', label: '7 days', usedPercent: 82, remainingPercent: 18, resetInSec: 7200 },
+    { id: 'extra', label: 'Extra', usedPercent: 5, remainingPercent: 95 },
+  ] }
+  assert.equal(h.modelQuotaMeter(windows, 'used').pct, 82)
+  assert.equal(h.modelQuotaMeter(windows, 'left').pct, 18)
+  const balance = { style: 'balance', remaining: 51.43, currency: 'CNY' }
+  const balanceMeter = h.modelQuotaMeter(balance, 'used')
+  assert.equal(balanceMeter.style, 'balance')
+  assert.equal(balanceMeter.text, '¥51.43')
+  assert.equal(balanceMeter.low, false)
+  assert.equal(h.modelQuotaMeter({ style: 'balance', isAvailable: false, remaining: 2, currency: 'CNY' }, 'used').low, true)
+  assert.equal(h.modelQuotaMeter(null, 'used'), null)
+  // A healthy balance is a number, not a proportion: no rail to paint.
+  assert.equal(h.meterPaint(h.modelQuotaMeter(balance, 'used'), 'deepseek'), null)
+  assert.equal(h.meterPaint(h.modelQuotaMeter({ style: 'balance', isAvailable: false }, 'used'), 'deepseek').pct, 1)
+  const paint = h.meterPaint(h.modelQuotaMeter(windows, 'used'), 'codex')
+  assert.equal(paint.pct, 0.82)
+  assert.match(paint.color, /15%/)
+  const exhausted = h.meterPaint({ style: 'windows', pct: 100, exhausted: true }, 'codex')
+  assert.equal(exhausted.pct, 1)
+  assert.match(exhausted.color, /state-error-primary/)
+  h.unmount()
+})
+
+test('the model rail tooltip names every window and its reset', () => {
+  const h = harness()
+  const data = { style: 'windows', windows: [
+    { label: '5 hours', usedPercent: 30, remainingPercent: 70, resetInSec: 3600 },
+    { label: '7 days', usedPercent: 82, remainingPercent: 18, resetInSec: 7200 },
+  ] }
+  const title = h.modelQuotaTitle(data, 'Codex', 'used')
+  assert.match(title, /^Codex · 5 hours 30% used \(1\.0h\)/)
+  assert.match(title, /7 days 82% used \(2\.0h\)/)
+  assert.equal(h.modelQuotaTitle({ style: 'balance', remaining: 51.43, currency: 'CNY' }, 'DeepSeek', 'used'), 'DeepSeek · balance ¥51.43')
   h.unmount()
 })
 
@@ -1225,6 +1300,23 @@ test('built-in exact matches use only the billing provider and custom rules reta
   assert.equal(h.providerMatchesModel({ match: { modelPrefix: ['GLM-'] } }, { provider: 'custom', model: 'glm-5' }), true)
   assert.equal(h.providerMatchesModel({ id: 'deepseek', match: { providerExact: ['deepseek'] } }, { provider: 'deepseek-account', model: 'deepseek-flash' }), true,
     'an old stored match list must not hide the signed-in account provider')
+  h.unmount()
+})
+
+test('formatTokens picks the unit from the rounded value', () => {
+  const h = harness()
+  assert.equal(h.formatTokens(0), '0')
+  assert.equal(h.formatTokens(999), '999')
+  assert.equal(h.formatTokens(1000), '1K')
+  assert.equal(h.formatTokens(1500), '1.5K')
+  assert.equal(h.formatTokens(150000), '150K')
+  // 999,999 used to round to "1000K", which reads as a different magnitude.
+  assert.equal(h.formatTokens(999999), '1M')
+  assert.equal(h.formatTokens(1000000), '1M')
+  assert.equal(h.formatTokens(1234567), '1.2M')
+  // A missing or stringified value still yields a number the chip can print.
+  assert.equal(h.formatTokens(undefined), '0')
+  assert.equal(h.formatTokens('1500'), '1.5K')
   h.unmount()
 })
 

@@ -30,6 +30,7 @@ feature pages name the ones they own.
 | `conversation.composer.dock` | `StatusPanel`, the bottom row. Declares the child slot `statusline-plus.dock.item` when the Host's slots have `entriesOfSlot`, `subscribe` and `getVersion` |
 | `statusline-plus.dock.item` | Owned by this plugin, filled by others: see [extending/README.md](extending/README.md) |
 | `conversation.session.header.actions` | `HeaderChip`: quotas and the peak chip |
+| `conversation.input.model.label` | `ModelQuotaLabel`: the quota rail on the model button (empty session) and on each picker row |
 | `sidebar.footer.action` | `PeakFooterDot`, `RestartFooterButton` |
 | `settings.section` | `SettingsPage` |
 

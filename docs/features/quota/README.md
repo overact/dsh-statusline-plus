@@ -12,7 +12,7 @@ from is in [sources.md](sources.md).
 | Part | Location |
 | --- | --- |
 | Chip selection | `HeaderChip` in `lib/client.js` |
-| Model to subscription | `primarySubscriptionKind`, `magpieSubscriptionHint`, `looksLikeSubscription`, `providerMatchesModel` |
+| Model to subscription | `modelQuotaSource` (the one resolver, also used by the model seat), `quotaKindEnabled`, `primarySubscriptionKind`, `magpieSubscriptionHint`, `looksLikeSubscription`, `providerMatchesModel` |
 | Fetch, retry, freshness | `useQuotaResource`, `quotaFreshness` |
 | Rendering | `QuotaChip`, `QuotaLine`, `ChipFold`, `windowsView`, `balanceView` |
 | Host gate and cache | `quota()` and `quotaRoute` in `lib/index.js` |
@@ -42,6 +42,13 @@ the first matching case applies:
 `sanitizeConfig` merges `BUILTIN_PROVIDERS` into `providers`, so step 3 also covers
 DeepSeek, Kimi Code, Z.ai, Zhipu and OpenRouter when nothing is configured.
 
+Steps 3–5 are `modelQuotaSource` in `lib/client.js`; steps 6–7 are what the chip does when
+it returns `null`. The model seat's quota rail reads the same function
+([model-quota-bar.md](../model-quota-bar.md)), so the chip and the rail cannot disagree
+about which subscription a model uses, and a rail simply stays empty where the chip would
+report an absence. `quotaShowAll` and the `quotaAuto === false` OpenCode-only mode are
+chip-only branches; a picker row can only speak for its own model.
+
 Plain `anthropic` is deliberately not Claude in step 4: it is usually an API key, which
 has no subscription quota.
 
@@ -51,6 +58,11 @@ read as that model's quota.
 
 `quietAbsent` covers step 5 when the model does not look like a subscription: having no
 such subscription is normal, so nothing shows until there is data.
+
+A source that exists but is switched off (`showCodexQuota` and its siblings) is **not**
+"not found": step 4 skips it, and step 6 checks whether any reader claims the model at all
+before printing the placeholder. A disabled source shows nothing, so the placeholder keeps
+meaning only what it says.
 
 ## Refresh
 
@@ -80,6 +92,12 @@ pauses recovery. Data already on screen stays during retries and is marked stale
 `QUOTA_ABSENT_ERRORS` are the codes a `subscriptionOnly` chip reports as "subscription not
 found" rather than as a failure.
 
+That "not found" chip is a status, not a reading: it takes the shared chip metric
+(`.slp-chip-metric`, 13px) and leaves after 10 s — a 10 s CSS fade plus a JS removal
+at the same deadline, so it cannot stay in the header as a permanent sentence. A
+different model remounts it (the key carries the model), which restarts the 10 s.
+Under `prefers-reduced-motion` the animation is off but the removal still happens.
+
 ## Pitfalls
 
 - **Percentages.** `exhausted` is judged before rounding, so 99.9% used is still
@@ -104,7 +122,7 @@ found" rather than as a failure.
   clock sleeps while closed, so its key carries the hover time: entry re-renders and
   takes a current countdown before the tooltip shows, then holds it while the open
   panel ticks.
-- **Two gates.** A subscription switch is checked by `enabledKinds` in the browser and
+- **Two gates.** A subscription switch is checked by `enabledQuotaKinds` in the browser and
   again by `quota()` on the Host. Update both for a new subscription.
 
 ## Adding a subscription
@@ -112,11 +130,14 @@ found" rather than as a failure.
 1. Write the fetcher returning the shape in `lib/quota-window.js`, reading through
    `readInOrder`, and add a section to [sources.md](sources.md).
 2. Add the route and gate in `lib/index.js`, and the setting in `lib/config.js`.
-3. Add it to `QUOTA_KINDS`, `primarySubscriptionKind`, `enabledKinds` and
-   `DEDICATED_SUBSCRIPTION_RE` in `lib/client.js`, and give it a source card.
+3. Add it to `QUOTA_KINDS`, `primarySubscriptionKind`, `quotaKindEnabled` and
+   `DEDICATED_SUBSCRIPTION_RE` in `lib/client.js`, and give it a source card. The
+   model seat's rail follows automatically because it resolves through
+   `modelQuotaSource`; add a `planColor` entry if it needs its own tint.
 4. Add parser tests with invented values, shaped like a real response.
 
 ## Tests
 
 `tests/magpie-quota.test.js`, `tests/provider-quota.test.js`, `tests/antigravity.test.js`,
-`tests/statusline.test.js`, `tests/client-lifecycle.test.js`.
+`tests/statusline.test.js`, `tests/client-lifecycle.test.js`. The header chip's
+"not found" state is covered in the browser by `verify-ui --panel chip`.

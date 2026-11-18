@@ -548,7 +548,6 @@ test('sanitizeConfig normalizes booleans, clamps numbers, and keeps usage on the
     showTokens: true,
     compactLayout: true,
     componentOrder: ['tokens', 'tools', 'context'],
-    intervalSec: 999999,
     cacheTtlMs: 999999999,
     usageUrl: 'https://example.invalid/steal',
   })
@@ -559,7 +558,6 @@ test('sanitizeConfig normalizes booleans, clamps numbers, and keeps usage on the
   assert.equal(out.showTokens, undefined)
   assert.equal(out.compactLayout, undefined)
   assert.deepEqual(out.componentOrder, ['tools', 'context', 'git', 'tps', 'cost', 'activity'])
-  assert.equal(out.intervalSec, 3600)
   assert.equal(out.cacheTtlMs, 3600000)
   assert.equal(out.usageUrl, 'https://opencode.ai/zen/go/v1/usage')
   assert.doesNotThrow(() => __test.sanitizeConfig(null))

@@ -24,7 +24,9 @@ The chip reads projections and has no route of its own.
 - `tokenUsage` is missing on older Hosts, so each read sits in its own `try` and the panel
   drops only the breakdown. Without valid pressure numbers the chip renders nothing.
 - The chip shows counts, not a percentage, because the native ring beside it already shows
-  one. The percentage is in the panel.
+  one. The percentage is in the panel. `formatTokens` rounds first and then picks the unit,
+  so `999,999` reads `1M` rather than the `1000K` that rounding in the smaller unit would
+  produce.
 - Most providers never report cache writes, so that row appears only when it has tokens.
 - **Cache misses are requests, not tokens.** A miss is one settled request with prompt
   input and no cache read, shown after the `Cache read` label as `(N misses)`, and only

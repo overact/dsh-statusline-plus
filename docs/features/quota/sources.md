@@ -148,6 +148,14 @@ Shape sources: durandom/token-burn and steipete/CodexBar (Claude), raycast/exten
   user's list works as it is. A row with `error` or no measured window is left out;
   several accounts of one provider show the first with quota left. Window `display`,
   `unit` and `pool` are not used; `used` is enough for credit-type windows too.
+  `limit` is read for one purpose: a credit pool reported as parts plus a total
+  (`Credits`, `Extra credits`, `Total credits`, where the total's `limit` is the
+  sum of two or three siblings') puts that total first and alone on the chip. The
+  parts stay in the details panel. Without this, WorkBuddy's chip led with
+  `Credits 100%` while the pool still had credits — the total was the third
+  window and never reached the chip. The total is matched by arithmetic, not by
+  its name, so a service that renames it still works; a row whose windows are
+  independent limits has no such sum and is unchanged.
 - `magpie-quota` answers one subscription by `id` (a model namespace or gateway
   provider, exact name first, then a `-` prefix either way) or the whole list.
 - Selection is described in **Reading order**.

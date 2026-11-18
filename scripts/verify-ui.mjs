@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join, relative, resolve } from 'node:path'
 import { artifacts, excerpt, redact, root } from './verification.mjs'
-import { mountFixture, mountResponsiveFixture, uiRequire } from './ui-fixture.mjs'
+import { mountChipFixture, mountFixture, mountModelBarFixture, mountResponsiveFixture, uiRequire } from './ui-fixture.mjs'
 
 function options(args) {
   const opts = { panel: 'all', live: false, session: null, service: 'dsh-web', output: null }
@@ -16,7 +16,7 @@ function options(args) {
       opts[arg.slice(2)] = value
     } else throw new Error('Unknown option: ' + arg)
   }
-  if (!['all', 'cost', 'subagents', 'responsive'].includes(opts.panel)) throw new Error('--panel must be cost, subagents, responsive or all')
+  if (!['all', 'cost', 'subagents', 'chip', 'modelbar', 'responsive'].includes(opts.panel)) throw new Error('--panel must be cost, subagents, chip, modelbar, responsive or all')
   if (opts.live && opts.panel === 'responsive') throw new Error('Responsive verification changes fixture settings and is offline only')
   if (opts.live && !opts.session) throw new Error('--live requires an explicitly selected --session ID')
   return opts
@@ -79,6 +79,50 @@ async function assertPanelVisible(page, panel) {
     const box = node.getBoundingClientRect()
     return [0.1, 0.5, 0.9].every(y => node.contains(document.elementFromPoint(box.left + box.width / 2, box.top + box.height * y)))
   }, await panel.elementHandle(), { timeout: 5000 }).catch(() => { throw new Error('Quota panel is clipped by the header title cluster') })
+}
+
+async function verifyChip(page, folder) {
+  const chip = page.locator('.slp-chip-fade').first()
+  await chip.waitFor()
+  const fontSize = await chip.evaluate(node => parseFloat(getComputedStyle(node).fontSize))
+  // The header inherits 14px; every quota chip reads at the shared 13px metric.
+  if (fontSize !== 13) throw new Error('Unavailable chip is not at the 13px chip metric: ' + fontSize)
+  const durations = await chip.evaluate(node => node.getAnimations().map(animation => animation.effect.getTiming().duration))
+  if (!durations.includes(10000)) throw new Error('Unavailable chip has no 10 s fade: ' + JSON.stringify(durations))
+  if ((await chip.innerText()).trim() !== 'Subscription not found') throw new Error('Unavailable chip text changed')
+  const screenshot = join(folder, 'chip.png')
+  // The fade is the assertion above; a finished-animation screenshot would be blank.
+  await chip.screenshot({ path: screenshot })
+  // Past the deadline the status leaves the tree; a merely transparent chip would
+  // still hold a slot in the header.
+  await page.clock.runFor(10000)
+  await chip.waitFor({ state: 'detached', timeout: 2000 })
+  return { panel: 'chip', fontSize, fadeMs: 10000, screenshot: relative(root, screenshot) }
+}
+
+async function verifyModelBar(page, folder) {
+  const trigger = page.locator('#mq-trigger')
+  const gradient = node => getComputedStyle(node).backgroundImage
+  await page.waitForFunction(() => getComputedStyle(document.querySelector('#mq-trigger')).backgroundImage.includes('linear-gradient'))
+  const size = await trigger.evaluate(node => getComputedStyle(node).backgroundSize)
+  if (!/3px/.test(size)) throw new Error('Rail is not 3px tall: ' + size)
+  // The Host's hover rule sets the `background` shorthand, which clears a
+  // stylesheet-written background-image; the inline rail must survive it.
+  await trigger.hover()
+  if (!(await trigger.evaluate(gradient)).includes('linear-gradient')) throw new Error('Hovering the model button cleared its rail')
+  // A picker row paints its own subscription, and a healthy balance shows the
+  // amount instead of inventing a ratio.
+  await page.waitForFunction(() => getComputedStyle(document.querySelector('#mq-row-claude')).backgroundImage.includes('linear-gradient'))
+  await page.waitForFunction(() => document.querySelector('#mq-row-deepseek .slp-mq-amount')?.textContent === '¥51.43')
+  if ((await page.locator('#mq-row-deepseek').evaluate(gradient)) !== 'none') throw new Error('A healthy balance must not paint a proportion')
+  await page.mouse.move(0, 0)
+  const screenshot = join(folder, 'modelbar.png')
+  await page.screenshot({ path: screenshot, clip: { x: 0, y: 0, width: 380, height: 150 } })
+  // Starting the conversation drops the button rail and keeps the picker rows.
+  await page.evaluate(() => window.setComposerStarted(true))
+  await page.waitForFunction(() => !getComputedStyle(document.querySelector('#mq-trigger')).backgroundImage.includes('linear-gradient'))
+  if (!(await page.locator('#mq-row-claude').evaluate(gradient)).includes('linear-gradient')) throw new Error('Starting a conversation removed the picker rows')
+  return { panel: 'modelbar', rail: '3px', hover: 'kept', balance: '¥51.43', started: 'button cleared, rows kept', screenshot: relative(root, screenshot) }
 }
 
 async function verifyCost(page, folder, live) {
@@ -506,13 +550,21 @@ try {
   page.on('pageerror', error => errors.push(redact(error.message)))
   let network = 0
   page.on('request', request => { if (/^https?:/.test(request.url())) network++ })
-  const data = opts.live ? await mountLive(page, opts) : opts.panel === 'responsive' ? {} : (await mountFixture(page), { hasCosts: true, subagents: 2 })
+  const data = opts.live ? await mountLive(page, opts) : opts.panel === 'responsive' ? {} : opts.panel === 'chip' ? (await mountFixture(page), {}) : opts.panel === 'modelbar' ? (await mountModelBarFixture(page), {}) : (await mountFixture(page), { hasCosts: true, subagents: 2 })
   const checks = []
   if (['all', 'cost'].includes(opts.panel)) {
     if (!data.hasCosts) throw new Error('Selected session has no priced usage')
     checks.push(await verifyCost(page, folder, opts.live))
   }
   if (['all', 'subagents'].includes(opts.panel)) checks.push(await verifySubagents(page, folder, opts.live, data.subagents))
+  if (!opts.live && ['all', 'chip'].includes(opts.panel)) {
+    await mountChipFixture(page)
+    checks.push(await verifyChip(page, folder))
+  }
+  if (!opts.live && ['all', 'modelbar'].includes(opts.panel)) {
+    if (opts.panel === 'all') await mountModelBarFixture(page)
+    checks.push(await verifyModelBar(page, folder))
+  }
   if (!opts.live && ['all', 'responsive'].includes(opts.panel)) {
     checks.push(await verifyResponsive(page, folder))
     checks.push(await verifyAnchorFallback(folder, errors))
