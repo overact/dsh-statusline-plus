@@ -2,7 +2,9 @@
 
 A power button in the sidebar footer, beside the peak dot, applies plugin and config
 changes to the running Host, cheapest first, and updates DSH itself where that is safe.
-The page reloads once the Host is ready. It replaces the separate `dsh-restart-button`
+A DSH update runs in a transient systemd user service, so the running Host never
+replaces its own package tree. The page keeps a progress panel across the bounce and
+reloads once the new process is ready. It replaces the separate `dsh-restart-button`
 plugin.
 
 ## Code
@@ -10,21 +12,27 @@ plugin.
 | Area | Symbols |
 | --- | --- |
 | Reload and restart | `createRestartController`, `reconcileProfile`, `planAfterReload`, `activeSessionCount`, `restartUnit`, `systemdUnitOf` in `lib/restart.js` |
-| DSH update | `createHostUpdater`, `resolveHostInstall`, `fetchDistTag`, `hostPackageDir` in `lib/host-update.js` |
-| Route | `restart` route, `hostReady`, `hostUpdater` in `lib/index.js` |
-| Page | `RestartFooterButton`, `useRestartCaps`, `openRestartDialog`, `runRestart`, `restartStep`, `restartPollDelay` in `lib/client.js` |
+| DSH update check and start | `createHostUpdater`, `resolveHostInstall`, `fetchDistTag`, `hostPackageDir`, `systemdRunAvailable` in `lib/host-update.js` |
+| Out-of-process update | `runHostUpdate` in `lib/host-update-runner.js` |
+| Route | `restart` route, `hostReady`, `hostUpdater`, `profileContext` in `lib/index.js` |
+| Page | `RestartFooterButton`, `useRestartCaps`, `openRestartDialog`, `runRestart`, `restartStep`, `restartProgressSteps`, `updateRestartProgress`, `restartPollDelay` in `lib/client.js` |
 
 ## What each environment gets
 
 | Host | Reload | Full restart | DSH update |
 | --- | --- | --- | --- |
-| Linux or WSL, DSH as a systemd user service, global npm install writable by the user | Yes | Yes | Yes |
+| Linux or WSL, DSH as a systemd user service, global npm install writable by the user, `systemd-run` available | Yes | Yes | Yes |
 | Same, but npm prefix owned by root, or DSH installed with pnpm, npx or `link:` | Yes | Yes | No |
+| Same, but no `systemd-run` | Yes | Yes | No |
 | Started from a terminal (no service manager) | With HMR | No | No |
 | Windows, including the desktop app | With HMR | No | No |
 | macOS desktop app | With HMR | No | No |
 
 Every missing choice is hidden, not disabled. A Host offering none of them shows no button.
+`GET restart?update=1` adds `update.helper`: false when the transient service cannot be
+started, and the page then hides the update action. The page requires `helper === true`,
+so an older Host without the field also hides it instead of running the old in-process
+install.
 
 Windows has no supervisor that starts DSH again after it exits, and it locks the files of
 a running program, so `npm install -g` over a running Host typically fails with `EBUSY`.
@@ -34,12 +42,12 @@ The desktop apps update themselves.
 
 | | Reload | Full restart | Update DSH |
 | --- | --- | --- | --- |
-| How | `hmr.runExclusive(() => hmr.reconcileProfile())` | `systemctl --user --no-block restart <unit>` | `npm install -g @deepseek-ai/dsh@<version>`, then a full restart |
+| How | `hmr.runExclusive(() => hmr.reconcileProfile())` | `systemctl --user --no-block restart <unit>` | A transient `systemd-run --user` service runs stop → npm install → profile reconcile → start → health check, with rollback |
 | Process | Same pid; changed modules are swapped | New process | New process |
-| Sessions | Keep running | Interrupted | Keep running during the install, interrupted by the restart |
-| Typical time | About a second | Stop (under a second here) plus a full boot | npm install plus a full restart |
-| Needs | `hmr` in the profile | This process in a systemd user unit | A unit, plus the conditions under [DSH update](#dsh-update) |
-| Covers | Plugin code, profile `package.json`, patch files | Everything, including DSH itself | A new DSH version |
+| Sessions | Keep running | Interrupted | Interrupted for the whole update: the service is stopped before npm touches the package tree |
+| Typical time | About a second | Stop (under a second here) plus a full boot | Depends on the download and profile update; the panel shows the real elapsed time. 15 minutes is a timeout, not an expectation |
+| Needs | `hmr` in the profile | This process in a systemd user unit | A unit, a writable global npm install, `systemd-run`; pnpm for the profile reconcile |
+| Covers | Plugin code, profile `package.json`, patch files | Everything, including DSH itself | A new DSH version, plus the profile's dependency tree |
 
 `reconcileProfile` compares every loaded profile module with the disk, so it also catches a
 change the file watcher missed or one outside the `hmr` roots, such as a package
@@ -59,116 +67,167 @@ reconcile that throws means the replaced plugin may not be running.
 
 A full restart skips the soft step. Use it for a stuck process.
 
-## Confirmation dialog
+## Confirmation dialog and update progress
 
 Buttons, left to right: Cancel (focused, so a reflexive Enter does nothing), Full restart,
 Update DSH, Reload. Esc and a press that starts and ends on the backdrop cancel. Esc is
-caught on `window` in the capture phase, because the Host binds Esc to stopping the turn. Above the
-buttons:
+caught on `window` in the capture phase, because the Host binds Esc to stopping the turn.
+Above the buttons:
 
-- with an update, a line naming the latest and running versions. The version stays out of
-  the button so a long prerelease name cannot widen the row;
+- with an update, a line naming the target and the running version;
 - where a full restart is possible and a session is running or the count is unknown, a
-  warning with the number of running sessions.
+  warning that the restart interrupts those turns.
 
-`activeSessionCount` counts top-level agents (`agents.roots()`) whose `status` is
-`running`; subagents belong to a running parent and are not counted again. `agents` is not
-injected, so it is reached through `ctx.get()`, and a missing service reads as unknown
-(`null`). The dialog asks for a fresh count each time it opens.
+The footer button is a direct `<button>` with a direct `<svg>` power icon. A generic
+footer-action normaliser such as `dsh-ui-tweaks` forces that button's colour to the grey
+label token, so the update marker cannot use `currentColor`. It is a child
+`.slp-rs-update-badge` with its own success colour and a small up arrow; the grey power
+icon stays untouched. The badge and ring stop animating under `prefers-reduced-motion`.
+
+Choosing Update DSH replaces the confirmation dialog with a modal progress panel, whose
+first active step is already the stop (the request is accepted before the service goes
+down):
+
+1. stop the service;
+2. download and install the new version;
+3. refresh the profile dependencies;
+4. start and verify.
+
+The active step spins, completed steps get a check, and an indeterminate bar moves while
+npm works. npm exposes no trustworthy percentage, so the page never invents one.
+`已用时 N 秒` and the log path carry the real state. The panel stays open while the Host
+is down: an unreachable probe keeps the last known step active instead of jumping ahead,
+and the page reconnects on the same origin to read the runner's job. It reloads 500 ms
+after the new process reports the requested version. Failure, `rolled-back`,
+`stale-version` and `unknown` states keep the panel with recovery actions: Retry where the
+Host is back, Copy log command when a log path is known, Reload now for an unknown result,
+and Dismiss. The update deadline is 15 minutes.
 
 ## DSH update
 
-Offered only when all of these hold, otherwise nothing about it appears:
+Offered only when all of these hold:
 
-- the Host was started from the global npm copy: `process.argv[1]` resolves into the
-  directory `npm root -g` names, using the npm beside the running node, because the
-  service's PATH may differ from a shell's;
-- that global root is writable by this user, since a root-owned prefix would need sudo;
-- the Host runs in a systemd user unit, because new DSH code always needs a full restart.
+- `resolveHostInstall` finds the running Host in the writable global npm prefix, from the
+  `npm root -g` of this process;
+- the Host runs as a systemd user service, because new DSH code always needs a full
+  restart;
+- `systemd-run` is available.
 
-### Checking for a release
+The availability read is a single ~70-byte registry dist-tags document, on each page load,
+at most once every ten minutes; a failure is retried after one.
 
-There is no timer and nothing pushes a release. The button asks once when it mounts, that
-is on each page load, with `GET restart?update=1`; the settings page asks the same way.
-The Host then:
+The update itself:
 
-1. reads the registry's dist-tags document, `/-/package/@deepseek-ai/dsh/dist-tags`. It is
-   about 70 bytes, not a manifest and never a tarball, and runs asynchronously with an 8 s
-   deadline;
-2. takes its `latest` tag, the same channel as `dsh-update`;
-3. caches the answer for ten minutes (one minute after a failure), so several tabs or a
-   burst of reloads read the registry once.
+1. the route receives `{mode: "update", version}`; `createRestartController` writes a job
+   id and answers 202 before it does anything;
+2. `createHostUpdater.start` writes `statusline-host-update.json` (job) and
+   `statusline-host-update.spec.json` (one pinned version, unit, root, profile),
+   then starts `host-update-runner.js` as a transient `systemd-run --user` service;
+3. the runner writes `phase: stopping`, waits 500 ms for the response and `systemd-run`
+   to leave, then `systemctl --user stop <unit>`;
+4. it runs `npm install -g @deepseek-ai/dsh@<version> --prefix <npm prefix>`
+   (`--prefix` is the global prefix that owns `npm root -g`, not the `node_modules`
+   directory itself) and verifies the installed manifest version;
+5. with a valid `profileContext` (not `desktop`), it runs the new CLI as
+   `node <root>/@deepseek-ai/dsh/lib/bin.js plugin --profile <name> install` from the
+   profile directory. A missing pnpm (exit 127) skips only this step and records
+   `reconcileSkipped: "pnpm-not-found"`; without a profile context the step is marked
+   skipped as not needed; any other failure rolls back;
+6. it runs `reset-failed` and `start`, then treats the unit as healthy after
+   `ActiveState=active`, `SubState=running` and a stable `MainPID` for ten seconds;
+7. any failure after the install stops the unit, reinstalls the previous pinned version,
+   runs the old CLI's profile reconcile again (the failed attempt may already have
+   rewritten the profile's dependency tree), starts it and verifies it. The job ends
+   `rolled-back`. If the rollback itself fails, the job ends `failed` with
+   `error: "rollback-failed"` and leaves the log path in the panel.
 
-`npm root -g` runs once per process (about 0.1 s and 65 MB for that moment). A failed read
-is unknown, never "up to date". Only a strictly newer version is offered, so a prerelease
-ahead of `latest` is not downgraded. A page left open does not learn of a release until
-it reloads.
+The updater does not keep a second DSH version on disk. `npm install -g` replaces the
+global package directory in place, so there is no old version folder to delete. The job
+keeps only `previousVersion`; rollback reinstalls that exact version from npm (the npm
+cache may satisfy it). There is no local tarball backup, so a registry that can no longer
+serve the previous version turns rollback into `rollback-failed`; the panel shows that and
+keeps the log command. The job and spec are overwritten on every run, and the log is
+truncated at the start, so repeated updates do not grow state files. The npm cache is
+npm-managed and is not part of this plugin's cleanup.
 
-### Installing
+`runHostUpdate` never shells out: every command is an argv array, the version is
+`^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$`, the unit is a `.service` name, the profile name is
+a plain identifier, and the profile directory, root, job and log paths are absolute. The
+job file is written atomically with mode 0600.
 
-With an update available, the button turns brand-coloured, with a dot and a pulsing ring
-(static under reduced motion), and its tooltip names the version. Choosing Update DSH:
+The new process reports `hostVersion` in the restart status. `hostVersion` reads the
+package that owns the running bin first, so a stale profile dependency cannot report an
+older version than the process that is actually running. The page accepts `done` only
+when the pid changed, `ready` is true, and `hostVersion` equals the requested version. A
+new pid with an older version, or with no version at all, is `stale-version`; the panel
+says to check the service unit's `ExecStart`. A rolled-back update returns the old
+version and is not silently reloaded as success.
 
-1. the Host installs only the version its last check offered, never one from the request;
-2. npm runs with a five-minute limit. It rolls back a failed install, and the service keeps
-   serving meanwhile;
-3. the Host confirms that the installed `package.json` has that version;
-4. it restarts the unit, and the page reloads when the new process is ready.
+`npm install -g` is never run inside the Host: it replaces the package tree the process
+executes from, and an interrupted install can leave the `dsh` command without regenerated
+shims. The transient service also outlives the unit stop, so the same stop cannot kill the
+installer or the health check.
 
-A failed install restarts nothing: the old DSH keeps running, and the toast names the
-journal command. The page allows six minutes before calling the outcome unknown.
+### A plain restart
 
-The running process's files are replaced during the install, and anything it loads lazily
-in that window may come from the new copy. The restart follows at once to keep that short.
+`restartUnit` runs `systemctl --user reset-failed <unit>` then
+`systemctl --user --no-block restart <unit>`. The `systemctl` helper is a child of the
+Host and therefore of the unit's cgroup; systemd may send it the same SIGTERM that stops
+the unit. The job was queued before that stop began, so a SIGTERM here is accepted, not
+reported as a failed restart. A real non-zero exit still becomes `failed` with reason
+`systemctl`.
 
-## Switch
+## Progress state
 
-`showRestartButton` (default on) has its own settings section, "Reload and DSH update",
-and switches the whole feature. Off hides the button, makes the Host answer `GET restart`
-with only `{ disabled: true, pid, ready }` (no registry read; `ready` lets a restart already
-under way still finish), and refuse every POST with 409
-`disabled`. "Restart to apply" after a self-update then stays disabled.
+`restart.status()` carries `soft`, `full`, `unit`, `pid`, `hostVersion`, `profile`, the
+run phase, the active-session count and the current `job`. `restartStep` maps a probe:
 
-## Capability detection
+- same pid: follow the Host phase (`reloading`, `reloaded` → done, `confirm`, `manual`,
+  `updating`, `restarting`, `failed`) and, during an update, the job phase (`queued` or
+  `stopping`, `installing`, `reconciling`, `starting`, `verifying`, `healthy`). Before
+  the helper's first job write, the Host's `updating` is shown as the stop step;
+- connection refused: the bounce;
+- a new pid: done only with HTTP 200 and `ready` (which waits for `loader.await()`, so the
+  session list is loaded); a 503 or a missing route is still booting;
+- an update adds `done` only with the expected `hostVersion`; otherwise `stale-version`,
+  `rolled-back` or `failed`.
 
-The unit is read from `/proc/self/cgroup`: the last `*.service` below `user@<uid>.service`.
-Nothing is hard-coded, and a desktop app, Windows, a terminal or a system service reports
-no unit. The button shows when the Host offers reload or restart and the switch is on.
+`runRestart` reads the pid, posts, then probes every 250 ms for 15 s and every second after
+that. The update deadline is 15 minutes, long enough for stop, npm, profile reconcile,
+start and rollback. `restartProgressSteps` is the pure four-step map used by the panel and
+by the client tests.
 
-## State
+## Settings
+
+`showRestartButton` is on by default. Off hides the button, makes the Host answer `GET
+restart` with only `{ disabled: true, pid, ready }` (no registry read; `ready` lets a
+restart already in flight be observed), and makes `POST restart` answer 409. A reload is
+offered only with `hmr`; a full restart only inside a systemd user unit. The update also
+needs the conditions under [DSH update](#dsh-update).
+
+## State and failure rules
 
 The run's state lives on `globalThis[Symbol.for('dsh-statusline-plus.restart')]`, not in
-the module. A soft reload can evict this module and dispose the fiber that started it; the
-old closure still escalates, and the replacement copy's route reports that run. `seq`
-guards against a late callback rewriting a newer run. Phases: `idle`, `reloading`,
-`reloaded`, `confirm`, `manual`, `updating`, `restarting`, `failed` (reason `systemctl`,
-`internal` or `update-<code>`). One run at a time; a second request gets 409 `in-progress`.
+this module: a soft reload can evict this module and dispose the fiber that started it,
+and the replacement must still report the old copy's run.
 
-The POST answers 202 before any work starts (deferred 80 ms), because every action can end
-the request's own handler. `--no-block` makes systemctl return once the job is queued, so
-its exit code means "accepted" and it is never killed by the stop of its own cgroup.
-`reset-failed` runs first to clear the start-rate counter, so repeated restarts are not
-refused.
+The public phases are `idle`, `reloading`, `reloaded`, `confirm`, `manual`, `updating`,
+`restarting`, `failed` (reason `systemctl` or `update-<code>`), and the update job's
+`queued`/`stopping`/`installing`/`reconciling`/`starting`/`verifying`/`healthy`/
+`rolling-back`/`rolled-back`/`failed`. A refused or failed service call releases the lock
+so the user can retry.
 
-## Page
-
-`runRestart` reads the pid, posts, then probes `GET restart` every 250 ms for 15 s and
-every second after. It never resubmits, and its deadline is 60 s, or six minutes for an
-update. `restartStep` maps a probe:
-
-- same pid: follow `phase` (`reloading`, `reloaded` → done, `confirm`, `manual`,
-  `updating`, `restarting`, `failed`);
-- connection refused: the bounce;
-- a new pid: done only with HTTP 200 and `ready`, which waits for `loader.await()`, so the
-  session list is loaded before the page reloads. A 503 or a missing route is still
-  booting.
-
-After a self-update of this plugin whose hot apply failed, the settings header's "Restart to
-apply" opens the same dialog where a full restart is available, and stays disabled elsewhere.
-A successful hot apply records the reconciled version, so the prompt does not return on the
-next settings visit.
+After a self-update of this plugin whose hot apply failed, the settings header's "Restart
+to apply" opens the same dialog where a full restart is available, and stays disabled
+elsewhere. A successful hot apply records the reconciled version, so the prompt does not
+return on the next settings visit.
 
 ## Tests
 
-`tests/restart.test.js`, `tests/host-update.test.js`, and the restart cases at the end of
-`tests/client-lifecycle.test.js`. No test runs a real systemctl or npm install.
+`tests/restart.test.js`, `tests/host-update.test.js`,
+`tests/host-update-runner.test.js`, and the restart cases at the end of
+`tests/client-lifecycle.test.js`. The UI smoke check `npm run verify -- --ui restart`
+mounts the real footer button and dialog against an offline fetch fixture, asserts the
+green badge survives a simulated footer `!important` colour rule, advances the four job
+phases, checks the active-step animation and renders the rolled-back actions. No test runs
+a real `systemctl stop`, npm install or DSH restart.

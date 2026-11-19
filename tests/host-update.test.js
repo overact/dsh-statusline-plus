@@ -3,11 +3,11 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { EventEmitter } = require('node:events')
-const { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } = require('node:fs')
+const { mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { join } = require('node:path')
 
-const { HOST_PACKAGE, hostPackageDir, resolveHostInstall, createHostUpdater } = require('../lib/host-update.js')
+const { HOST_PACKAGE, hostPackageDir, resolveHostInstall, createHostUpdater, globalPrefix, updatePath } = require('../lib/host-update.js')
 const { createRestartController, restartState } = require('../lib/restart.js')
 
 /** A fake global npm root holding @deepseek-ai/dsh at `version`, plus its bin symlink. */
@@ -23,7 +23,7 @@ function globalRoot(version) {
   return { base, root, dir, entry: join(base, 'bin', 'dsh') }
 }
 
-const supported = (dir, version) => async () => ({ supported: true, dir, root: '/x', version })
+const supported = (dir, version, root = '/x') => async () => ({ supported: true, dir, root, version })
 
 test('the Host package is found through the dsh symlink', () => {
   const host = globalRoot('0.2.2')
@@ -65,44 +65,114 @@ test('a registry failure is unknown, not "up to date"', async () => {
   assert.deepEqual(await unsupported.check(), { supported: false, reason: 'not-global', available: false })
 })
 
-function fakeNpm(host, { code = 0, writes } = {}) {
-  const calls = []
-  const spawn = (command, args) => {
-    calls.push(args)
-    const child = new EventEmitter()
-    child.stdout = new EventEmitter(); child.stderr = new EventEmitter()
-    child.kill = () => {}
-    setImmediate(() => {
-      if (writes) writeFileSync(join(host.dir, 'package.json'), JSON.stringify({ name: HOST_PACKAGE, version: writes }))
-      child.stderr.emit('data', code ? 'npm ERR! boom' : '')
-      child.emit('close', code)
-    })
-    return child
-  }
-  return { calls, spawn }
+function tempPaths() {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'slp-update-')))
+  return { dir, job: join(dir, 'job.json'), spec: join(dir, 'spec.json'), log: join(dir, 'update.log') }
 }
 
-test('the install runs npm -g for exactly the offered version and checks the result', async () => {
+function fakeLaunch({ code = 0, output = '' } = {}) {
+  const calls = []
+  const launch = async (command, args) => { calls.push([command, ...args]); return { code, output } }
+  return { calls, launch }
+}
+
+function fakeExec({ available = true } = {}) {
+  return async (command, args) => {
+    if (command === 'systemd-run' && args[0] === '--version') {
+      if (!available) throw new Error('ENOENT')
+      return 'systemd 259'
+    }
+    throw new Error('unexpected command: ' + command)
+  }
+}
+
+test('an update starts one transient systemd helper for the offered version', async () => {
   const host = globalRoot('0.2.2-rc.1')
-  const npm = fakeNpm(host, { writes: '0.2.2' })
-  const updater = createHostUpdater({ resolve: supported(host.dir, '0.2.2-rc.1'), latest: async () => ({ version: '0.2.2' }), spawn: npm.spawn })
-  assert.equal((await updater.install('0.2.2')).message, 'not-offered', 'nothing installs before a check offered it')
+  const paths = tempPaths()
+  const launch = fakeLaunch()
+  const updater = createHostUpdater({
+    resolve: supported(host.dir, '0.2.2-rc.1', host.root),
+    latest: async () => ({ version: '0.2.2' }),
+    exec: fakeExec(),
+    runCommand: launch.launch,
+    paths,
+  })
+  assert.equal((await updater.start({ version: '0.2.2', unit: 'dsh-web.service' })).error, 'not-offered', 'nothing starts before a check offered it')
   await updater.check()
-  assert.equal((await updater.install('9.9.9')).message, 'not-offered', 'an arbitrary version is refused')
-  assert.equal(await updater.install('0.2.2'), null)
-  assert.deepEqual(npm.calls, [['install', '-g', '@deepseek-ai/dsh@0.2.2', '--no-fund', '--no-audit']])
+  assert.equal((await updater.start({ version: '9.9.9', unit: 'dsh-web.service' })).error, 'not-offered', 'an arbitrary version is refused')
+  writeFileSync(paths.log, 'old run\n')
+  const started = await updater.start({ version: '0.2.2', unit: 'dsh-web.service', jobId: 'job-1', profile: { name: 'web', dir: host.dir } })
+  assert.equal(started.ok, true)
+  assert.equal(started.jobId, 'job-1')
+  assert.equal(launch.calls.length, 1)
+  const [command, ...args] = launch.calls[0]
+  assert.equal(command, 'systemd-run')
+  assert.ok(args.includes('--user'))
+  assert.ok(args.includes('--no-block'))
+  assert.ok(args.includes('--unit=statusline-update-job-1'))
+  assert.equal(args[args.length - 1], paths.spec)
+  const spec = JSON.parse(readFileSync(paths.spec, 'utf8'))
+  assert.equal(spec.version, '0.2.2')
+  assert.equal(spec.previousVersion, '0.2.2-rc.1')
+  assert.equal(spec.unit, 'dsh-web.service')
+  assert.equal(spec.profile, 'web')
+  assert.equal(spec.reconcile, true)
+  assert.equal(spec.root, host.root)
+  assert.equal(spec.prefix, globalPrefix(host.root))
+  assert.equal(globalPrefix('/home/u/.npm-global/lib/node_modules'), '/home/u/.npm-global')
+  assert.equal(globalPrefix('/usr/local/lib/node_modules'), '/usr/local')
+  const path = updatePath({ PATH: '/usr/bin', HOME: '/home/u' }, '/opt/node/bin/node')
+  assert.ok(path.split(':').includes('/home/u/.local/bin'))
+  assert.ok(path.split(':').includes('/opt/node/bin'))
+  assert.ok(path.split(':').includes('/usr/bin'))
+  assert.equal(updatePath({ PATH: '/a:/home/u/.local/bin', HOME: '/home/u' }, '/opt/node/bin/node').split(':').filter(item => item === '/home/u/.local/bin').length, 1)
+  assert.match(spec.npm, /npm$/)
+  assert.equal(updater.readJob().id, 'job-1')
+  assert.equal(updater.readJob().phase, 'queued')
+  assert.equal(readFileSync(paths.log, 'utf8'), '', 'the run log is truncated at start')
 })
 
-test('a failed or mismatched install is reported with its output', async () => {
+test('an unavailable helper or a failed launch is recorded, never guessed', async () => {
   const host = globalRoot('0.2.2-rc.1')
-  const failing = createHostUpdater({ resolve: supported(host.dir, '0.2.2-rc.1'), latest: async () => ({ version: '0.2.2' }), spawn: fakeNpm(host, { code: 1 }).spawn })
+  const noHelper = createHostUpdater({
+    resolve: supported(host.dir, '0.2.2-rc.1', host.root),
+    latest: async () => ({ version: '0.2.2' }),
+    exec: fakeExec({ available: false }),
+    runCommand: fakeLaunch().launch,
+    paths: tempPaths(),
+  })
+  await noHelper.check()
+  assert.equal((await noHelper.start({ version: '0.2.2', unit: 'dsh-web.service' })).error, 'no-systemd-run')
+
+  const paths = tempPaths()
+  const failing = createHostUpdater({
+    resolve: supported(host.dir, '0.2.2-rc.1', host.root),
+    latest: async () => ({ version: '0.2.2' }),
+    exec: fakeExec(),
+    runCommand: fakeLaunch({ code: 1, output: 'unit refused' }).launch,
+    paths,
+  })
   await failing.check()
-  const error = await failing.install('0.2.2')
-  assert.equal(error.message, 'install-failed')
-  assert.match(error.output, /boom/)
-  const silent = createHostUpdater({ resolve: supported(host.dir, '0.2.2-rc.1'), latest: async () => ({ version: '0.2.2' }), spawn: fakeNpm(host).spawn })
-  await silent.check()
-  assert.equal((await silent.install('0.2.2')).message, 'version-mismatch')
+  const result = await failing.start({ version: '0.2.2', unit: 'dsh-web.service', jobId: 'job-2' })
+  assert.equal(result.error, 'helper-start')
+  assert.equal(failing.readJob().phase, 'failed')
+  assert.equal(failing.readJob().error, 'helper-start')
+  assert.match(failing.readJob().output, /unit refused/)
+})
+
+test('the start validates the unit and the newer installed version', async () => {
+  let installed = '0.2.2-rc.1'
+  const updater = createHostUpdater({
+    resolve: async () => ({ supported: true, dir: '/x', root: '/x', version: installed }),
+    latest: async () => ({ version: '0.2.2' }),
+    exec: fakeExec(),
+    runCommand: fakeLaunch().launch,
+    paths: tempPaths(),
+  })
+  await updater.check()
+  assert.equal((await updater.start({ version: '0.2.2', unit: 'not a unit' })).error, 'no-unit')
+  installed = '0.2.2'
+  assert.equal((await updater.start({ version: '0.2.2', unit: 'dsh-web.service' })).error, 'not-newer')
 })
 
 const settle = async () => { for (let i = 0; i < 8; i++) await new Promise(resolve => setImmediate(resolve)) }
@@ -117,27 +187,32 @@ function systemctl() {
   return { calls, spawn }
 }
 
-test('an update installs, then restarts; a failed install restarts nothing', async () => {
-  Object.assign(restartState(), { seq: 0, phase: 'idle', reason: null })
-  const ok = systemctl()
-  let installed = null
-  const controller = createRestartController({ ctx: { get: () => undefined }, unit: 'dsh-web.service', spawn: ok.spawn, defer: fn => setImmediate(fn),
-    hostUpdater: { check: async () => ({}), install: async version => { installed = version; return null } } })
-  assert.equal(controller.request('update', { version: '0.2.2' }).ok, true)
-  assert.equal(controller.status().phase, 'updating')
-  assert.deepEqual(controller.request('reload'), { ok: false, error: 'in-progress' })
-  await settle()
-  assert.equal(installed, '0.2.2')
-  assert.equal(ok.calls.length, 2)
-
+test('an update starts the helper and leaves systemctl to it; a refused start stays in the Host', async () => {
   Object.assign(restartState(), { seq: 0, phase: 'idle', reason: null })
   const none = systemctl()
+  let started = null
+  const controller = createRestartController({ ctx: { get: () => undefined }, unit: 'dsh-web.service', spawn: none.spawn, defer: fn => setImmediate(fn),
+    hostUpdater: {
+      check: async () => ({}),
+      start: async options => { started = options; return { ok: true, jobId: 'job-1' } },
+      readJob: () => ({ id: 'job-1', phase: 'queued' }),
+    } })
+  const requested = controller.request('update', { version: '0.2.2' })
+  assert.equal(requested.ok, true)
+  assert.equal(typeof requested.jobId, 'string')
+  assert.equal(controller.status().phase, 'updating')
+  assert.deepEqual(controller.status().job, { id: 'job-1', phase: 'queued' })
+  assert.deepEqual(controller.request('reload'), { ok: false, error: 'in-progress' })
+  await settle()
+  assert.equal(started.version, '0.2.2')
+  assert.equal(none.calls.length, 0, 'the Host does not run systemctl for an update')
+
+  Object.assign(restartState(), { seq: 0, phase: 'idle', reason: null })
   const failing = createRestartController({ ctx: { get: () => undefined }, unit: 'dsh-web.service', spawn: none.spawn, defer: fn => setImmediate(fn),
-    hostUpdater: { check: async () => ({}), install: async () => new Error('install-failed') } })
+    hostUpdater: { check: async () => ({}), start: async () => ({ ok: false, error: 'install-failed' }) } })
   failing.request('update', { version: '0.2.2' })
   await settle()
   assert.deepEqual({ phase: failing.status().phase, reason: failing.status().reason }, { phase: 'failed', reason: 'update-install-failed' })
-  assert.equal(none.calls.length, 0)
 })
 
 test('no unit, no DSH update: it would need a restart nobody can perform', async () => {

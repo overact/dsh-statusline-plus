@@ -16,8 +16,8 @@ function options(args) {
       opts[arg.slice(2)] = value
     } else throw new Error('Unknown option: ' + arg)
   }
-  if (!['all', 'cost', 'subagents', 'chip', 'modelbar', 'responsive'].includes(opts.panel)) throw new Error('--panel must be cost, subagents, chip, modelbar, responsive or all')
-  if (opts.live && opts.panel === 'responsive') throw new Error('Responsive verification changes fixture settings and is offline only')
+  if (!['all', 'cost', 'subagents', 'chip', 'modelbar', 'responsive', 'restart'].includes(opts.panel)) throw new Error('--panel must be cost, subagents, chip, modelbar, responsive, restart or all')
+  if (opts.live && (opts.panel === 'responsive' || opts.panel === 'restart')) throw new Error('Responsive and restart verification use fixture state and are offline only')
   if (opts.live && !opts.session) throw new Error('--live requires an explicitly selected --session ID')
   return opts
 }
@@ -187,6 +187,62 @@ async function verifySubagents(page, folder, live, count) {
     await page.evaluate(() => window.setChildRunning(0, true)); await expect('Subagents 2/3')
   }
   return { panel: 'subagents', ...size, lifecycle: live ? 'read-only snapshot' : 'progress/expiry/resumption passed', screenshot: relative(root, screenshot) }
+}
+
+async function verifyRestart(page, folder) {
+  await mountResponsiveFixture(page, { overrides: { enabled: true, showRestartButton: true } })
+  // Simulate the other footer plugin's normalising rule: it forces every icon
+  // button's colour to the grey label token. The green update arrow must keep
+  // its own colour because it is a child badge, not the button's currentColor.
+  await page.addStyleTag({ content: '#fixture-footer .slp-rs-btn{color:#61666b !important}#fixture-footer .slp-rs-btn>svg{width:18px !important;height:18px !important}' })
+  const button = page.locator('#fixture-footer .slp-rs-btn')
+  await button.waitFor()
+  if (await button.getAttribute('data-update') !== 'true') throw new Error('The DSH update marker is missing')
+  const badge = button.locator('.slp-rs-update-badge')
+  await badge.waitFor()
+  const colors = await page.evaluate(() => {
+    const badge = document.querySelector('#fixture-footer .slp-rs-update-badge')
+    const button = document.querySelector('#fixture-footer .slp-rs-btn')
+    return { badge: getComputedStyle(badge).color, button: getComputedStyle(button).color }
+  })
+  const green = colors.badge.match(/\d+/g).map(Number)
+  if (!(green.length >= 3 && green[1] > green[0] && green[1] > green[2])) throw new Error('Update arrow is not green: ' + colors.badge)
+  if (colors.badge === colors.button) throw new Error('The footer colour override recoloured the badge')
+  const buttonShot = join(folder, 'restart-button.png')
+  await button.screenshot({ path: buttonShot })
+  await button.click()
+  const dialog = page.locator('dialog.slp-rs-dialog').first()
+  await dialog.waitFor()
+  await dialog.locator('button[data-variant="update"]').click()
+  const progress = page.locator('.slp-rs-progress')
+  await progress.waitFor()
+  await page.clock.runFor(350)
+  await progress.locator('.slp-rs-step[data-step="stop"][data-state="active"]').waitFor()
+  const spin = await progress.locator('.slp-rs-step[data-step="stop"] .slp-rs-step-dot').evaluate(node => getComputedStyle(node).animationName)
+  if (spin !== 'slp-rs-spin') throw new Error('Active update step is not animated: ' + spin)
+  for (const [phase, step] of [['installing', 'install'], ['reconciling', 'reconcile'], ['starting', 'start']]) {
+    await page.evaluate(phase => { window.slpRestart.job.phase = phase }, phase)
+    await page.clock.runFor(300)
+    await progress.locator(`.slp-rs-step[data-step="${step}"][data-state="active"]`).waitFor()
+  }
+  await page.clock.runFor(1100)
+  const elapsed = await progress.locator('.slp-rs-elapsed').textContent()
+  if (!/(elapsed|\u5df2\u7528\u65f6)/.test(elapsed)) throw new Error('Update progress has no elapsed line: ' + elapsed)
+  await page.evaluate(() => {
+    window.slpRestart.pid = 2
+    window.slpRestart.hostVersion = '0.2.2-rc.1'
+    window.slpRestart.job = { ...window.slpRestart.job, phase: 'rolled-back', error: 'unhealthy', previousVersion: '0.2.2-rc.1', logPath: '/fixture/statusline-host-update.log' }
+  })
+  await page.clock.runFor(300)
+  await page.locator('.slp-rs-progress[data-state="rolled-back"]').waitFor()
+  const rolled = await progress.textContent()
+  if (!/roll(ed)? back|\u56de\u6ede/i.test(rolled)) throw new Error('Rollback was not explained: ' + rolled)
+  if (await progress.locator('.slp-rs-actions button').count() < 2) throw new Error('Rollback has no retry/log/dismiss actions')
+  const screenshot = join(folder, 'restart-progress.png')
+  await page.screenshot({ path: screenshot })
+  await progress.locator('.slp-rs-actions button').last().click()
+  if (await page.locator('.slp-rs-progress').count()) throw new Error('Dismiss did not close the progress panel')
+  return { panel: 'restart', lifecycle: 'green arrow badge, animated stop/install/reconcile/start steps, elapsed line, rollback actions passed', screenshot: relative(root, screenshot) }
 }
 
 async function verifyResponsive(page, folder) {
@@ -550,7 +606,7 @@ try {
   page.on('pageerror', error => errors.push(redact(error.message)))
   let network = 0
   page.on('request', request => { if (/^https?:/.test(request.url())) network++ })
-  const data = opts.live ? await mountLive(page, opts) : opts.panel === 'responsive' ? {} : opts.panel === 'chip' ? (await mountFixture(page), {}) : opts.panel === 'modelbar' ? (await mountModelBarFixture(page), {}) : (await mountFixture(page), { hasCosts: true, subagents: 2 })
+  const data = opts.live ? await mountLive(page, opts) : opts.panel === 'responsive' || opts.panel === 'restart' ? {} : opts.panel === 'chip' ? (await mountFixture(page), {}) : opts.panel === 'modelbar' ? (await mountModelBarFixture(page), {}) : (await mountFixture(page), { hasCosts: true, subagents: 2 })
   const checks = []
   if (['all', 'cost'].includes(opts.panel)) {
     if (!data.hasCosts) throw new Error('Selected session has no priced usage')
@@ -571,7 +627,8 @@ try {
     checks.push(await verifyPanelWidth(folder, errors))
     checks.push(await verifyDockDrag(folder, errors))
     checks.push(await verifyDockExtension(folder, errors))
-  } else if (!opts.live) await page.evaluate(() => window.slpFixtureRoot.unmount())
+  } else if (!opts.live) await page.evaluate(() => window.slpFixtureRoot?.unmount())
+  if (!opts.live && ['all', 'restart'].includes(opts.panel)) checks.push(await verifyRestart(page, folder))
   if (errors.length || !opts.live && network) throw new Error(errors.join('; ') || 'Offline fixture made a network request')
   if (opts.live && await page.evaluate(() => window.slpModules.entries.state.getSnapshot().failures.length)) throw new Error('Native module loader reported failures')
   const report = { ok: true, mode: opts.live ? 'live' : 'fixture', durationMs: Math.round(performance.now() - started), checks, errors: 0 }

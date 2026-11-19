@@ -92,6 +92,22 @@ test('the host version comes from the environment before anything else', async (
   })
 })
 
+test('the host version falls back to the package that owns the running bin', () => {
+  const base = realpathSync(mkdtempSync(join(tmpdir(), 'slp-host-version-')))
+  const dir = join(base, '@deepseek-ai', 'dsh')
+  mkdirSync(join(dir, 'lib'), { recursive: true })
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh', version: '0.2.2-test' }))
+  writeFileSync(join(dir, 'lib', 'bin.js'), '')
+  const previous = process.argv[1]
+  process.argv[1] = join(dir, 'lib', 'bin.js')
+  try {
+    assert.equal(hostVersion(), '0.2.2-test')
+  } finally {
+    process.argv[1] = previous
+    rmSync(base, { recursive: true, force: true })
+  }
+})
+
 test('an update is offered only when the registry is newer and the host admits it', async () => {
   await withHostVersion('0.2.1-rc.5', () => withFetch(
     () => registryResponse({ version: '99.0.0', engines: { dsh: '>=0.2.0-rc.2' } }),

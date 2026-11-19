@@ -104,8 +104,11 @@ export async function mountResponsiveFixture(page, { dockData = false, deepseek 
       cacheTtlMs: 60000, fetchTimeoutMs: 10000 }
     let config = { ...defaults, hideBottomOnNarrow: true, ...overrides }
     const listeners = new Set(), registrations = new Map(), cleanups = []
-    window.slpResponsive = { sources: [], gitRequests: [], quotaRequests: [], quotaFailures: 0, mutations: [], observers: [], updateRequests: [], updateInstance: 'fixture-before-install' }
+    window.slpResponsive = { sources: [], gitRequests: [], quotaRequests: [], quotaFailures: 0, mutations: [], observers: [], updateRequests: [], updateInstance: 'fixture-before-install', restartRequests: [] }
     const activity = window.slpResponsive
+    // The footer button's update flow reads and advances this state. A test can
+    // set `job.phase` or the new pid/version between polls to drive the panel.
+    window.slpRestart = { pid: 1, ready: true, hostVersion: '0.2.2-rc.1', job: null }
     const NativeObserver = window.ResizeObserver
     window.ResizeObserver = class {
       constructor(callback) { this.native = new NativeObserver(callback); activity.observers.push(this) }
@@ -152,8 +155,19 @@ export async function mountResponsiveFixture(page, { dockData = false, deepseek 
       }
       if (url === '/statusline/api/peak-schedule') return { json: async () => ({ ok: false }) }
       if (url.indexOf('/statusline/api/restart') === 0) {
-        return { status: 200, json: async () => ({ ok: true, data: { soft: true, full: true, unit: 'dsh-web.service', pid: 1, phase: 'idle', active: 0, ready: true,
-          update: { supported: true, available: true, installed: '0.2.2-rc.1', latest: '0.2.2' } } }) }
+        const state = window.slpRestart
+        if (String(options.method || 'GET').toUpperCase() === 'POST') {
+          const body = JSON.parse(options.body || '{}')
+          activity.restartRequests.push(body)
+          state.job = { id: 'job-1', phase: 'stopping', version: body.version || '0.2.2', previousVersion: '0.2.2-rc.1',
+            logPath: '/fixture/statusline-host-update.log', startedAt: new Date().toISOString() }
+          return { status: 202, ok: true, json: async () => ({ ok: true, data: { seq: 1, pid: state.pid, jobId: 'job-1' } }) }
+        }
+        return { status: 200, ok: true, json: async () => ({ ok: true, data: {
+          soft: true, full: true, unit: 'dsh-web.service', pid: state.pid, phase: 'idle', active: 0,
+          ready: state.ready, hostVersion: state.hostVersion, profile: 'web', job: state.job,
+          update: { supported: true, helper: true, available: true, installed: '0.2.2-rc.1', latest: '0.2.2' },
+        } }) }
       }
       throw new Error('Unexpected responsive fixture request: ' + url)
     }

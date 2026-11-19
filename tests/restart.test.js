@@ -52,6 +52,15 @@ test('a failed reset-failed still restarts; a refused restart is reported', asyn
   assert.match(String(await restartUnit('dsh-web.service', refused.spawn)), /exited 5/)
 })
 
+test('the systemctl child may be SIGTERMed by the stop it requested; that is accepted', async () => {
+  const spawn = () => {
+    const child = new EventEmitter()
+    setImmediate(() => child.emit('close', null, 'SIGTERM'))
+    return child
+  }
+  assert.equal(await restartUnit('dsh-web.service', spawn), null)
+})
+
 test('a missing systemctl is a failure, not a crash', async () => {
   const error = await restartUnit('dsh-web.service', () => { throw new Error('ENOENT') })
   assert.match(String(error), /ENOENT/)
@@ -143,4 +152,27 @@ test('a reload that needs a restart stops at confirm while a session runs', asyn
   controller.request('reload')
   await settle()
   assert.equal(calls.length, 2, 'idle: the reload escalates by itself')
+})
+
+test('status carries the active profile, the running host version and the update job', () => {
+  const controller = createRestartController({
+    ctx: { get: () => undefined }, unit: 'dsh-web.service',
+    profileContext: { name: 'web' },
+    hostUpdater: { readJob: () => ({ id: 'job-1', phase: 'installing' }) },
+  })
+  const status = controller.status()
+  assert.equal(status.profile, 'web')
+  assert.deepEqual(status.job, { id: 'job-1', phase: 'installing' })
+  assert.ok(status.hostVersion === null || typeof status.hostVersion === 'string')
+})
+
+test('updateStatus reports whether the process-external helper can run', async () => {
+  const controller = createRestartController({
+    ctx: { get: () => undefined }, unit: 'dsh-web.service',
+    hostUpdater: {
+      check: async () => ({ supported: true, available: true, latest: '0.2.2' }),
+      helperAvailable: async () => false,
+    },
+  })
+  assert.deepEqual(await controller.updateStatus(), { supported: true, available: true, latest: '0.2.2', helper: false })
 })

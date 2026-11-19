@@ -17,7 +17,7 @@ projections. The browser half (`lib/client.js`) is loaded through `dsh.client` i
 | Session | `session-log.js`, `session-metrics.js`, `model-pricing.js`, `tool-activity.js`, `subagent-activity.js`, `tps.js` |
 | Peak | `peak-schedule.js` |
 | Update | `update.js` |
-| Reload / restart, DSH update | `restart.js`, `host-update.js` |
+| Reload / restart, DSH update | `restart.js`, `host-update.js`, `host-update-runner.js` |
 | Shared | `request-pool.js`, `http-route.js` |
 
 `lib/client.js` is a single large file. Find a component by searching for its name; the
