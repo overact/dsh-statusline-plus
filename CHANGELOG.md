@@ -1,6 +1,6 @@
 # Release notes
 
-## 0.1.19
+## 0.2.0
 
 - The header chip and the model-seat rail now resolve a model to its subscription through one function (`modelQuotaSource`), so the two surfaces cannot disagree, and a switched-off source no longer reads as "subscription not found".
 - The context chip no longer prints `1000K` at 999,999 tokens: the unit follows the rounded value.
@@ -10,6 +10,18 @@
 - Opening the model picker shows the same rail on every row, one request per subscription however many models share it. A balance source (DeepSeek wallet, OpenRouter credits) shows its amount instead of a ratio; only a low or unavailable balance becomes a full warning stripe. Both are settings, on by default.
 - The "subscription not found" header chip now uses the same 13px chip metric as every other chip, and leaves after ten seconds: it stays readable for about eight, fades for the rest, and is then removed instead of sitting in the header forever. A different model starts a fresh ten seconds; reduced-motion users get the removal without the fade.
 - A WorkBuddy-style credit pool now leads with its total. When Magpie reports parts plus a total (the total's limit is the sum of its parts, e.g. `Credits` + `Extra credits` = `Total credits`), the chip shows only the total, so spent free credits no longer read as an exhausted subscription while extra credits remain. The parts keep their own numbers in the details panel.
+
+- Model rows now update their highlight when the wheel scrolls the picker under a stationary pointer. The Host sets the active row in `onMouseMove` and gives model rows no `:hover` rule, so the highlight used to stay on the old row until the mouse moved. The label re-dispatches the Host's own `mousemove` for the row under the pointer after a wheel-driven scroll (passive; the wheel is never prevented); a new scrollable fixture in `verify-ui --panel modelbar` fails without the bridge.
+- The updater keeps no second DSH version: npm replaces the global package in place, so there is no old version folder to clean. The job/spec are overwritten each run and the update log is truncated at start, so repeated updates do not accumulate state. Rollback still reinstalls the previous version from npm; no local tarball backup is kept.
+- Quota chips no longer POST on every agent step. A step now refreshes at most once per cache window (`max(15s, cacheTtlMs)`), an in-flight request coalesces into one trailing refresh, and a source that is failing keeps its retry ladder instead of being retried by every step. This removes the burst of quota requests — and the related re-renders — that made the model picker and header feel sluggish while an agent worked.
+- The model picker's quota rows share one cache per subscription and now notify only the rows for the key that changed; `ModelQuotaLabel` is memoized against the Host's streamed-step re-renders, so an agent step no longer repaints every model row. Failed entries keep their 15 s/60 s backoff.
+- The DSH update marker is a small green up-arrow badge on the power button instead of a grey dot. It is a child badge with its own success colour, so another footer plugin forcing the button's colour to the grey label token cannot recolour it; the power icon stays grey.
+- A DSH update now runs in a transient systemd user service instead of the Host. It stops the unit, installs the pinned version, refreshes the profile dependencies with the new CLI, then starts and verifies the service; failure after the install stops the unit, reinstalls the previous version, reconciles the profile with the old CLI again and starts it, leaving the job `rolled-back` rather than down. `GET restart` reports the running `hostVersion` and the job, and the page accepts success only when the new pid reports the requested version.
+- The static "updating" toast is gone. Choosing Update DSH opens a modal progress panel with four real steps (stop, install, reconcile, start), a spinning active marker, a moving indeterminate bar, elapsed time, the log command and a live hint, so a Host that is down for a stretch is visibly still working. A failure or rollback keeps the panel with Retry, Copy log command and Dismiss; the update deadline is 15 minutes.
+- A full restart now accepts SIGTERM from the `systemctl` child it queued: systemd stops the unit's whole cgroup, and the old code reported that normal signal as a failed restart. A real non-zero exit still fails.
+
+## 0.1.19
+
 - Header quota and peak details now cap at 380px and wrap long text. On a wide window the peak rule used to run as one ~980px line, and a long quota note could stretch the panel the same way (#2). The sidebar peak popover also keeps its 240px cap instead of being widened to the viewport.
 - The bottom row now enters together with the Host's own context meter: in a new session it waits for the first usage sample instead of showing a lone TPS while the model reasons. A Host without the `contextPressure` projection keeps the previous behaviour.
 - DeepSeek cost estimates now use one tariff per request: the tariff in effect when its first stream record arrives. A request that starts just before a peak/off-peak switch no longer shows a range; it is estimated at the later tariff, so the figure can differ from the bill by that request's peak/off-peak difference.
