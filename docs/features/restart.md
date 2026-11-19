@@ -42,12 +42,12 @@ The desktop apps update themselves.
 
 | | Reload | Full restart | Update DSH |
 | --- | --- | --- | --- |
-| How | `hmr.runExclusive(() => hmr.reconcileProfile())` | `systemctl --user --no-block restart <unit>` | A transient `systemd-run --user` service runs stop → npm install → profile reconcile → start → health check, with rollback |
+| How | `hmr.runExclusive(() => hmr.reconcileProfile())` | `systemctl --user --no-block restart <unit>` | A transient `systemd-run --user` service runs stop → npm install → profile reconcile and official plugin update → start → health check, with rollback |
 | Process | Same pid; changed modules are swapped | New process | New process |
 | Sessions | Keep running | Interrupted | Interrupted for the whole update: the service is stopped before npm touches the package tree |
 | Typical time | About a second | Stop (under a second here) plus a full boot | Depends on the download and profile update; the panel shows the real elapsed time. 15 minutes is a timeout, not an expectation |
 | Needs | `hmr` in the profile | This process in a systemd user unit | A unit, a writable global npm install, `systemd-run`; pnpm for the profile reconcile |
-| Covers | Plugin code, profile `package.json`, patch files | Everything, including DSH itself | A new DSH version, plus the profile's dependency tree |
+| Covers | Plugin code, profile `package.json`, patch files | Everything, including DSH itself | A new DSH version, the profile's dependency tree, and official `@deepseek-ai/dsh-*` profile plugins |
 
 `reconcileProfile` compares every loaded profile module with the disk, so it also catches a
 change the file watcher missed or one outside the `hmr` roots, such as a package
@@ -128,18 +128,33 @@ The update itself:
 4. it runs `npm install -g @deepseek-ai/dsh@<version> --prefix <npm prefix>`
    (`--prefix` is the global prefix that owns `npm root -g`, not the `node_modules`
    directory itself) and verifies the installed manifest version;
-5. with a valid `profileContext` (not `desktop`), it runs the new CLI as
+5. with a valid `profileContext` (not `desktop`), it snapshots the profile's
+   `package.json` and `pnpm-lock.yaml`, then runs the new CLI as
    `node <root>/@deepseek-ai/dsh/lib/bin.js plugin --profile <name> install` from the
-   profile directory. A missing pnpm (exit 127) skips only this step and records
+   profile directory. A missing pnpm (exit 127) skips this step and records
    `reconcileSkipped: "pnpm-not-found"`; without a profile context the step is marked
    skipped as not needed; any other failure rolls back;
-6. it runs `reset-failed` and `start`, then treats the unit as healthy after
+6. after the reconcile, it selects the profile's `@deepseek-ai/dsh-*` dependencies that
+   are registry specs (never `link:`, `file:`, `workspace:` or catalog entries) and runs
+   the new CLI with `plugin --profile <name> update <package>...` for each, **without**
+   pinning them to the DSH version. Each official plugin keeps its own declared range and
+   release cadence; a plugin that has no build for this exact DSH version is simply left
+   at its newest available version. The command passes
+   `--config.minimumReleaseAge=0` for this one update: pnpm 12 otherwise rejects the
+   profile's existing lock because several entries are newer than its release-age cutoff.
+   Linked, file and third-party dependencies are never selected. An update failure (or a
+   missing pnpm) restores the snapshot, repairs the profile with `install`, records
+   `officialPluginsFailed` or `officialPluginsSkipped`, and continues: a profile plugin
+   must not roll back a healthy DSH update. Afterward it runs `plugin list` once more and
+   records official packages that are still incompatible as `officialPluginsIncompatible`;
+   that is a visible warning, not a start gate;
+7. it runs `reset-failed` and `start`, then treats the unit as healthy after
    `ActiveState=active`, `SubState=running` and a stable `MainPID` for ten seconds;
-7. any failure after the install stops the unit, reinstalls the previous pinned version,
-   runs the old CLI's profile reconcile again (the failed attempt may already have
-   rewritten the profile's dependency tree), starts it and verifies it. The job ends
-   `rolled-back`. If the rollback itself fails, the job ends `failed` with
-   `error: "rollback-failed"` and leaves the log path in the panel.
+8. any failure after the install stops the unit, restores the profile snapshot, reinstalls
+   the previous pinned version, runs the old CLI's profile reconcile again (the failed
+   attempt may already have rewritten the profile's dependency tree), starts it and
+   verifies it. The job ends `rolled-back`. If the rollback itself fails, the job ends
+   `failed` with `error: "rollback-failed"` and leaves the log path in the panel.
 
 The updater does not keep a second DSH version on disk. `npm install -g` replaces the
 global package directory in place, so there is no old version folder to delete. The job
