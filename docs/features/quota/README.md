@@ -69,7 +69,10 @@ meaning only what it says.
 Expiry alone never polls. A refresh comes from one of:
 
 - a mount, or a change of request settings;
-- a turn starting or a step ending, when `quotaOnStep` is on (cached results may answer);
+- a turn starting or a step ending, when `quotaOnStep` is on: at most once per
+  `max(15s, cacheTtlMs)`, and never while a failure retry is pending. A step inside the
+  cache window, or while a retry is scheduled, sends nothing; an in-flight request
+  coalesces at most one trailing refresh;
 - the page becoming visible or coming back online;
 - the refresh button, which bypasses a successful cache but still respects error backoff.
 

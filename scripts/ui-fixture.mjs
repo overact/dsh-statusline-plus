@@ -291,12 +291,16 @@ export async function mountModelBarFixture(page) {
       .mq-host{display:flex;flex-direction:column;gap:10px;width:320px}
       .mq-trigger,.mq-row{border-radius:8px;height:28px;padding:0 4px 0 8px;display:flex;align-items:center;background:0 0;border:none;font:13px sans-serif;cursor:pointer}
       .mq-row{width:100%;height:34px;padding:5px 7px}
+      .mq-scroll{height:102px;overflow-y:auto;width:320px;border:1px solid #ddd;border-radius:8px;margin-top:12px}
+      .mq-scroll-row{width:100%;height:34px;padding:5px 7px;display:flex;align-items:center;background:0 0;border:none;font:13px sans-serif;cursor:pointer;text-align:left}
+      .mq-scroll-row[data-active="true"]{background:#0000000d}
       @media (hover:hover){.mq-trigger:hover:not(:disabled){background:#0000000d}}
     </style>`)
     root.innerHTML = '<div class="mq-host">'
       + '<button id="mq-trigger" class="mq-trigger"><span id="mq-trigger-label"></span></button>'
       + '<button id="mq-row-claude" class="mq-row"><span id="mq-row-claude-label"></span></button>'
       + '<button id="mq-row-deepseek" class="mq-row"><span id="mq-row-deepseek-label"></span></button>'
+      + '<div id="mq-scroll" class="mq-scroll"></div>'
       + '</div>'
     slpComponents.publishConfig({ enabled: true, showQuota: true, modelQuotaBar: true, modelQuotaRows: true,
       showClaudeQuota: true, showCodexQuota: true, showAntigravityQuota: true, showOpenCodeQuota: true,
@@ -318,6 +322,23 @@ export async function mountModelBarFixture(page) {
       mount('mq-row-claude-label', { provider: { id: 'claude', name: 'Claude' }, model: { id: 'claude-opus-4-5', name: 'Claude Opus 4.5' }, placement: 'option', selected: false }),
       mount('mq-row-deepseek-label', { provider: { id: 'deepseek-account', name: 'DeepSeek' }, model: { id: 'deepseek-v4', name: 'DeepSeek V4' }, placement: 'option', selected: false }),
     ]
+    // The Host highlights model rows from onMouseMove. A scroll moves a new row
+    // under a stationary pointer without firing it, so this fixture reproduces
+    // the gap the label's scroll bridge covers.
+    function ScrollList() {
+      const [active, setActive] = React.useState(0)
+      return React.createElement('div', null,
+        Array.from({ length: 30 }, (_, index) => React.createElement('button', {
+          key: index, type: 'button', className: 'mq-scroll-row', 'data-scroll-row': index,
+          'data-active': active === index ? 'true' : undefined,
+          onMouseMove: () => setActive(index),
+        }, React.createElement(slpComponents.ModelQuotaLabel, {
+          provider: { id: 'claude', name: 'Claude' },
+          model: { id: 'claude-opus-4-5', name: 'Claude Model ' + index },
+          placement: 'option', selected: false,
+        }))))
+    }
+    ReactDOM.createRoot(document.getElementById('mq-scroll')).render(React.createElement(ScrollList))
     window.setComposerStarted = value => slpComponents.setComposerStarted(value)
   })
 }

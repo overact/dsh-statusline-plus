@@ -115,14 +115,38 @@ async function verifyModelBar(page, folder) {
   await page.waitForFunction(() => getComputedStyle(document.querySelector('#mq-row-claude')).backgroundImage.includes('linear-gradient'))
   await page.waitForFunction(() => document.querySelector('#mq-row-deepseek .slp-mq-amount')?.textContent === '¥51.43')
   if ((await page.locator('#mq-row-deepseek').evaluate(gradient)) !== 'none') throw new Error('A healthy balance must not paint a proportion')
+  // Wheel scrolling moves the row under a stationary pointer without firing
+  // `mousemove`; the Host's own highlight would stay on the old row. The label
+  // re-dispatches the Host's event, so the fixture's active row must follow.
+  const box = await page.locator('#mq-scroll').boundingBox()
+  if (!box) throw new Error('The model-menu scroll fixture is not visible')
+  const x = box.x + box.width / 2, y = box.y + 20
+  await page.mouse.move(x, y)
+  const before = await page.locator('#mq-scroll [data-active="true"]').getAttribute('data-scroll-row')
+  // The fixture runs on Playwright's fake clock, where the native wheel scroll
+  // does not advance. Dispatch the wheel intent and move the real scroll
+  // container; the bridge then follows.
+  await page.evaluate(({ x, y }) => {
+    const scroller = document.querySelector('#mq-scroll')
+    scroller.dispatchEvent(new WheelEvent('wheel', { bubbles: true, clientX: x, clientY: y, deltaY: 70 }))
+    scroller.scrollTop = 70
+  }, { x, y })
+  await page.clock.runFor(50)
+  await page.waitForFunction(({ x, y }) => {
+    const scroller = document.querySelector('#mq-scroll')
+    const row = document.elementFromPoint(x, y)?.closest?.('[data-scroll-row]')
+    return row && row.getAttribute('data-active') === 'true'
+  }, { x, y }, { timeout: 2000 })
+  const after = await page.locator('#mq-scroll [data-active="true"]').getAttribute('data-scroll-row')
+  if (after === before) throw new Error('The active row did not follow the scroll under the pointer')
   await page.mouse.move(0, 0)
   const screenshot = join(folder, 'modelbar.png')
-  await page.screenshot({ path: screenshot, clip: { x: 0, y: 0, width: 380, height: 150 } })
+  await page.screenshot({ path: screenshot, clip: { x: 0, y: 0, width: 380, height: 260 } })
   // Starting the conversation drops the button rail and keeps the picker rows.
   await page.evaluate(() => window.setComposerStarted(true))
   await page.waitForFunction(() => !getComputedStyle(document.querySelector('#mq-trigger')).backgroundImage.includes('linear-gradient'))
   if (!(await page.locator('#mq-row-claude').evaluate(gradient)).includes('linear-gradient')) throw new Error('Starting a conversation removed the picker rows')
-  return { panel: 'modelbar', rail: '3px', hover: 'kept', balance: '¥51.43', started: 'button cleared, rows kept', screenshot: relative(root, screenshot) }
+  return { panel: 'modelbar', rail: '3px', hover: 'kept', balance: '¥51.43', started: 'button cleared, rows kept', scroll: 'active row follows the wheel', screenshot: relative(root, screenshot) }
 }
 
 async function verifyCost(page, folder, live) {

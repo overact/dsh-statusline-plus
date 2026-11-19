@@ -79,7 +79,7 @@ function harness({ hidden = false, wallTime = Date.now(), panelLayout = null } =
       disconnect() { this.nodes.clear() }
     }
   }
-  const source = fs.readFileSync(require.resolve('../lib/client'), 'utf8').replace('return module.exports', 'return { magpieSubscriptionHint, ContextProjection, ContextRow, componentOrder, layoutOrder, isExtensionId, dockExtensionsOf, componentEnabled, reorderComponent, layoutPreset, matchingPreset, dockComponents, LayoutEditor, LayoutPreview, ToolActivityRow, toolElapsed, quotaRefreshOnStep, TpsRow, useLiveTps, useQuotaResource, formatPathSegs, fmtResetHours, minutesLabel, primarySubscriptionKind, looksLikeSubscription, providerMatchesModel, modelQuotaSource, modelQuotaMeter, meterPaint, modelQuotaTitle, planColor, fmtMoney, QuotaLine, parseSeconds, PeakPanel, PeakFooterDot, RestartFooterButton, restartStep, restartPollDelay, deepseekPeakStatus, HeaderChip, SettingsPage, DeepseekPeakChip, ActivityRow, childActivityRows, childElapsed, CostRow, estimateCost, quotaFreshness, pickFoldLevel, QuotaSource, QUOTA_SOURCES, QuotaChip, QuotaUnavailable, quotaState, fmtRetryIn, contextUsage, ContextPanel, formatTokens, STR, publishConfig, apiSetConfig, setScope: function (scope) { settingsScope = scope } }')
+  const source = fs.readFileSync(require.resolve('../lib/client'), 'utf8').replace('return module.exports', 'return { magpieSubscriptionHint, ContextProjection, ContextRow, componentOrder, layoutOrder, isExtensionId, dockExtensionsOf, componentEnabled, reorderComponent, layoutPreset, matchingPreset, dockComponents, LayoutEditor, LayoutPreview, ToolActivityRow, toolElapsed, quotaRefreshOnStep, TpsRow, useLiveTps, useQuotaResource, formatPathSegs, fmtResetHours, minutesLabel, primarySubscriptionKind, looksLikeSubscription, providerMatchesModel, modelQuotaSource, modelQuotaMeter, meterPaint, modelQuotaTitle, planColor, fmtMoney, QuotaLine, parseSeconds, PeakPanel, PeakFooterDot, RestartFooterButton, restartStep, restartPollDelay, restartProgressSteps, quotaStepRefreshDue, useModelQuota, deepseekPeakStatus, HeaderChip, SettingsPage, DeepseekPeakChip, ActivityRow, childActivityRows, childElapsed, CostRow, estimateCost, quotaFreshness, pickFoldLevel, QuotaSource, QUOTA_SOURCES, QuotaChip, QuotaUnavailable, quotaState, fmtRetryIn, contextUsage, ContextPanel, formatTokens, STR, publishConfig, apiSetConfig, setScope: function (scope) { settingsScope = scope } }')
   vm.runInNewContext(source, context)
   exported.setScope(scope)
   return {
@@ -1465,12 +1465,28 @@ test('built-in turn refresh honors the host cache and manual refresh still bypas
   h.render(cached, config)
   h.requests[0].resolve({ ok: true, data: { remaining: 5 } }); await flush()
   h.render(cached, config, 1)
+  assert.equal(h.requests.length, 1, 'a step inside the cache window asks nothing')
+  h.advance(60000)
+  h.render(cached, config, 2)
   assert.equal(h.requests.length, 2)
   assert.equal(JSON.parse(h.requests[1].opts.body).force, false)
   h.requests[1].resolve({ ok: true, data: { remaining: 5 } }); await flush()
-  h.render(cached, config, 1).refresh()
+  h.render(cached, config, 2).refresh()
   assert.equal(h.requests.length, 3)
   assert.equal(JSON.parse(h.requests[2].opts.body).force, true)
+  h.unmount()
+})
+
+test('a failing quota source is not retried by every step', async () => {
+  const h = harness()
+  h.render(resource, config)
+  h.requests[0].resolve({ ok: false, error: 'network' }); await flush()
+  h.render(resource, config, 1)
+  assert.equal(h.requests.length, 1, 'the step keeps the retry ladder')
+  h.advance(15000)
+  assert.equal(h.requests.length, 2, 'the scheduled retry still fires')
+  h.render(resource, config, 2)
+  assert.equal(h.requests.length, 2, 'another step does not bypass the next backoff')
   h.unmount()
 })
 
@@ -1769,9 +1785,12 @@ test('every selected source uses cached automatic step refresh and preserves for
     lifecycle.render(selected, config, 0)
     lifecycle.requests[0].resolve({ ok: true, data: { remaining: 1 } }); await flush()
     lifecycle.render(selected, config, 1)
+    assert.equal(lifecycle.requests.length, 1, String(provider) + ': a step inside the cache window asks nothing')
+    lifecycle.advance(60000)
+    lifecycle.render(selected, config, 2)
     assert.equal(JSON.parse(lifecycle.requests[1].opts.body).force, false, String(provider))
     lifecycle.requests[1].resolve({ ok: true, data: { remaining: 1 } }); await flush()
-    lifecycle.render(selected, config, 1).refresh()
+    lifecycle.render(selected, config, 2).refresh()
     assert.equal(JSON.parse(lifecycle.requests[2].opts.body).force, true, String(provider))
     assert.equal(lifecycle.timers.size, 0)
     lifecycle.unmount(); h.unmount()
@@ -2261,7 +2280,8 @@ test('restart probes map to steps: same process follows the Host phase, a new on
   assert.deepEqual(h.restartStep(probe(200, { pid: 7, phase: 'failed', reason: 'systemctl' }), 7), { step: 'failed', reason: 'systemctl' })
   assert.deepEqual(h.restartStep(probe(200, { pid: 7, phase: 'manual', reason: 'host-module' }), 7), { step: 'manual', reason: 'host-module' })
   assert.deepEqual(h.restartStep(probe(200, { pid: 7, phase: 'confirm', reason: 'host-module', active: 2 }), 7), { step: 'confirm', reason: 'host-module', active: 2 })
-  assert.deepEqual(h.restartStep(probe(200, { pid: 7, phase: 'updating' }), 7), { step: 'updating' })
+  assert.deepEqual(h.restartStep(probe(200, { pid: 7, phase: 'updating' }), 7), { step: 'stopping' }, 'the helper stops the unit before installing')
+  assert.deepEqual(h.restartStep(probe(200, { pid: 7, phase: 'updating' }), 7, '0.2.2', 'j'), { step: 'stopping' }, 'without a job the first update step is the stop')
 })
 
 test('restart polling is fast while a reload normally finishes, then backs off', () => {
@@ -2269,6 +2289,29 @@ test('restart polling is fast while a reload normally finishes, then backs off',
   assert.equal(h.restartPollDelay(0), 250)
   assert.equal(h.restartPollDelay(14999), 250)
   assert.equal(h.restartPollDelay(15000), 1000)
+})
+
+test('the model rail does not refetch when a step re-renders the picker', async () => {
+  const h = harness()
+  const resource = { kind: 'provider', id: 'deepseek', key: 'provider:model-step-test', provider: {} }
+  const settings = { ...config, cacheTtlMs: 60000 }
+  const read = () => h.useModelQuota(resource, settings, true)
+  h.renderComponent(read)
+  assert.equal(h.requests.length, 1, 'the first mount fetches once')
+  h.requests[0].resolve({ ok: true, data: { remaining: 5 } }); await flush()
+  h.renderComponent(read)
+  h.renderComponent(read)
+  assert.equal(h.requests.length, 1, 'a streamed-step re-render inside the cache window asks nothing')
+  h.unmount()
+})
+
+test('a quota step refresh respects the cache window and an error backoff', () => {
+  const h = harness()
+  assert.equal(h.quotaStepRefreshDue(0, null, 60000, 1000), true, 'no successful read yet')
+  assert.equal(h.quotaStepRefreshDue(1000, null, 60000, 30000), false, 'inside the cache window')
+  assert.equal(h.quotaStepRefreshDue(1000, null, 60000, 61000), true, 'after the cache window')
+  assert.equal(h.quotaStepRefreshDue(1000, null, 5000, 16000), true, 'the cache floor is 15s')
+  assert.equal(h.quotaStepRefreshDue(1000, 'network', 60000, 999999), false, 'a failing source keeps its retry ladder')
 })
 
 test('the restart button appears only once the Host offers a reload or a restart', async () => {
@@ -2301,11 +2344,34 @@ test('an available DSH update makes the restart button glow, only where it can r
   h.renderComponent(h.RestartFooterButton)
   const probe = h.requests.find(request => request.url === '/statusline/api/restart?update=1')
   assert.ok(probe, 'the mount probe asks for the update state')
-  probe.resolve({ ok: true, data: { soft: true, full: true, unit: 'dsh-web.service', pid: 1, update: { supported: true, available: true, installed: '0.2.2-rc.1', latest: '0.2.2' } } })
+  probe.resolve({ ok: true, data: { soft: true, full: true, unit: 'dsh-web.service', pid: 1, update: { supported: true, helper: true, available: true, installed: '0.2.2-rc.1', latest: '0.2.2' } } })
   await flush()
   const button = h.renderComponent(h.RestartFooterButton)
   assert.equal(button.props['data-update'], 'true')
   assert.match(button.props.title, /0\.2\.2/)
+  const badge = button.children.find(child => child && child.props && child.props.className === 'slp-rs-update-badge')
+  assert.ok(badge, 'the update marker is a dedicated badge, not a currentColor dot')
+  assert.equal(badge.props['data-update-badge'], 'true')
+
+  const noHelper = harness()
+  noHelper.setConfig({ enabled: true })
+  noHelper.renderComponent(noHelper.RestartFooterButton)
+  noHelper.requests.find(request => request.url === '/statusline/api/restart?update=1')
+    .resolve({ ok: true, data: { soft: true, full: true, unit: 'dsh-web.service', pid: 1,
+      update: { supported: true, helper: false, available: true, installed: '0.2.2-rc.1', latest: '0.2.2' } } })
+  await flush()
+  const plain = noHelper.renderComponent(noHelper.RestartFooterButton)
+  assert.equal(plain.props['data-update'], undefined, 'no helper, no update marker')
+  assert.equal(plain.children.some(child => child && child.props && child.props.className === 'slp-rs-update-badge'), false)
+
+  const legacy = harness()
+  legacy.setConfig({ enabled: true })
+  legacy.renderComponent(legacy.RestartFooterButton)
+  legacy.requests.find(request => request.url === '/statusline/api/restart?update=1')
+    .resolve({ ok: true, data: { soft: true, full: true, unit: 'dsh-web.service', pid: 1,
+      update: { supported: true, available: true, installed: '0.2.2-rc.1', latest: '0.2.2' } } })
+  await flush()
+  assert.equal(legacy.renderComponent(legacy.RestartFooterButton).props['data-update'], undefined, 'an older Host without the helper field cannot start the out-of-process update')
 
   const soft = harness()
   soft.setConfig({ enabled: true })
@@ -2323,4 +2389,53 @@ test('a Host with the restart feature switched off shows no button', async () =>
   h.requests.find(request => request.url.startsWith('/statusline/api/restart')).resolve({ ok: true, data: { disabled: true, pid: 1 } })
   await flush()
   assert.equal(h.renderComponent(h.RestartFooterButton), null)
+})
+
+test('update probes follow the job across the bounce and verify the new version', () => {
+  const h = harness()
+  const probe = (status, data) => ({ status, body: data === undefined ? null : { ok: status === 200, data } })
+  h.restartStep = (step => (...args) => ({ ...step(...args) }))(h.restartStep)
+  const job = (phase, extra = {}) => ({ id: 'j', phase, ...extra })
+  assert.deepEqual(h.restartStep(probe(200, { pid: 7, job: job('installing') }), 7, '0.2.2', 'j'), { step: 'updating', job: job('installing') })
+  assert.deepEqual(h.restartStep(probe(200, { pid: 7, job: job('stopping') }), 7, '0.2.2', 'j'), { step: 'stopping', job: job('stopping') })
+  assert.deepEqual(h.restartStep(probe(200, { pid: 7, job: job('reconciling') }), 7, '0.2.2', 'j'), { step: 'reconciling', job: job('reconciling') })
+  assert.deepEqual(h.restartStep(probe(200, { pid: 7, job: job('starting') }), 7, '0.2.2', 'j'), { step: 'starting', job: job('starting') })
+  assert.deepEqual(h.restartStep(probe(200, { pid: 7, job: job('failed', { error: 'unhealthy' }) }), 7, '0.2.2', 'j'),
+    { step: 'failed', reason: 'unhealthy', job: job('failed', { error: 'unhealthy' }) })
+  const done = h.restartStep(probe(200, { pid: 8, ready: true, hostVersion: '0.2.2', job: job('healthy') }), 7, '0.2.2', 'j')
+  assert.equal(done.step, 'done')
+  assert.equal(done.job.phase, 'healthy')
+  const unknownVersion = h.restartStep(probe(200, { pid: 8, ready: true, job: job('healthy') }), 7, '0.2.2', 'j')
+  assert.equal(unknownVersion.step, 'stale-version', 'a new process without a version is not confirmed')
+  assert.equal(unknownVersion.actual, null)
+  const stale = h.restartStep(probe(200, { pid: 8, ready: true, hostVersion: '0.2.2-rc.1', job: job('failed', { error: 'unhealthy' }) }), 7, '0.2.2', 'j')
+  assert.equal(stale.step, 'stale-version')
+  assert.equal(stale.actual, '0.2.2-rc.1')
+  assert.equal(stale.expected, '0.2.2')
+  const rolled = h.restartStep(probe(200, { pid: 8, ready: true, hostVersion: '0.2.2-rc.1',
+    job: job('rolled-back', { error: 'unhealthy', previousVersion: '0.2.2-rc.1' }) }), 7, '0.2.2', 'j')
+  assert.equal(rolled.step, 'rolled-back')
+  assert.equal(rolled.previous, '0.2.2-rc.1')
+  assert.deepEqual(h.restartStep(probe(200, { pid: 7, job: { id: 'other', phase: 'installing' } }), 7, '0.2.2', 'j'),
+    { step: 'reloading' }, 'another run\'s job is ignored')
+})
+
+test('update progress marks the active, done, skipped and failed steps', () => {
+  const h = harness()
+  const states = (job, step) => Array.from(h.restartProgressSteps(job, step).steps, item => item.state)
+  assert.deepEqual(states({ phase: 'installing' }, 'updating'), ['done', 'active', 'pending', 'pending'])
+  assert.deepEqual(states({ phase: 'reconciling' }, 'reconciling'), ['done', 'done', 'active', 'pending'])
+  assert.deepEqual(states({ phase: 'starting' }, 'starting'), ['done', 'done', 'done', 'active'])
+  assert.deepEqual(states({ phase: 'healthy' }, 'waiting'), ['done', 'done', 'done', 'done'])
+  assert.deepEqual(states({ phase: 'healthy' }, 'stale-version'), ['done', 'done', 'done', 'failed'])
+  assert.deepEqual(states(null, 'refused'), ['pending', 'pending', 'pending', 'pending'], 'a refused request never started a step')
+  assert.deepEqual(states({ error: 'helper-start' }, 'failed'), ['failed', 'pending', 'pending', 'pending'])
+  assert.deepEqual(states({ phase: 'reconciling', reconcileSkipped: 'pnpm-not-found' }, 'reconciling'),
+    ['done', 'done', 'skipped', 'pending'])
+  assert.deepEqual(states({ phase: 'installing', reconcile: false }, 'updating'),
+    ['done', 'active', 'skipped', 'pending'])
+  assert.deepEqual(states({ phase: 'failed', error: 'unhealthy' }, 'failed'), ['done', 'done', 'done', 'failed'])
+  assert.deepEqual(states({ phase: 'rolled-back', error: 'profile-reconcile-failed', reconcileSkipped: 'pnpm-not-found' }, 'rolled-back'),
+    ['done', 'done', 'skipped', 'pending'])
+  assert.equal(h.restartProgressSteps({ phase: 'installing' }, 'updating').active, 'install')
 })

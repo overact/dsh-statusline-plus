@@ -96,13 +96,17 @@ The fill is 15% of that colour; the track is 10% of `--dsw-alias-label-tertiary`
 `claude`, `antigravity`, `opencode`, `magpie:<id>`), so four Claude models in the
 picker are one request. The store answers from cache for `max(15000, cacheTtlMs)`
 and backs off 15 s after an error (60 s for `rate-limit`), staying behind the Host's
-own error cache. Rows fetch when the picker opens; the button fetches on mount.
-A failed read retries on the next focus or reconnect, and the store's cache and
-backoff still apply, so this cannot become a poll.
+own error cache. Rows fetch when the picker opens; the button fetches on mount. Agent steps do not
+invalidate the store: re-rendering the picker inside the cache window asks nothing, and
+a failed entry keeps its backoff. Notifications are per subscription key, so one
+subscription's answer repaints only the rows that use it; `ModelQuotaLabel` is memoized
+against the Host's streamed-step re-renders. A failed read retries on the next focus or
+reconnect, and the store's cache and backoff still apply, so this cannot become a poll.
 
 This is deliberately a second, small cache beside `useQuotaResource`: the chip needs
 per-session keys and a retry ladder with a countdown, while the rail needs one shared
-answer per subscription. Merging them is possible but would put the chip's retry UI
+answer per subscription. The chip's step refresh is cache-gated too (see
+[quota/README.md](quota/README.md#refresh)); the rail never refreshes on an agent step. Merging them is possible but would put the chip's retry UI
 behind the store's simpler policy; the duplication is 40 lines and bounded.
 
 ## Settings
@@ -128,10 +132,19 @@ on) are in the Header group of the settings page and in `RESET_KEYS`.
   guessed budget: a full bar would claim a denominator the service never reported.
 - **Rows are per model, not per provider.** Two models on the same subscription show
   the same rail from one cached result; do not key the store by model.
+- **Wheel scrolling does not fire `mousemove`.** The Host highlights a model row from
+  the row's `onMouseMove` and deliberately has no `:hover` rule on model rows. Scrolling
+  moves a different row under a stationary pointer without firing the event, so the
+  old row keeps the highlight until the pointer moves. `bindModelMenuScroll` attaches
+  one passive bridge per menu and, after a wheel-driven scroll, re-dispatches a standard
+  `mousemove` on the button under the pointer; the Host remains the only writer of its
+  highlight/focus state. It never prevents the wheel. Verified by the scroll list in
+  `verify-ui --panel modelbar`.
 
 ## Tests
 
 `tests/client-lifecycle.test.js` covers source resolution, the window choice, the
 balance branch and the tooltip. `scripts/verify-ui.mjs --panel modelbar` mounts the
 label in Host-shaped buttons and asserts the 3px rail, survival across hover, the
-balance row and the empty-session rule.
+balance row, the empty-session rule and that the active row follows a wheel scroll under a
+stationary pointer.
