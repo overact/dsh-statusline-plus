@@ -43,7 +43,7 @@ docs/
 |   `-- restart.md            Reload, restart and DSH update
 |-- extending/README.md       Guide for other plugins adding bottom-row items
 |-- development/releasing.md  Release steps and checks
-|-- images/                   README screenshots, written by `npm run screenshots`
+|-- images/                   README screenshots, written by `npm run screenshots` (wireframe + real components, sample data)
 `-- market/                   Market listing metadata
 ```
 

@@ -6,6 +6,8 @@
 - TPS skips its token estimate for sessions nobody is viewing; a viewer who arrives mid-stream sees a reading after half a second.
 - Git status and the line count run in parallel, so each refresh over SSH is one round trip instead of two.
 - Quota sources share one request helper that always reads or releases the response body. The `session-model` route reads a live session once instead of twice. Tabs checking for updates at once share one registry read, and a closing tab no longer aborts the check for the others.
+- README reorganized: install first, then one section per feature with its own screenshot. The screenshots now show the real components inside a simplified DSH window: a numbered overview, each detail panel with the chip that opens it, the model picker with its rails, and settings in three focused captures instead of one long page. The Chinese section follows the same structure and shows the same images.
+- The English label for a source's low-balance threshold reads "Turn red when the balance is below" instead of "red below".
 - DSH updates now refresh the profile's official `@deepseek-ai/dsh-*` plugins without pinning them to the DSH version. After the normal profile reconcile, the runner snapshots `package.json`/`pnpm-lock.yaml`, runs `pnpm update` for official registry dependencies within each package's own range (with a one-command release-age override, because pnpm 12 rejects the existing profile lock otherwise), repairs the snapshot if that update fails, and records any remaining `plugin list` compatibility warnings. A plugin failure or warning never rolls back or blocks a healthy DSH update; linked, file and third-party plugins are untouched.
 
 ## 0.2.0

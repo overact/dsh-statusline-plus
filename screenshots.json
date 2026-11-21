@@ -1,11 +1,13 @@
 {
   "screenshots": [
     "docs/images/overview.png",
-    "docs/images/bottom-bar.png",
-    "docs/images/cost-panel.png",
-    "docs/images/subagents-panel.png",
     "docs/images/quota-panel.png",
     "docs/images/peak-panel.png",
-    "docs/images/settings.png"
+    "docs/images/cost-panel.png",
+    "docs/images/subagents-panel.png",
+    "docs/images/model-quota-bar.png",
+    "docs/images/settings.png",
+    "docs/images/settings-quota.png",
+    "docs/images/settings-sources.png"
   ]
 }

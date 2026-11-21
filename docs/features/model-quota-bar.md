@@ -6,7 +6,9 @@ rail along its bottom edge, tinted by the subscription that pays for the model. 
 model picker shows the same rail on every row, so choosing a model also shows what
 each subscription has left.
 
-![The rail on the model button and in the picker](../images/model-quota-bar.png)
+![The model picker open above an empty session's composer: each row carries its subscription's rail, the DeepSeek row its balance, and the model button its own rail](../images/model-quota-bar.png)
+
+The image comes from `npm run screenshots` (sample data).
 
 ## Code
 

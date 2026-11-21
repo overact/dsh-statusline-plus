@@ -7,54 +7,93 @@
 [English](#english) | [简体中文](#简体中文)
 
 <a id="english"></a>
-A responsive statusline for DeepSeek Harness (`dsh web`). Account quotas appear in the header; workspace and session metrics appear beside the composer.
+A statusline for DeepSeek Harness Web (`dsh web`): account quotas and DeepSeek peak hours in the session header, Git and session metrics under the composer, and each subscription's quota on the model picker.
 
-## Screenshots
+<p><img src="docs/images/overview.png" width="820" alt="A DSH window with four numbered areas: 1 balance and quota chips in the session header, 2 the DeepSeek peak chip with countdown, 3 the bottom row under the composer with Git, context, speed, cost, subagents and tools, 4 the sidebar footer with the peak dot and the reload/update button"></p>
 
-<p><img src="docs/images/overview.png" width="680" alt="Header quotas, session metrics and detail panels: DeepSeek balance, Kimi Code usage, peak countdown, API reference cost and subagent activity"></p>
+Screenshots show the real components with sample data inside a simplified DSH window. They contain no account or conversation data.
 
-Screenshots use the actual UI with sample data, without account or conversation data.
-
-## Features
-
-- **Balances and quotas:** DeepSeek, Kimi Code, Z.ai / Zhipu, Claude, Antigravity, Codex, OpenCode Go and OpenRouter, plus other subscriptions your Magpie reports. Click a chip for details and refresh.
-- **Model seat quota:** in an empty session the composer's model button carries a thin rail for the subscription paying for the current model; every row of the model picker shows its own subscription's rail, or its balance amount. Both follow the same model-to-source rule as the header chip, so a new session shows the quota before the header exists. Switch the button and the picker rows separately under **Quota and peak hours**.
-- **DeepSeek peak hours:** status, countdown and daily timeline, plus a sidebar indicator. In a year with no calendar, a weekday inside a peak window stays unknown while weekends and hours outside the windows are still off-peak; when the official rule wording no longer matches, the schedule is still applied and the indicator warns that rules may have changed.
-- **Workspace and session:** Git branch and changes, context usage, streaming TPS, API reference cost, direct child agents and tool activity.
-- **Layout:** component switches, ordering, presets and an interactive preview. Groups wrap on narrow screens; an optional switch disables this plugin's bottom status line when the input area is at most 480px wide, including when sidebars narrow it.
-- **Reload, restart and DSH update:** a power button in the sidebar footer hot-reloads plugin and config changes without interrupting sessions, and restarts the Host only when a change needs it, asking first while a session is running. Where DSH runs as a systemd user service from a user-writable global npm install (Linux, WSL), it also offers a full restart and, when a newer DSH is published, shows a small green up-arrow badge for the update (checked on page load, ten-minute cooldown, a ~70-byte registry read). The update runs in a transient systemd user service: it stops the Host, installs the pinned version, reconciles the profile dependencies and updates official `@deepseek-ai/dsh-*` profile plugins within their own declared ranges (a plugin failure or compatibility warning does not block the Host update), then starts and verifies it; the panel shows the real elapsed time, and a cold download or a large profile update can take longer; a new version that cannot start is rolled back automatically. The progress panel names each step, shows elapsed time and keeps the log command. Unsupported choices are hidden, so Windows and the desktop apps get the reload only. Switch it off under **Reload and DSH update** in settings. See [docs/features/restart.md](docs/features/restart.md).
-- **Self-update:** when npm publishes a newer version, the settings header shows an update button naming it (checked when the page opens, cached for a minute; hover shows the installed and latest versions). It stays hidden otherwise, is not offered for a linked development checkout, and installs in place on one click, using the Host's own `dsh plugin add` and falling back to `pnpm`. The Host then swaps the new copy into the running profile through HMR, so a refresh is enough; a profile without HMR asks for a restart instead.
-
-## Installation
-
-Requires DSH **0.2.0-rc.2 or later**, with no upper bound, so a DSH upgrade never disables the plugin; tested on **0.2.0-rc.2**, **0.2.1-rc.2**, **0.2.2-rc.3** and the Windows Desktop build (**0.2.1-rc.3**). Install from npm:
+## Install
 
 ```sh
 dsh plugin --profile web add dsh-statusline-plus
 ```
 
-The same release is also published as a GitHub Release tarball for pinned and offline installs:
+Requires DSH **0.2.0-rc.2 or later**, with no upper bound, so a DSH upgrade never disables the plugin. Tested on **0.2.0-rc.2**, **0.2.1-rc.2**, **0.2.2-rc.3** and the Windows Desktop build (**0.2.1-rc.3**).
+
+The same release is published as a GitHub Release tarball for pinned and offline installs:
 
 ```sh
 dsh plugin --profile web add https://github.com/overact/dsh-statusline-plus/releases/latest/download/dsh-statusline-plus.tgz
 ```
 
-For development, install a local clone with `dsh plugin --profile web add file:/path/to/dsh-statusline-plus`. The bundle registers its own plugin row and ships prebuilt files. With HMR enabled, plugin switches and settings apply live; linked source changes also hot reload when their directory is watched. Refresh the browser afterward. Restart DSH only when installation or an upgrade reports `restart-required`, and wait until no sessions are active.
+The bundle registers its own plugin row and ships prebuilt files. With HMR enabled, plugin switches and settings apply live; refresh the browser afterward. Restart DSH only when installation or an upgrade reports `restart-required`, and wait until no sessions are active. For development, install a local clone with `dsh plugin --profile web add file:/path/to/dsh-statusline-plus`; its source changes hot reload when the directory is watched.
 
-For an earlier manual installation, remove the `@local/dsh-statusline-plus` row and dependency first to avoid duplicate registration. Existing `statusline-plus` settings remain compatible. See [release notes](CHANGELOG.md).
+If you installed an earlier version by hand, remove the `@local/dsh-statusline-plus` row and dependency first, so the plugin is not registered twice. Existing `statusline-plus` settings remain compatible. See the [release notes](CHANGELOG.md).
+
+## What it shows
+
+### 1 · Balances and quotas
+
+Chips in the session header for DeepSeek, Kimi Code, Z.ai / Zhipu, Claude, Antigravity, Codex, OpenCode Go and OpenRouter, plus any other subscription your Magpie reports. By default the chip follows the model the session uses; **Show all subscription quotas** shows every enabled source instead. Click a chip for details and a manual refresh.
+
+<p><img src="docs/images/quota-panel.png" width="560" alt="The DeepSeek balance chip opened: total ¥12.34 with topped-up and granted balances, update time and a Refresh button"></p>
+
+Models on DSH's signed-in `deepseek-account` provider show that account's topped-up and granted balances through the Host, without an API key. Details: [quota](docs/features/quota/README.md), [sources](docs/features/quota/sources.md).
+
+### 2 · DeepSeek peak hours
+
+A peak / off-peak chip with a countdown in direct DeepSeek sessions, and a coloured dot in the sidebar footer that works without a session. The panel shows the day's timeline, Beijing and local time, and the next switch.
+
+<p><img src="docs/images/peak-panel.png" width="560" alt="The peak chip opened: the official rule, a day timeline with the current time marked, Beijing and local time, the countdown and the next switch"></p>
+
+A year without a holiday calendar leaves only weekdays inside a peak window unknown; weekends and hours outside the windows are still off-peak. If the official rule wording stops matching, the known schedule still applies and the indicator warns that the rules may have changed. Details: [peak hours](docs/features/peak-hours.md).
+
+### 3 · Session metrics under the composer
+
+One row, in the order you choose: Git branch and changes, context usage, streaming speed (TPS), API reference cost, direct subagents, and running tools. Cost and Subagents open detail panels.
+
+<table><tr>
+<td><img src="docs/images/cost-panel.png" width="400" alt="The cost panel opened above the bottom row: ≈¥0.32 split into input, cache and output with tokens, amounts and shares"></td>
+<td><img src="docs/images/subagents-panel.png" width="400" alt="The Subagents panel opened above the bottom row: one running worker with its model, one stopped reviewer, each with a duration"></td>
+</tr></table>
+
+Groups wrap on narrow screens, and an optional switch hides the row when the input area is 480px wide or less. Details: [bottom row](docs/features/bottom-bar/README.md), with a page per component.
+
+### Quota on the model seat
+
+In an empty session the composer's model button carries a thin rail for the subscription that pays for the current model, so the quota shows before the header exists. Every row of the model picker shows its own subscription's rail, or the balance amount. The button and the picker rows have separate switches.
+
+<p><img src="docs/images/model-quota-bar.png" width="420" alt="The model picker open above the composer: Claude, Codex and Gemini rows each with a coloured quota rail, a DeepSeek row showing its ¥51.43 balance, and the selected model's button with its own rail"></p>
+
+Details: [model seat quota rail](docs/features/model-quota-bar.md).
+
+### 4 · Reload, restart and DSH update
+
+The power button in the sidebar footer hot-reloads plugin and config changes without interrupting sessions, and restarts the Host only when a change needs it, asking first while a session runs. Where DSH runs as a systemd user service from a user-writable global npm install (Linux, WSL), it also offers a full restart and, when a newer DSH is published, shows a green up-arrow for the update. The update stops the Host, installs the version, updates official `@deepseek-ai/dsh-*` profile plugins within their own ranges, starts and verifies it, and rolls back a version that cannot start. Windows and the desktop apps get the reload only. Details: [restart](docs/features/restart.md).
+
+### Plugin self-update
+
+When npm publishes a newer version of this plugin, the settings header shows an update button naming it. One click installs it in place with the Host's `dsh plugin add` (falling back to `pnpm`), and HMR swaps it into the running profile, so a refresh is enough. A linked development checkout is never offered an update. Details: [self-update](docs/features/self-update.md).
 
 ## Settings
 
-Open **DSH Web → Settings → Statusline**. Settings are saved under `statusline-plus` in the native profile.
+Open **DSH Web → Settings → Statusline**. Settings are saved under `statusline-plus` in the native profile and apply as you change them.
 
-**Display switches, layout presets, ordering, quota sources and refresh options**
+<p><img src="docs/images/settings.png" width="620" alt="Bottom status line settings: narrow-screen switch, layout presets, component switches with ordering, and a live preview of the row"></p>
 
-<p><img src="docs/images/settings.png" width="680" alt="Statusline settings: component switches and ordering, layout preview, narrow-screen option, quota and peak toggles, account sources, cache and timeout"></p>
+<details>
+<summary>Quota, peak hours and source settings</summary>
+
+<p><img src="docs/images/settings-quota.png" width="620" alt="Quota and peak hours settings: header quota, source selection, show all, model button and picker rails, refresh after each step, percentage mode, and the peak indicators"></p>
+<p><img src="docs/images/settings-sources.png" width="620" alt="Quota sources and accounts: the DeepSeek card opened with its credential reference and low-balance threshold, and switches for the other sources"></p>
+
+</details>
 
 | Setting | Default | Effect |
 | --- | --- | --- |
 | `enabled` | `true` | All plugin displays and refreshes |
-| `hideBottomOnNarrow` | `false` | At input-area widths ≤480px, unmount this plugin's bottom status line and stop its client activity; restore it when wider. Native stats remain visible |
+| `hideBottomOnNarrow` | `false` | At input-area widths ≤480px, unmount this plugin's bottom row and stop its client activity; restore it when wider. Native stats remain visible |
 | `showGit`, `showContext`, `showCost`, `showActivity`, `showTools` | `true` | Individual bottom components |
 | `showCwd` | `true` | Repository path in the Git chip |
 | `gitCwd` | `''` | Fixed repository directory for every session; empty follows the session's working directory. While set, the chip no longer follows `working_directory` |
@@ -65,63 +104,53 @@ Open **DSH Web → Settings → Statusline**. Settings are saved under `statusli
 | `modelQuotaBar` | `true` | Quota rail on the composer's model button while the session is empty; it hides once the conversation starts and the header chip takes over |
 | `modelQuotaRows` | `true` | Quota rail on every row of the model picker (a balance source shows its amount instead) |
 | `showDeepseekPeak`, `deepseekPeakCountdown`, `showPeakDot` | `true` | DeepSeek peak indicators and countdown |
-| `showRestartButton` | `true` | Reload/restart/DSH-update feature; off also stops the Host's DSH release check and restart route. Sidebar button: hot-reloads changes, restarts the systemd user unit only when needed. Hidden when the Host supports neither. Where DSH is a writable global npm install, a green up-arrow badge appears when a newer DSH is published and offers the update |
+| `showRestartButton` | `true` | Reload/restart/DSH-update button; off also stops the Host's DSH release check and restart route |
 | `cacheTtlMs` | `60000` | Quota result reuse; UI displays seconds, effective minimum 15s |
 | `fetchTimeoutMs` | `10000` | Request timeout; UI displays seconds |
 | `showCodexQuota`, `showAntigravityQuota`, `showClaudeQuota`, `showOpenCodeQuota` | `true` | Allow each of those subscriptions as a quota chip. A switched-off source shows nothing, never a "not found" placeholder |
 | `quotaShowAll` | `false` | Show every enabled subscription chip and other subscriptions Magpie reports, instead of selecting one from the model |
 | `quotaPercentMode` | `used` | Read percentages as consumed or remaining, in chips and details alike |
 | `codexQuotaOnTurn`, `antigravityQuotaOnTurn` | `true` | Legacy per-source refresh switches, read once to migrate into `quotaOnStep`; the settings page writes `quotaOnStep` |
-| `quotaSources` | `{}` | Per-subscription source pin, e.g. `{ "codex": "cpa" }`, set in each source card. With none set: Magpie, then CPA, then the official tool's login file (read only, never refreshed). A pinned source has no fallback. See `docs/features/quota/sources.md`. |
+| `quotaSources` | `{}` | Per-subscription source pin, e.g. `{ "codex": "cpa" }`, set in each source card. With none set: Magpie, then CPA, then the official tool's login file (read only, never refreshed). A pinned source has no fallback. See [sources](docs/features/quota/sources.md) |
 | `codexAccount`, `antigravityAccount` | `''` | CPA account id to read that subscription from, instead of the account the tool logged in with. `''` follows the login file |
 | `apiKeyEnv` | `OPENCODE_GO_API_KEY` | Credential **reference** for the OpenCode Go usage endpoint, never a literal key |
 | `usageUrl` | `https://opencode.ai/zen/go/v1/usage` | Override the OpenCode Go usage endpoint; an internal host is rejected |
-| `providers` | Built-in sources | Credential references, source switches and endpoint overrides |
+| `providers` | Built-in sources | Credential references, source switches, low-balance thresholds and endpoint overrides |
 
-The narrow-screen switch is in **Bottom status line**. It affects this plugin's bottom components; header quotas, peak indicators and native composer stats remain available.
+**Credentials.** Settings hold the names of environment variables, never keys, and keys stay on the Host. DeepSeek reuses `DEEPSEEK_API_KEY` for API-key models (`deepseek`, `deepseek-official`); Kimi uses `KIMI_API_KEY`; Z.ai and Zhipu use `ZAI_API_KEY` and `ZAI_CODING_CN_API_KEY`. Other sources use their existing Host credentials or account integrations.
 
-DeepSeek reuses `DEEPSEEK_API_KEY` for API-key models (`deepseek`, `deepseek-official`). Models on DSH's signed-in `deepseek-account` provider show the account's topped-up and granted wallet balances through the Host `deepseekAccount` service instead, so they need no API key. Kimi uses `KIMI_API_KEY`; Z.ai and Zhipu use `ZAI_API_KEY` and `ZAI_CODING_CN_API_KEY`. Other sources use their existing Host credentials or account integrations. Configure credential references, never literal keys. Keys stay on the Host.
-
-Presets change bottom components only. Reset restores display, layout and refresh preferences while retaining credential references, account files, repository paths and per-source switches.
+**Presets and reset.** Presets change bottom components only. Reset restores display, layout and refresh preferences, and keeps credential references, account files, repository paths and per-source switches.
 
 ## Limits
 
-- Quota requests use a plugin-owned connection pool with a 5-second address-attempt window; request timeouts still bound the whole operation (Codex: 15 seconds), and Host network defaults stay unchanged. Successful queries update the display immediately, without waiting for the connection window to end. Quota refreshes reuse cached results; expiry alone does not poll. Network failures retry at most three times after 15/30/60 seconds; rate-limit retries wait 60/120/240 seconds. Going offline pauses recovery; coming online, becoming visible, a new step or a manual refresh starts a fresh query cycle. Regaining focus resumes failed recovery once the active retry cycle has ended. Successful data remains visible during retries; chips explain network errors and exhausted retries. Credential and invalid-response errors require correction. Manual refresh bypasses successful cache, while error/rate-limit backoff still applies. Missing or invalid data stays unknown.
-- The model seat's rail reads the same source as the header chip: the window that blocks first, one subscription per model, and a balance amount instead of a proportion. Rows ask once per subscription; a picker full of models on one subscription is one request.
-- Cost is an estimate from actual usage and the model vendor's public API prices, including cache rates where known. Subscriptions use the same reference prices. Pricing matches the model ID after the final `/`, independent of the route provider, gateway prefix or display name. DeepSeek plan, snapshot and subscription-tier spellings fold to the standard Flash/Pro card; other unrecognized models stay unknown. USD and CNY remain separate; missing prices stay unpriced. It excludes child sessions, inherited fork history and extra fees, and does not represent an account charge.
-- The CTX panel counts requests that had prompt input but no cache read, shown after the `Cache read` row. It is a request count, not a token count; a provider that never reports cache makes every request count, and the number never claims a reason.
-- The Git chip shows nothing outside a repository. When Git cannot read a repository, it shows `⎇ ?` with the reason in its tooltip, and clicking it retries; the plugin never changes Git config. With too many untracked files, the untracked count reads `??` and the rest of the status still shows.
-- TPS distinguishes character estimates from settled output-token rates. Tool durations include approval and waiting. Subagents show direct children; stopped does not imply success. External children (Claude Code, Codex) have no child session, so their state and duration come from the parent's own settlement record.
-- Provider APIs and price catalogs may change independently. DeepSeek's calendar has a built-in 2025–2026 fallback, and a fetched holiday-cn calendar wins where that year is published; outside that, a weekday inside a peak window in an uncovered year is not guessed. The official pricing page is only a change detector: if its rule sentence stops matching, pricing and the peak indicator keep using the schedule they already hold and the indicator adds a "rules may have changed" warning next to its link to the official page.
+- **Quota refresh.** Results are cached; expiry alone never polls. A network failure retries at most three times (after 15/30/60 s), a rate limit after 60/120/240 s. Going offline pauses recovery; coming online, a visible page, a new step or a manual refresh starts a fresh cycle. Earlier data stays visible during retries; credential and invalid-response errors wait for a fix. Requests use a plugin-owned connection pool with a 5-second connect window, bounded by the request timeout (Codex: 15 s), and leave the Host's network defaults unchanged. Unknown values stay unknown, never zero.
+- **Model seat.** The rail reads the same source as the header chip: the window that blocks first, one subscription per model, and a balance amount instead of a proportion. Picker rows ask once per subscription.
+- **Cost** is an estimate from actual usage and the vendor's public API prices, including cache rates where known, with one tariff per request. Subscriptions use the same reference prices. Pricing matches the model ID after the final `/`; DeepSeek plan, snapshot and tier spellings fold to the standard Flash/Pro card, and other unknown models stay unpriced. USD and CNY are kept separate. It excludes child sessions, inherited fork history and extra fees, and is not an account charge.
+- **Context.** The CTX panel counts requests that had prompt input but no cache read. It is a request count, not tokens; a provider that never reports cache makes every request count.
+- **Git.** Nothing shows outside a repository. When Git cannot read one, the chip shows `⎇ ?` with the reason in its tooltip, and a click retries; the plugin never changes Git config. With too many untracked files the untracked count reads `??` and the rest still shows.
+- **Speed and activity.** TPS distinguishes character estimates from settled output-token rates, and is measured only while a page watches the session. Tool durations include approval and waiting. Subagents shows direct children; stopped does not imply success. External children (Claude Code, Codex) take their state from the parent's settlement record.
+- **Schedules.** Provider APIs and price catalogs can change. DeepSeek's calendar has a built-in 2025–2026 fallback, and a fetched holiday-cn calendar wins where published. The official pricing page is only a change detector.
 
-## Development verification
+## Development
 
 ```sh
 npm run verify -- --files lib/client.js --ui responsive
-npm run verify -- --files lib/client.js --ui restart
-npm run verify -- --files lib/client.js --ui cost
 npm run verify -- --files lib/client.js --style-only --ui subagents
 npm run verify:all
-npm run screenshots
+npm run screenshots          # regenerates docs/images from sample data
 ```
 
-Use explicit paths for the current edit. `--style-only` is for CSS only; `--ui none` skips browser checks; `--plan` previews the selection. Run `verify:all` once at the completed stage. `npm run check` and `npm test` are also available; `DSH_PACKAGE_DIR` selects an installed DSH runtime for integration tests.
-
-Three maintenance checks cover the development profile and releases:
+Pass the files you changed. `--ui` picks a browser panel (`cost`, `subagents`, `chip`, `modelbar`, `restart`, `responsive`, or `none`), `--style-only` is for CSS-only edits, and `--plan` previews the selection. Run `verify:all` once at the end. `npm run check` and `npm test` are also available; `DSH_PACKAGE_DIR` selects an installed DSH runtime for integration tests.
 
 ```sh
-npm run dev:runtime     # does the active profile HMR-watch this checkout's lib/?
+npm run dev:runtime        # does the active profile HMR-watch this checkout's lib/?
 npm run release:preflight  # before tagging: metadata, pushed clean main, CI browser checks on HEAD
-npm run release:check   # version, README badge, CHANGELOG, tag, npm dist-tag, assets and latest
+npm run release:check      # version, README badge, CHANGELOG, tag, npm dist-tag, assets and latest
 ```
 
-`dev:runtime` reads the active profile's `cordis.patch.yml` (`DSH_PROFILE_DIR` overrides `~/.dsh/profiles/web`) and reports whether host-level edits hot-reload; run it before advising a restart. `release:preflight` must pass before a release tag is created; it requires a successful CI `Verify` run on HEAD in which the browser step ran (see `docs/development/releasing.md`). `release:check` verifies the current package version against the README badge, changelog, git tag, npm dist-tags, GitHub Release assets and `releases/latest`; use `--offline` to skip the npm and GitHub checks.
+`dev:runtime` reads the active profile's `cordis.patch.yml` (`DSH_PROFILE_DIR` overrides `~/.dsh/profiles/web`); run it before advising a restart. Pushing a `v*` tag runs the full verification and publishes to npm and GitHub Releases; see [releasing](docs/development/releasing.md). Per-feature design notes, including quota protocols, start at [docs/README.md](docs/README.md); read the page for an area before changing it.
 
-Pushing a `v*` tag runs the full verification, then publishes the version to npm and GitHub Releases through the release workflow; release steps, npm trusted-publishing setup and post-release checks are in [docs/development/releasing.md](docs/development/releasing.md).
-
-Per-feature design notes, including quota protocols, start at [docs/README.md](docs/README.md). Read the page for an area before changing it.
-
-Browser checks use real React and the client bundle with offline fixtures. Coverage includes cost, Subagents, responsive settings/resource cleanup and header detail widths. Install browser tooling only if missing:
+Browser checks use real React and the client bundle with offline fixtures. Install the tooling only if missing:
 
 ```sh
 npm run ui:install
@@ -129,27 +158,60 @@ node tools/ui/node_modules/playwright/cli.js install chromium
 npm run verify:ui -- --panel responsive
 ```
 
-The runner uses installed Chrome or Playwright Chromium; `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` overrides the executable. Reports and screenshots go to ignored `output/playwright/`.
-
-An optional authorized, read-only live check requires an existing session: `npm run verify:ui -- --live --session SESSION_ID --panel all`. It opens cost/Subagents panels without changing settings, submitting prompts or restarting DSH. Local login comes from `DSH_AUTH_URL` or the user service journal; authentication is redacted. Responsive settings checks run offline only.
+The runner uses installed Chrome or Playwright Chromium (`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` overrides it); reports go to the ignored `output/playwright/`. An optional authorized, read-only live check needs an existing session: `npm run verify:ui -- --live --session SESSION_ID --panel all`. It opens the cost and Subagents panels without changing settings, sending prompts or restarting DSH; authentication is redacted.
 
 <a id="简体中文"></a>
 ## 简体中文
 
-DSH 网页端状态行：顶部显示账号余额与套餐额度，输入区显示 Git、上下文、TPS、API 参考金额、子代理和工具活动。支持 DeepSeek、Kimi Code、Z.ai／智谱、Claude、Antigravity、Codex、OpenCode Go、OpenRouter，以及 DeepSeek 峰谷时段指示。
+DSH 网页端（`dsh web`）状态行：会话顶栏显示账号余额、套餐额度与 DeepSeek 峰谷时段，输入框下方显示 Git 与会话指标，模型选择器里每个模型带上各自套餐的额度。
 
-**截图：** [总览（额度、峰谷、会话指标与详情面板）](docs/images/overview.png)、[设置选项](docs/images/settings.png)。截图使用英文界面与演示数据，不包含真实账号或对话数据。
+截图为真实组件 + 演示数据，放在简化的 DSH 窗口里，使用英文界面，不含真实账号或对话数据。总览图见页首：① 顶栏额度，② 峰谷芯片，③ 输入框下方的状态行，④ 侧栏底部的峰谷圆点与重载／更新按钮。
 
-**安装：** 需要 DSH 0.2.0-rc.2 或更高版本，不设上限，升级 DSH 不会让插件被跳过；已在 0.2.0-rc.2、0.2.1-rc.2、0.2.2-rc.3 与 Windows 桌面版（0.2.1-rc.3）上测试，使用上面的安装命令；插件自带预构建文件和注册配置。启用 HMR 后，插件启停与设置实时生效；本地源码目录纳入监听时也可热加载，之后刷新浏览器。安装或升级提示 `restart-required` 时，才需等待无活跃会话后重启。旧版手动安装请先移除 `@local/dsh-statusline-plus` 注册行和依赖，避免重复。
+### 安装
 
-**设置：** 打开 **DSH 网页端 → 设置 → 状态栏**，调整显示、排序、预设、顶部额度、账号来源及缓存。有新版本时右上角出现更新按钮（打开设置页时检查，缓存一分钟；悬停显示当前与最新版本），点一次即原地覆盖安装（优先用宿主自带的 `dsh plugin add`，其次 `pnpm`），随后由宿主通过 HMR 把新副本换进运行中的 profile，刷新页面即可；没有 HMR 的 profile 才提示重启。`link:` 安装的本地副本不显示。密钥仅在宿主侧解析，设置里填写凭据引用。DeepSeek 有两种计费方式：`deepseek`／`deepseek-official` 使用 `DEEPSEEK_API_KEY` 查询按量余额；使用 DSH 登录账号（`deepseek-account`）时，状态栏通过宿主 `deepseekAccount` 服务读取登录账号的充值余额与赠送余额，不需要 API Key。
+```sh
+dsh plugin --profile web add dsh-statusline-plus
+```
 
-**重新加载、重启与 DSH 更新：** 侧栏左下角的电源按钮先热重载插件与配置改动，会话不中断；只有改动必须重启时才重启宿主，有会话在运行时先询问。DSH 以 systemd 用户服务运行、且来自当前用户可写的 npm 全局安装（Linux、WSL）时，还提供“完全重启”；发布新版 DSH 后按钮右上角出现绿色上箭头，对话框里多一个“更新 DSH”（刷新页面时检查，冷却十分钟，每次只读约 70 字节的版本标签）。更新通过 `systemd-run` 临时服务执行：先停服务，安装固定版本，刷新 profile 依赖并在各自允许的版本范围内升级官方 `@deepseek-ai/dsh-*` 插件（单个插件失败或仍不兼容不会阻止 DSH 升级），再启动并验证；新版本起不来会自动回滚。进度面板列出每一步、已用时和日志命令。不支持的选项直接隐藏，Windows 和桌面版只有热重载。可在设置“重新加载与 DSH 更新”中关闭。
+需要 DSH 0.2.0-rc.2 或更高版本，不设上限，升级 DSH 不会让插件被跳过；已在 0.2.0-rc.2、0.2.1-rc.2、0.2.2-rc.3 与 Windows 桌面版（0.2.1-rc.3）上测试。也可以用上文的 GitHub Release 安装包固定版本或离线安装。插件自带预构建文件和注册配置；启用 HMR 后，插件启停与设置实时生效，刷新浏览器即可。安装或升级提示 `restart-required` 时，才需等待无活跃会话后重启。旧版手动安装请先移除 `@local/dsh-statusline-plus` 注册行和依赖，避免重复注册。
 
-**额度恢复：** 额度请求使用插件自有连接池，每个地址的连接尝试窗口为 5 秒，完整请求仍受总超时限制（Codex 为 15 秒）；宿主网络默认值不变。查询成功即更新显示，不必等满 5 秒。网络失败每轮最多自动重试 3 次，分别等待 15／30／60 秒；限流时等待 60／120／240 秒。断网时暂停，网络恢复、页面重新可见、新步骤或手动刷新会开启新一轮查询；当前重试轮结束后，页面重新获得焦点也可恢复查询。重试期间保留已有的成功数据，并提示网络异常及重试已用完；凭据与响应格式错误不自动重试。
+### 功能
 
-**窄屏：** 在“底部状态行”中开启“窄屏时隐藏底部状态行”（`hideBottomOnNarrow`，默认关闭）。输入区域宽度 ≤480px 时不挂载本插件的底部组件，停止相关客户端刷新与计时；侧栏挤窄输入区域也会触发，变宽后自动恢复。顶部额度、峰谷指示与原生输入区统计仍可使用。
+**① 余额与额度。** 顶栏芯片支持 DeepSeek、Kimi Code、Z.ai／智谱、Claude、Antigravity、Codex、OpenCode Go、OpenRouter，以及 Magpie 报告的其他订阅。默认只显示当前模型对应的来源，开启“显示全部订阅额度”可全部显示。点击芯片查看详情并手动刷新。使用 DSH 登录账号（`deepseek-account`）的模型，通过宿主读取该账号的充值余额与赠送余额，不需要 API Key。
 
-**说明：** 费用按模型厂商 API 单价估算，不代表实际扣款，不含子代理与额外费用；人民币和美元分别累计。DeepSeek 的套餐、快照与订阅价档写法会归一到标准 Flash/Pro 价格；其他未知模型仍不估价。CTX 面板会在“缓存读取”后显示未命中缓存的请求数；这是请求数，不是 token 数；供应商不上报缓存时，每个请求都会计入。额度缓存到期本身不会轮询，失败保留上次结果，未知值不显示成零。不在仓库内时不显示 Git；git 无法读取仓库时显示 `⎇ ?`，悬停可看原因，点击重试，插件不会修改 git 配置；未跟踪文件过多时未跟踪数显示 `??`，其余状态照常显示。工具耗时包含审批与等待；子代理停止不等于成功。峰谷指示：没有日历覆盖的年份，只有“峰段窗口内的工作日”保持未知（周末与窗口外仍为谷段）；官方规则措辞不再匹配时，仍按已有窗口与日历判断，并额外提示“规则可能已变更”，官方页面链接就在提示旁边。恢复默认保留凭据引用、账号、仓库路径和各来源开关。
+<p><img src="docs/images/quota-panel.png" width="560" alt="DeepSeek 余额详情"></p>
+
+**② DeepSeek 峰谷时段。** 直连 DeepSeek 的会话顶栏显示峰谷状态与倒计时；侧栏底部的圆点不需要会话也能看。面板列出当天时间轴、北京时间与本地时间、下一次切换。没有日历覆盖的年份，只有“峰段窗口内的工作日”保持未知；官方规则措辞不再匹配时，仍按已有时段判断，并提示“规则可能已变更”。
+
+<p><img src="docs/images/peak-panel.png" width="560" alt="峰谷详情面板"></p>
+
+**③ 输入框下方的状态行。** 按你设定的顺序显示 Git 分支与改动、上下文用量、生成速度（TPS）、API 参考金额、直接子代理和正在运行的工具；金额与子代理可展开详情。窄屏时自动换行，也可开启“窄屏时隐藏底部状态行”（输入区域 ≤480px 时隐藏）。
+
+<table><tr>
+<td><img src="docs/images/cost-panel.png" width="400" alt="API 参考金额面板"></td>
+<td><img src="docs/images/subagents-panel.png" width="400" alt="子代理面板"></td>
+</tr></table>
+
+**模型选择处的额度。** 空会话里，输入框的模型按钮底部有一条细额度条，对应当前模型所用的订阅，顶栏还没出现时就能看到额度；模型列表的每一行显示各自订阅的额度条，余额类来源直接显示金额。按钮与列表各有开关。
+
+<p><img src="docs/images/model-quota-bar.png" width="420" alt="模型选择器中的额度条"></p>
+
+**④ 重新加载、重启与 DSH 更新。** 侧栏左下角的电源按钮先热重载插件与配置改动，会话不中断；只有改动必须重启时才重启宿主，有会话在运行时先询问。DSH 以 systemd 用户服务运行、且来自当前用户可写的 npm 全局安装（Linux、WSL）时，还提供“完全重启”；有新版 DSH 时按钮出现绿色上箭头，可一键更新：停服务、安装、在各自允许的范围内升级官方 `@deepseek-ai/dsh-*` 插件、启动并验证，新版本起不来会自动回滚。Windows 和桌面版只有热重载。
+
+**插件自更新。** npm 上有新版本时，设置页右上角出现更新按钮；点一次即用宿主自带的 `dsh plugin add`（其次 `pnpm`）原地安装，HMR 换入后刷新页面即可。`link:` 安装的本地副本不显示。
+
+### 设置
+
+打开 **DSH 网页端 → 设置 → 状态栏**，调整显示、排序、预设、顶栏额度、账号来源及缓存；截图与完整选项表见上文 [Settings](#settings)。设置里只填写凭据引用（环境变量名），密钥只在宿主侧解析。DeepSeek 有两种计费方式：`deepseek`／`deepseek-official` 使用 `DEEPSEEK_API_KEY` 查询按量余额；`deepseek-account` 读取登录账号余额，不需要 API Key。预设只改底部组件；恢复默认会保留凭据引用、账号、仓库路径和各来源开关。
+
+### 说明
+
+- **额度刷新：** 结果有缓存，到期本身不会轮询。网络失败最多自动重试 3 次（15／30／60 秒），限流等待 60／120／240 秒；断网暂停，网络恢复、页面重新可见、新步骤或手动刷新会开启新一轮。重试期间保留已有数据；凭据与响应格式错误不自动重试。未知值不显示成零。
+- **费用：** 按实际用量与厂商公开 API 单价估算，每个请求只用一种费率，不代表实际扣款，不含子代理与额外费用；人民币和美元分别累计。DeepSeek 的套餐、快照与订阅价档写法归一到标准 Flash/Pro 价格，其他未知模型不估价。
+- **上下文：** CTX 面板在“缓存读取”后显示未命中缓存的请求数；这是请求数，不是 token 数。
+- **Git：** 不在仓库内时不显示；git 无法读取仓库时显示 `⎇ ?`，悬停看原因，点击重试，插件不会修改 git 配置；未跟踪文件过多时未跟踪数显示 `??`。
+- **速度与活动：** TPS 只在有页面查看该会话时计算；工具耗时包含审批与等待；子代理停止不等于成功。
+
+开发与验证命令见上文 [Development](#development)。
 
 [MIT License](LICENSE)
