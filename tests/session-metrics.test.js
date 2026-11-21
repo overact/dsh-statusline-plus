@@ -15,7 +15,7 @@ const OFF_PEAK = beijing('2026-10-08T19:00:00')
 const route = { provider: 'deepseek', model: 'deepseek-flash' }
 const usage = { inputTokens: 1000000, outputTokens: 1000000, cacheReadTokens: 1000000 }
 const quote = (patch = {}) => quoteUsage({ route, usage, startedAt: PEAK, observedAt: PEAK + 1000, ...patch })
-const cny = result => [result.minUnits / MONEY_UNITS, result.maxUnits / MONEY_UNITS]
+const cny = result => result.units / MONEY_UNITS
 
 function fold(inheritedEventCount = 0, catalog, schedule) {
   const definition = createSessionMetricsProjection(catalog, schedule)
@@ -152,18 +152,18 @@ test('gateway-prefixed usage settles at the same reference price with and withou
 })
 
 test('verified DeepSeek Flash/Pro prices apply to disjoint input, cache reads and output buckets', () => {
-  assert.deepEqual(cny(quote()), [10.04, 10.04])
-  assert.deepEqual(cny(quote({ startedAt: OFF_PEAK, observedAt: OFF_PEAK + 1000 })), [5.02, 5.02])
-  assert.deepEqual(cny(quote({ route: { ...route, model: 'deepseek-v4-pro' } })), [36.3, 36.3])
-  assert.deepEqual(cny(quote({ route: { ...route, model: 'deepseek-v4-pro' }, startedAt: OFF_PEAK, observedAt: OFF_PEAK + 1000 })), [18.15, 18.15])
-  assert.deepEqual(cny(quote({ route: { ...route, model: 'deepseek-v4.1-flash' } })), [10.04, 10.04])
-  assert.deepEqual(cny(quote({ route: { ...route, model: 'deepseek-v4.1-flash-1017' } })), [10.04, 10.04])
-  assert.deepEqual(cny(quote({ route: { ...route, model: 'deepseek-v4-1-flash-1017' } })), [10.04, 10.04])
+  assert.deepEqual(cny(quote()), 10.04)
+  assert.deepEqual(cny(quote({ startedAt: OFF_PEAK, observedAt: OFF_PEAK + 1000 })), 5.02)
+  assert.deepEqual(cny(quote({ route: { ...route, model: 'deepseek-v4-pro' } })), 36.3)
+  assert.deepEqual(cny(quote({ route: { ...route, model: 'deepseek-v4-pro' }, startedAt: OFF_PEAK, observedAt: OFF_PEAK + 1000 })), 18.15)
+  assert.deepEqual(cny(quote({ route: { ...route, model: 'deepseek-v4.1-flash' } })), 10.04)
+  assert.deepEqual(cny(quote({ route: { ...route, model: 'deepseek-v4.1-flash-1017' } })), 10.04)
+  assert.deepEqual(cny(quote({ route: { ...route, model: 'deepseek-v4-1-flash-1017' } })), 10.04)
   for (const model of ['deepseek-v4.1-flash-fast', 'deepseek-v4.1-flash-spot', 'deepseek-v4.1-flash-free',
     'deepseek-v4.1-flash:batch', 'deepseek-v4.1-flash-vision-exp']) {
-    assert.deepEqual(cny(quote({ route: { ...route, model } })), [10.04, 10.04], model)
+    assert.deepEqual(cny(quote({ route: { ...route, model } })), 10.04, model)
   }
-  assert.equal(quote({ usage: { inputTokens: 10, outputTokens: 20, cacheReadTokens: 30, reasoningTokens: 20 } }).maxUnits, 10 * 200 + 20 * 800 + 30 * 4)
+  assert.equal(quote({ usage: { inputTokens: 10, outputTokens: 20, cacheReadTokens: 30, reasoningTokens: 20 } }).units, 10 * 200 + 20 * 800 + 30 * 4)
 })
 
 test('cache misses count requests with input but no cache read', () => {
@@ -188,7 +188,7 @@ test('session metrics count cache misses and replace a corrected settlement', ()
 })
 
 test('official fallback reference is channel-independent and unknown model versions stay unpriced', () => {
-  for (const provider of ['openrouter', 'opencode', 'opencode-go', 'deepseek-custom', 'reseller-deepseek']) assert.deepEqual(cny(quote({ route: { ...route, provider } })), [10.04, 10.04])
+  for (const provider of ['openrouter', 'opencode', 'opencode-go', 'deepseek-custom', 'reseller-deepseek']) assert.deepEqual(cny(quote({ route: { ...route, provider } })), 10.04)
   for (const model of ['deepseek-chat', 'deepseek-reasoner', 'deepseek-v3', 'deepseek-v4-flash', 'deepseek-v4-flash-vision-exp',
     'gpt-5', '__proto__', 'constructor']) assert.equal(quote({ route: { ...route, model } }).reason, 'unsupported-model')
   assert.equal(quote({ route: { ...route, provider: 'DEEPSEEK-OFFICIAL' } }).reason, null)
@@ -209,7 +209,7 @@ test('pricing reuses the peak indicator cache offline and schedule snapshots inv
   assert.notEqual(createSessionMetricsProjection(undefined, updated).stateVersion, originalVersion)
   assert.equal(tariffAt(time, snapshot), 'offPeak', 'original snapshot stays stable')
   assert.equal(tariffAt(time, updated), 'peak')
-  assert.deepEqual(cny(quote({ schedule: { ...snapshot, rule: { status: 'changed' } } })), [10.04, 10.04],
+  assert.deepEqual(cny(quote({ schedule: { ...snapshot, rule: { status: 'changed' } } })), 10.04,
     'a changed official rule sentence warns the user but must not leave the message unpriced')
   assert.equal(quote({ schedule: { ...snapshot, rule: { status: 'unreadable' } } }).reason, null,
     'an unreadable official rule sentence warns the user but must not leave the message unpriced')
@@ -221,7 +221,7 @@ test('missing, malformed or inconsistent usage is unknown and cache writes have 
     { inputTokens: -1, outputTokens: 0 }, { inputTokens: 1.5, outputTokens: 0 }, { inputTokens: 1, outputTokens: NaN },
     { inputTokens: 1, outputTokens: 0, cacheReadTokens: null }, { inputTokens: 1, outputTokens: 0, cacheWriteTokens: '0' }]) {
     const result = quote({ usage: sample })
-    assert.equal(result.reason, 'missing-or-invalid-usage'); assert.equal(result.minUnits, null)
+    assert.equal(result.reason, 'missing-or-invalid-usage'); assert.equal(result.units, null)
   }
   assert.equal(quote({ usage: { ...usage, totalTokens: 123 } }).reason, 'inconsistent-usage')
   assert.equal(quote({ usage: { ...usage, cacheWriteTokens: 10 } }).reason, 'cache-write-rate-unknown')
@@ -238,16 +238,16 @@ test('a request is priced at the tariff in effect at its first stream record', (
   const peakStart = beijing('2026-10-08T11:59:59'), offPeakEnd = beijing('2026-10-08T12:00:01')
   assert.equal(tariffAt(peakStart), 'peak'); assert.equal(tariffAt(offPeakEnd), 'offPeak')
   // Dispatched in peak, first stream record in off-peak: the whole request is off-peak.
-  assert.deepEqual(cny(quote({ observedAt: offPeakEnd })), [5.02, 5.02])
+  assert.deepEqual(cny(quote({ observedAt: offPeakEnd })), 5.02)
   // Dispatched in off-peak, first stream record in peak: the whole request is peak.
-  assert.deepEqual(cny(quote({ observedAt: beijing('2026-10-08T14:00:01') })), [10.04, 10.04])
+  assert.deepEqual(cny(quote({ observedAt: beijing('2026-10-08T14:00:01') })), 10.04)
   assert.equal(quote({ observedAt: beijing('2027-01-04T10:00:00') }).reason, 'tariff-window-unknown')
   const f = fold(); f.request(1, 1, route, peakStart); f.message(1, 1, usage, route, offPeakEnd)
   assert.equal(f.view.session.amountCny, 5.02)
-  assert.equal(f.view.session.minCny, 5.02); assert.equal(f.view.session.maxCny, 5.02)
-  assert.deepEqual([f.view.session.breakdown.input.minCny, f.view.session.breakdown.input.maxCny], [1, 1])
-  assert.deepEqual([f.view.session.breakdown.cache.minCny, f.view.session.breakdown.cache.maxCny], [0.02, 0.02])
-  assert.deepEqual([f.view.session.breakdown.output.minCny, f.view.session.breakdown.output.maxCny], [4, 4])
+  assert.equal(f.view.session.amountCny, 5.02)
+  assert.equal(f.view.session.breakdown.input.amountCny, 1)
+  assert.equal(f.view.session.breakdown.cache.amountCny, 0.02)
+  assert.equal(f.view.session.breakdown.output.amountCny, 4)
   assert.equal(f.view.session.breakdown.input.tokensCny, 1000000, 'one tariff keeps token counts unchanged')
 })
 
@@ -265,16 +265,16 @@ test('published holiday ranges and weekends suppress peak pricing independently 
 test('current user turn aggregates multiple steps and resets only on a new turn', () => {
   const f = fold(); f.request(); f.message()
   f.event('step/end', { turn: 1, step: 1 }); f.event('step/start', { turn: 1, step: 2 }); f.message(1, 2)
-  assert.equal(f.state.current.maxUnits / MONEY_UNITS, 20.08); assert.equal(f.view.session.amountCny, 20.08)
+  assert.equal(f.state.current.cnyUnits / MONEY_UNITS, 20.08); assert.equal(f.view.session.amountCny, 20.08)
   assert.equal(f.state.current.pricedMessages, 2)
   f.event('step/end', { turn: 1, step: 2 }); f.event('turn/end', { turn: 1 })
-  assert.equal(f.state.current.maxUnits / MONEY_UNITS, 20.08)
+  assert.equal(f.state.current.cnyUnits / MONEY_UNITS, 20.08)
   f.event('turn/start', { turn: 2 })
   assert.equal(f.state.turn, 2); assert.equal(f.state.current.pricedMessages, 0)
   assert.equal(f.view.currentTurn, undefined, 'unused per-turn amounts are not sent to browsers')
   assert.equal(f.view.session.amountCny, 20.08)
   f.event('step/start', { turn: 2, step: 1 }, OFF_PEAK); f.message(2, 1, usage, route, OFF_PEAK + 1000)
-  assert.equal(f.state.current.maxUnits / MONEY_UNITS, 5.02); assert.equal(f.view.session.amountCny, 25.1)
+  assert.equal(f.state.current.cnyUnits / MONEY_UNITS, 5.02); assert.equal(f.view.session.amountCny, 25.1)
 })
 
 test('model changes bind per request and pending next selection cannot reprice earlier requests', () => {

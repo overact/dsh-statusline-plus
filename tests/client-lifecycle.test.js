@@ -610,11 +610,11 @@ test('sample component details acquire no sessions, network sources or clocks', 
   h.unmount()
 })
 
-test('cost UI exposes partial coverage, tariff ranges and unknown pricing instead of fabricated zero', () => {
+test('cost UI exposes partial coverage and unknown pricing instead of fabricated zero', () => {
   const h = harness()
   assert.match(h.estimateCost({ pricedMessages: 0, unpricedMessages: 2 }), /Unpriced/)
   assert.match(h.estimateCost({ pricedMessages: 1, unpricedMessages: 2, amountCny: 0.0012 }), /0\.00.*subtotal/)
-  assert.equal(h.estimateCost({ pricedMessages: 1, unpricedMessages: 0, amountCny: null, minCny: 1, maxCny: 2 }), '¥1.00–¥2.00')
+  assert.match(h.estimateCost({ pricedMessages: 1, unpricedMessages: 0, amountCny: null }), /Unpriced/, 'a priced count without an amount stays unknown')
   const bucket = { pricedMessages: 1, unpricedMessages: 0, amountCny: 0.0012 }
   const props = { useProjection: () => ({ currentTurn: bucket, session: bucket, pricingAsOf: '2026-10-02T04:24:12Z' }) }
   let view = h.renderComponent(h.CostRow, props)
@@ -648,14 +648,14 @@ test('cost UI shows native USD amounts, separate currencies, source freshness an
   data.activeFrom = 0; data.activeTo = 4 * 60000
   view = h.renderComponent(h.CostRow, props)
   assert.doesNotMatch(textContent(view), /per hour/, 'spans under five minutes swing too much to show')
-  data.activeTo = 30 * 60000; data.session = { ...data.session, amountUsd: null, minUsd: 0.2, maxUsd: 0.3, amountCny: 1 }
+  data.activeTo = 30 * 60000; data.session = { ...data.session, amountCny: 1 }
   view = h.renderComponent(h.CostRow, props)
-  assert.match(textContent(view), /≈¥2\.00 \+ \$0\.50 per hour/, 'both currencies, range midpoint, over the request span')
+  assert.match(textContent(view), /≈¥2\.00 \+ \$0\.50 per hour/, 'both currencies over the request span')
   h.unmount()
 })
 
-test('compact cost chart and rows share currency subtotals and range midpoints without rounding bar widths', () => {
-  const h = harness(), part = (usd, cny = null) => ({ amountUsd: usd, minUsd: usd, maxUsd: usd, amountCny: cny, minCny: cny, maxCny: cny,
+test('compact cost chart and rows share currency subtotals without rounding bar widths', () => {
+  const h = harness(), part = (usd, cny = null) => ({ amountUsd: usd, amountCny: cny,
     tokensUsd: usd === null ? null : Math.round(usd * 1e6), tokensCny: cny === null ? null : Math.round(cny * 1e6) })
   const bucket = { pricedMessages: 1, unpricedMessages: 0, ...part(10), sources: { 'pi-ai': 1 },
     breakdown: { input: part(2), cache: part(3), output: part(5) } }
@@ -678,11 +678,6 @@ test('compact cost chart and rows share currency subtotals and range midpoints w
   assert.equal(tables.length, 2)
   assert.match(textContent(tables[0]), /Input 10M ¥10\.00 50%\s+Cache 4M ¥4\.00 20%\s+Output 6M ¥6\.00 30%/)
   assert.deepEqual(bars(view).map(widths), [[50, 20, 30], [20, 30, 50]], 'currencies each have their own chart')
-  bucket.amountUsd = null; bucket.minUsd = 5; bucket.maxUsd = 10
-  for (const key of ['input', 'cache', 'output']) { const item = bucket.breakdown[key]; item.amountUsd = null; item.minUsd = item.maxUsd / 2 }
-  view = h.renderComponent(h.CostRow, props)
-  assert.match(textContent(view), /Input 2M \$1\.00–\$2\.00 ≈20%/)
-  assert.deepEqual(widths(bars(view)[1]), [20, 30, 50])
   for (const key of ['input', 'cache', 'output']) Object.assign(bucket.breakdown[key], part(0))
   Object.assign(bucket, part(0))
   view = h.renderComponent(h.CostRow, props)

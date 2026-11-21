@@ -51,7 +51,7 @@ export async function mountFixture(page, hostOptions) {
   await page.evaluate(() => {
     const { React, ReactDOM, slpComponents: components } = window
     const style = document.createElement('style'); style.textContent = components.CSS; document.head.appendChild(style)
-    const part = (amount, tokens) => ({ amountUsd: amount, minUsd: amount, maxUsd: amount, tokensUsd: tokens })
+    const part = (amount, tokens) => ({ amountUsd: amount, tokensUsd: tokens })
     const cost = { session: { ...part(10, 0), pricedMessages: 1, unpricedMessages: 0, sources: { 'pi-ai': 1 }, reasons: {},
       breakdown: { input: part(2, 12000), cache: part(3, 1000700), output: part(5, 200) } },
       catalog: { version: 'fixture', generatedAt: 1790105504346 } }

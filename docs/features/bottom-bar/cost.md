@@ -50,7 +50,9 @@ Only this session's own requests count: no child sessions, no inherited fork his
 - **Billing instant.** The first compact stream record fixes the tariff for the whole
   request: a request dispatched just before a peak/off-peak switch and answered after it is
   priced at the tariff in effect when the stream starts, so one request always gets one
-  amount. The hourly span still starts at `step/start` or `llm/retry-started`. No generated
+  amount. Quotes, totals and the view therefore carry a single amount per currency
+  (`units`, `cnyUnits`/`usdUnits`, `amountCny`/`amountUsd`); there is no min/max range.
+  The hourly span still starts at `step/start` or `llm/retry-started`. No generated
   content is inspected.
 - **Unknown stays unknown.** Each unpriced message records a reason, and the panel lists
   them. A reason added to `quoteUsage` also needs a label in `costReasons`.
