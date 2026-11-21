@@ -266,7 +266,7 @@ test('composer dock resolves Git cwd from the authoritative useSessions session 
     const element = dock.component(props)
     const panel = renderer.render(element.type, element.props)
     assert.equal(panel.props.className, 'slp-root')
-    assert.deepEqual(eventCounts, { focus: 1, visibilitychange: 2 })
+    assert.deepEqual(eventCounts, { focus: 1, visibilitychange: 1 }, 'tab return is handled by the page-visibility gate alone')
     await new Promise((resolve) => setImmediate(resolve))
     await new Promise((resolve) => setImmediate(resolve))
     assert.ok(selectors.length > 0, 'useSessions should be queried for the current session')
@@ -1042,7 +1042,11 @@ function fakeSshBridge(outputs) {
     async resolveExecutable() { throw new Error('remote executable resolution must use the remote PATH') },
     spawn(spec) {
       calls.push(spec)
-      const next = outputs.shift() || { stdout: '', stderr: '', exitCode: 0 }
+      // An output tagged with `cmd` answers that Git subcommand wherever it runs;
+      // untagged outputs answer in call order. Status and line counts run together.
+      const tagged = outputs.findIndex(output => output.cmd && spec.argv.includes(output.cmd))
+      const index = tagged !== -1 ? tagged : outputs.findIndex(output => !output.cmd)
+      const next = (index === -1 ? null : outputs.splice(index, 1)[0]) || { stdout: '', stderr: '', exitCode: 0 }
       return {
         done: Promise.resolve({ exitCode: next.exitCode || 0, signal: null }),
         collected: {
@@ -1075,8 +1079,8 @@ function fakeSshBridge(outputs) {
 test('fetchGitStatus detects an SSH repo without local anchor contents and maps repoRoot locally', async () => {
   const fixture = fakeSshBridge([
     { stdout: '/srv/workspace/repo\n' },
-    { stdout: ['# branch.head remote-main', '# branch.ab +2 -1', '1 .M N... 100644 100644 100644 abc def src/tracked.ts', '? src/new.ts'].join('\0') },
-    { stdout: '4\t1\tsrc/tracked.ts\n2\t0\tsrc/staged.ts\n' },
+    { cmd: 'status', stdout: ['# branch.head remote-main', '# branch.ab +2 -1', '1 .M N... 100644 100644 100644 abc def src/tracked.ts', '? src/new.ts'].join('\0') },
+    { cmd: 'diff', stdout: '4\t1\tsrc/tracked.ts\n2\t0\tsrc/staged.ts\n' },
   ])
   const localSubprocess = {
     async resolveExecutable() { return '/usr/bin/git' },
@@ -1095,8 +1099,8 @@ test('fetchGitStatus detects an SSH repo without local anchor contents and maps 
   assert.deepEqual(out.lineStats, { added: 6, deleted: 1 })
   assert.deepEqual(fixture.calls.map((call) => call.argv), [
     ['git', 'rev-parse', '--show-toplevel'],
-    ['git', 'status', '--porcelain=v2', '-z', '--branch'],
     ['git', 'diff', 'HEAD', '--numstat', '--no-ext-diff'],
+    ['git', 'status', '--porcelain=v2', '-z', '--branch'],
   ].map(argv => [argv[0], '--no-optional-locks', '-c', 'core.fsmonitor=false', ...argv.slice(1)]))
   assert.equal(fixture.calls[0].cwd, cwd)
   assert.ok(fixture.calls.slice(1).every((call) => call.cwd === fixture.anchorPath + '/repo'))
@@ -1199,8 +1203,8 @@ test('route guards reject wrong methods, cross-origin requests, and non-JSON bod
 test('Git route negotiates bridge v1 and fails closed after its optional fiber unloads', async () => {
   const fixture = fakeSshBridge([
     { stdout: fixtureRemoteRoot() + '\n' },
-    { stdout: '# branch.head main\0' },
-    { stdout: '' },
+    { cmd: 'status', stdout: '# branch.head main\0' },
+    { cmd: 'diff', stdout: '' },
     { stdout: '' },
   ])
   function fixtureRemoteRoot() { return '/srv/workspace' }

@@ -56,9 +56,10 @@ shows as before.
 - **Stay out of the user's way.** Every command runs with `--no-optional-locks` and
   `core.fsmonitor=false`, so a status check never takes the index lock or starts a daemon.
   Keep this in `gitCommand` for any new command.
-- **Line counts** come from `git diff HEAD --numstat --no-ext-diff`, one round trip for
-  staged and unstaged together. A repository with no commits has no `HEAD`, so it uses
-  `--cached`. Binary files report `-` and are left out; untracked files appear only in the
+- **Line counts** come from `git diff HEAD --numstat --no-ext-diff`, one command for
+  staged and unstaged together. It runs beside `git status`, so a refresh over SSH is one
+  round trip instead of two. A repository with no commits has no `HEAD`; status reports
+  that, and the count is asked again with `--cached`. Binary files report `-` and are left out; untracked files appear only in the
   untracked count.
 - **Partial failure.** If only the line count fails, the rest still shows with
   `lineStatsError` and `+/− ?`. If a refresh fails, the old data stays and is marked stale.
