@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Cost estimates keep one amount per request in the fold, its totals and the panel; the unused min/max range fields are removed (`statuslineMetrics` refolds once, stateVersion 15).
+- TPS skips its token estimate for sessions nobody is viewing; a viewer who arrives mid-stream sees a reading after half a second.
 - DSH updates now refresh the profile's official `@deepseek-ai/dsh-*` plugins without pinning them to the DSH version. After the normal profile reconcile, the runner snapshots `package.json`/`pnpm-lock.yaml`, runs `pnpm update` for official registry dependencies within each package's own range (with a one-command release-age override, because pnpm 12 rejects the existing profile lock otherwise), repairs the snapshot if that update fails, and records any remaining `plugin list` compatibility warnings. A plugin failure or warning never rolls back or blocks a healthy DSH update; linked, file and third-party plugins are untouched.
 
 ## 0.2.0

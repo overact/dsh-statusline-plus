@@ -2,7 +2,9 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { EventEmitter } = require('node:events')
-const { TpsTracker, streamTps, estimateTextTokens, firstStreamTokenTime } = require('../lib/tps')
+const { TpsTracker: HostTpsTracker, streamTps, estimateTextTokens, firstStreamTokenTime } = require('../lib/tps')
+// The measurement tests read the tracker directly; production skips unwatched sessions.
+class TpsTracker extends HostTpsTracker { constructor(options) { super({ measureUnwatched: true, ...options }) } }
 const start = (tracker, id = 'one', attemptId = 'a') => tracker.onFrame({ agent: { session: { id } }, frame: { type: 'start', attemptId, turn: 1, step: 1 } })
 const chunk = (tracker, index, time, text, id = 'one', attemptId = 'a') => tracker.onFrame({ agent: { session: { id } }, frame: { type: 'chunk', attemptId, index, time, chunk: { type: 'text-delta', text } } })
 const settle = (tracker, usage, extra = {}) => tracker.onSession({ id: 'one' }, { type: 'assistant/message', time: 2100, data: { turn: 1, step: 1, usage, ...extra } })
@@ -227,4 +229,29 @@ test('a disabled tracker ignores frames and session events without reading them'
   enabled = true
   start(tracker)
   assert.equal(tracker.read('one').phase, 'streaming')
+})
+
+test('an unwatched session skips estimates; a viewer joining mid-stream is measured from the next chunk', () => {
+  const tracker = new HostTpsTracker(); start(tracker)
+  let calls = 0
+  const original = String.prototype.codePointAt
+  String.prototype.codePointAt = function (...args) { calls++; return original.apply(this, args) }
+  try { chunk(tracker, 0, 1000, 'a'.repeat(350)); chunk(tracker, 1, 1500, 'a'.repeat(350)) } finally { String.prototype.codePointAt = original }
+  assert.equal(calls, 0, 'no estimate runs while nobody watches')
+  assert.equal(tracker.read('one').tokensPerSecond, null)
+  const seen = [], off = tracker.subscribe('one', view => seen.push(view))
+  chunk(tracker, 2, 2000, 'a'.repeat(350))
+  chunk(tracker, 3, 2600, 'a'.repeat(350))
+  assert.equal(tracker.read('one').tokensPerSecond, 166.7, 'measured over the window since the viewer arrived')
+  chunk(tracker, 9, 2700, 'x')
+  assert.equal(tracker.read('one').tokensPerSecond, null, 'order checks kept running while unwatched')
+  off()
+  const later = new HostTpsTracker(); start(later)
+  chunk(later, 0, 1000, 'a'.repeat(350))
+  later.subscribe('one', () => {})
+  chunk(later, 1, 1600, 'a'.repeat(350))
+  later.onSession({ id: 'one' }, { type: 'assistant/message', time: 2100, data: { turn: 1, step: 1 } })
+  assert.equal(later.read('one').tokensPerSecond, null, 'partial live counts never pose as the whole attempt')
+  later.onSession({ id: 'one' }, { type: 'assistant/message', time: 2100, data: { turn: 1, step: 1, usage: { outputTokens: 220 }, stream: [{ type: 'chunk', time: 1000, chunk: { type: 'text-delta', text: 'a' } }] } })
+  assert.equal(later.read('one').tokensPerSecond, 200, 'reported usage still settles the whole attempt')
 })

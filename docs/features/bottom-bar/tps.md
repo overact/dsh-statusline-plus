@@ -20,6 +20,12 @@ projections. It keeps counters per attempt.
 - Text, reasoning and tool-argument deltas count. Tool names do not, because they are
   metadata and may repeat.
 - A rate needs at least 500 ms of observation. High rates are never clamped.
+- **Only watched sessions are measured.** Every chunk of every session reaches the tracker.
+  A session with no open `tps` stream keeps its chunk order checks and skips the token
+  estimate. When a viewer subscribes mid-stream, measurement restarts at the next chunk,
+  so a reading appears after 500 ms, not at the next request. Such a partial count never
+  stands for the whole attempt: the settled rate then needs the provider's
+  `outputTokens`. Tests that read the tracker directly pass `measureUnwatched: true`.
 
 ## Rules
 
