@@ -272,7 +272,7 @@ test('mounted plugin publishes native offline subscription prices through the ac
   const view = f.ctx.sessionProjections.snapshot(session, ['statuslineMetrics']).values.statuslineMetrics
   assert.equal(view.session.amountUsd, 0.0201)
   assert.equal(view.session.amountCny, null)
-  assert.equal(view.session.sources['pi-ai'], 1)
+  assert.equal(view.session.sources.official, 1)
   assert.equal(view.session.breakdown.input.amountUsd, 0.01)
   assert.equal(view.session.breakdown.cache.amountUsd, 0.0001)
   assert.equal(view.session.breakdown.output.amountUsd, 0.01)

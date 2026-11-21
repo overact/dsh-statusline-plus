@@ -48,7 +48,8 @@ test('native price quotes settle subscription usage, replace corrections and kee
   const f = fold(0, catalog), codex = { provider: 'codex', model: 'gpt-6-sol' }
   f.request(1, 1, codex); f.message(1, 1, usage, codex)
   assert.equal(f.view.currency, 'USD'); assert.equal(f.view.session.amountUsd, 12.2)
-  assert.equal(f.view.session.amountCny, null); assert.equal(f.view.session.sources['pi-ai'], 1)
+  assert.equal(f.view.session.amountCny, null); assert.equal(f.view.session.sources.official, 1)
+  assert.equal(f.view.session.vendors.openai, 1)
   assert.equal(f.view.session.breakdown.input.amountUsd, 2)
   assert.equal(f.view.session.breakdown.cache.amountUsd, 0.2)
   assert.equal(f.view.session.breakdown.output.amountUsd, 10)
@@ -367,7 +368,7 @@ test('fork-inherited events are excluded and checkpoint continuation preserves o
   assert.equal(f.view.session.breakdown.input.tokensCny, 1000000, 'counts exclude inherited fork events')
   assert.equal(f.view.pricingAsOf, PRICING_AS_OF)
   assert.equal(f.view.billingVerified, false)
-  assert.equal(f.view.pricingBasis, 'official-rate-card-reference')
+  assert.equal(f.view.pricingBasis, 'vendor-or-openrouter-reference')
   const restored = f.definition.stateSchema.parse(JSON.parse(JSON.stringify(f.state)))
   const continued = f.definition.apply(restored, { type: 'turn/start', data: { turn: 3 }, time: PEAK, seq: 20 })
   assert.equal(continued.current.pricedMessages, 0); assert.equal(continued.view.session.amountCny, 10.04)

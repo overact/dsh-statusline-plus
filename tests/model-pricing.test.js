@@ -14,13 +14,20 @@ test('host catalog is read entirely offline through its public exported provider
   assert.equal(native.info.version, hostPiVersion())
   assert.ok(native.info.generatedAt > 0)
   const card = native.resolve({ provider: 'codex', model: 'gpt-6-astra' })
-  assert.equal(card.source, 'pi-ai'); assert.equal(card.cost.input, 10)
-  assert.equal(native.resolve({ provider: 'antigravity', model: 'gemini-3.8-flash' }).source, 'pi-ai')
+  assert.equal(card.source, 'official'); assert.equal(card.cost.input, 10)
+  assert.equal(native.resolve({ provider: 'antigravity', model: 'gemini-3.8-flash' }).source, 'official')
   assert.equal(native.resolve({ provider: 'kimi-code', model: 'k3' }).provider, 'moonshotai')
   assert.equal(native.resolve({ provider: 'kimi-code', model: 'kimi-for-coding' }), null, 'rolling alias has no matching vendor API card')
   const go = native.resolve({ provider: 'opencode-go', model: 'deepseek-v4.1-flash' })
   assert.equal(go.provider, 'deepseek'); assert.equal(go.model, 'deepseek-flash')
   assert.equal(go.cost.input, 0.3)
+  // A resale reference covers models without a first-party card, and it is a
+  // separate step from the official catalog.
+  assert.ok(native.info.reference && native.info.reference.models > 0)
+  assert.equal(native.resolve({ provider: 'llamacpp', model: 'qwen3.8-27b' }).source, 'openrouter')
+  // The version stays in the identity, so V4 finds its own card and never the V4.1 one.
+  assert.equal(native.resolve({ provider: 'x', model: 'deepseek-v4-flash' }).model, 'deepseek-v4-flash')
+  assert.equal(native.resolve({ provider: 'llamacpp', model: 'qwen3.8-flash-next' }).source, 'fallback-reference')
 })
 
 test('all channels use the vendor model card and never borrow subscription or gateway prices', () => {
@@ -44,10 +51,80 @@ test('all channels use the vendor model card and never borrow subscription or ga
   assert.equal(createPricingCatalog([{ provider: 'opencode-go', model: 'deepseek-v4.1-flash', cost: goPrice }]).resolve({ provider: 'opencode-go', model: 'deepseek-v4.1-flash' }), null)
 })
 
+test('a card is found through its namespace identity, not by guessing the vendor prefix', () => {
+  const openaiAlias = { input: 5, output: 30, cacheRead: 0.5, cacheWrite: 0 }
+  const c = createPricingCatalog([
+    { provider: 'openai', model: 'chat-latest', cost: openaiAlias },
+    { provider: 'mistral', model: 'pixtral-12b', cost: { input: 0.15, output: 0.15 } },
+    { provider: 'google', model: 'deep-research-preview-04-2026', cost: { input: 2, output: 12 } },
+    // A vendor namespace reselling another vendor's model is a channel price.
+    { provider: 'mistral', model: 'glm-5-2', cost: { input: 9, output: 9 } },
+    { provider: 'google', model: 'gemma-4-31b-it', cost: { input: 0, output: 0 } },
+  ])
+  assert.deepEqual(c.resolve({ provider: 'openai', model: 'chat-latest' }).cost, openaiAlias)
+  assert.equal(c.resolve({ provider: 'any', model: 'pixtral-12b' }).provider, 'mistral')
+  assert.equal(c.resolve({ provider: 'any', model: 'deep-research-preview-04-2026' }).cost.input, 2)
+  assert.equal(c.resolve({ provider: 'any', model: 'glm-5-2' }), null, 'a resold card is not the model public price')
+  assert.equal(c.resolve({ provider: 'any', model: 'gemma-4-31b-it' }), null, 'an all-zero card stays unknown')
+})
+
+test('bedrock and hosted spellings resolve to the same identity', () => {
+  const c = createPricingCatalog([
+    { provider: 'anthropic', model: 'claude-sonnet-5', cost: { input: 2, output: 10 } },
+    { provider: 'openai', model: 'gpt-6-sol', cost },
+  ])
+  for (const model of ['anthropic.claude-sonnet-5', 'us.anthropic.claude-sonnet-5-v1:0', 'anthropic/claude-sonnet-5']) {
+    assert.equal(c.resolve({ provider: 'amazon-bedrock', model }).provider, 'anthropic', model)
+  }
+  assert.equal(c.resolve({ provider: 'bedrock', model: 'qwen.qwen3.8-27b' }), null)
+})
+
+test('the reference catalog is a second step: official wins, other gateways never price', () => {
+  const official = { input: 0.75, output: 3.75, cacheRead: 0.075 }
+  const c = createPricingCatalog([
+    { provider: 'google', model: 'gemini-3.8-flash', cost: official },
+    { provider: 'openrouter', model: 'google/gemini-3.8-flash', cost: { input: 0.825, output: 4.125 } },
+    { provider: 'openrouter', model: 'qwen/qwen3.8-27b', cost: { input: 0.15, output: 1.875 } },
+    { provider: 'vercel-ai-gateway', model: 'alibaba/qwen3.8-27b', cost: { input: 0.06, output: 2.3 } },
+    { provider: 'openrouter', model: 'qwen/qwen3.8-27b:batch', cost: { input: 0.16, output: 2 } },
+    { provider: 'openrouter', model: 'qwen/qwen3.8-flash:free', cost: { input: 0, output: 0 } },
+  ])
+  assert.deepEqual(c.resolve({ provider: 'custom', model: 'gemini-3.8-flash' }).cost, official, 'official card wins')
+  const qwen = c.resolve({ provider: 'llamacpp', model: 'qwen3.8-27b' })
+  assert.equal(qwen.source, 'openrouter'); assert.equal(qwen.provider, 'openrouter'); assert.equal(qwen.model, 'qwen3.8-27b')
+  assert.equal(qwen.vendor, 'qwen', 'the vendor names the model, the provider names the channel')
+  assert.equal(c.resolve({ provider: 'anything', model: 'qwen3.8-27b:batch' }).cost.input, 0.16, 'a variant keeps its own identity')
+  assert.equal(c.resolve({ provider: 'anything', model: 'qwen3.8-27b:free' }), null, 'an all-zero reference card is unknown')
+})
+
+test('a version keeps its own identity and reaches its own reference card', () => {
+  const v41 = { input: 0.3, output: 1.2, cacheRead: 0.006 }
+  const v4 = { input: 0.091, output: 0.182 }
+  const c = createPricingCatalog([
+    { provider: 'deepseek', model: 'deepseek-flash', cost: v41 },
+    { provider: 'openrouter', model: 'deepseek/deepseek-v4-flash', cost: v4 },
+  ])
+  assert.deepEqual(c.resolve({ provider: 'x', model: 'deepseek-v4.1-flash' }).cost, v41)
+  const old = c.resolve({ provider: 'x', model: 'deepseek-v4-flash' })
+  assert.deepEqual(old.cost, v4)
+  assert.equal(old.model, 'deepseek-v4-flash', 'V4 must not collapse into the V4.1 card identity')
+  assert.equal(old.source, 'openrouter')
+})
+
+test('a model missing from both catalogs falls back to a labelled snapshot entry', () => {
+  const c = createPricingCatalog([{ provider: 'openrouter', model: 'qwen/qwen3.8-27b', cost: { input: 0.15, output: 1.875 } }])
+  const next = c.resolve({ provider: 'llamacpp', model: 'qwen3.8-flash-next' })
+  assert.equal(next.source, 'fallback-reference'); assert.equal(next.cost.input, 0.2); assert.equal(next.vendor, 'qwen')
+  assert.equal(createPricingCatalog().resolve({ provider: 'llamacpp', model: 'qwen3.8-flash-next' }).source, 'fallback-reference')
+  // A real card always wins over the snapshot.
+  const real = createPricingCatalog([{ provider: 'openrouter', model: 'qwen/qwen3.8-flash-next', cost: { input: 0.25, output: 0.6 } }])
+  assert.equal(real.resolve({ provider: 'llamacpp', model: 'qwen3.8-flash-next' }).source, 'openrouter')
+})
+
 test('native prices precede snapshots and subscriptions/custom routes use exact public model identity', () => {
   const c = catalog()
   assert.equal(c.resolve({ provider: 'codex', model: 'gpt-6.1-sol' }).cost.input, 3)
-  assert.equal(c.resolve({ provider: 'custom', model: 'openai/gpt-6-sol' }).source, 'pi-ai')
+  assert.equal(c.resolve({ provider: 'custom', model: 'openai/gpt-6-sol' }).source, 'official')
   assert.equal(c.resolve({ provider: 'codex', model: 'gpt-6-sol-fast' }), null)
   assert.equal(c.resolve({ provider: 'custom', model: 'constructor' }), null)
   assert.equal(createPricingCatalog().resolve({ provider: 'codex', model: 'gpt-6.1-sol' }).source, 'fallback')
@@ -133,7 +210,7 @@ test('a cached prompt with no catalog read rate is refused instead of silently p
 })
 
 test('native DeepSeek rates take the one tariff of the request, like the CNY fallback', () => {
-  const card = { cost: { input: 0.3, output: 1.2, cacheRead: 0.006 }, source: 'pi-ai' }
+  const card = { cost: { input: 0.3, output: 1.2, cacheRead: 0.006 }, source: 'official' }
   const usage = { inputTokens: 1000000, outputTokens: 1000000, cacheReadTokens: 1000000 }
   assert.equal(quoteCatalogUsage(card, usage, units, 'peak').units / units, 1.506)
   assert.equal(quoteCatalogUsage(card, usage, units, 'offPeak').units / units, 0.753)

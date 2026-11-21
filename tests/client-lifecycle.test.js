@@ -623,7 +623,7 @@ test('cost UI exposes partial coverage and unknown pricing instead of fabricated
   assert.doesNotMatch(view.children[0].children[0], /Turn|Session|subtotal/)
   view.children[0].props.onClick(); view = h.renderComponent(h.CostRow, props)
   assert.ok(view.children[1])
-  assert.match(descendants(view, node => node.props?.className === 'slp-hint')[0].props['data-tip'], /model vendor.*same reference rates.*not an account charge/i)
+  assert.match(descendants(view, node => node.props?.className === 'slp-hint')[0].props['data-tip'], /DeepSeek CNY table/)
   assert.match(textContent(view), /Breakdown needs Host update/)
   h.unmount()
 })
@@ -632,17 +632,17 @@ test('cost UI shows native USD amounts, separate currencies, source freshness an
   const h = harness()
   assert.equal(h.estimateCost({ pricedMessages: 1, amountUsd: 0.25 }, true), '$0.25')
   assert.equal(h.estimateCost({ pricedMessages: 2, amountCny: 1, amountUsd: 2 }, true), '¥1.00 + $2.00')
-  const data = { session: { pricedMessages: 1, unpricedMessages: 1, amountUsd: 0.25, sources: { 'pi-ai': 1 }, reasons: { 'cache-write-rate-unknown': 1 } }, catalog: { version: '0.87.1', generatedAt: 1790105504346 } }
+  const data = { session: { pricedMessages: 1, unpricedMessages: 1, amountUsd: 0.25, sources: { official: 1 }, vendors: { openai: 1 }, reasons: { 'cache-write-rate-unknown': 1 } }, catalog: { version: '0.87.1', generatedAt: 1790105504346 } }
   const props = { useProjection: () => data }
   let view = h.renderComponent(h.CostRow, props)
   assert.equal(view.children[0].children[0], '≈$0.25')
   assert.match(view.children[0].props.title, /Unknown cache-write price/)
   view.children[0].props.onClick(); view = h.renderComponent(h.CostRow, props)
-  assert.match(textContent(view), /pi-ai/)
+  assert.match(textContent(view), /1 priced · 1 unpriced \(OpenAI\)/, 'the priced count names the model vendor')
   assert.doesNotMatch(textContent(view), /catalog generated|same reference rates/)
   const tip = descendants(view, node => node.props?.className === 'slp-hint')[0].props['data-tip']
-  assert.match(tip, /Host pi-ai 0\.87\.1.*catalog generated/)
-  assert.match(tip, /same reference rates for subscriptions/)
+  assert.match(tip, /Official catalog 0\.87\.1/)
+  assert.doesNotMatch(tip, /not a bill|Input is uncached/, 'the tooltip carries provenance only')
   assert.equal(h.requests.length, 0, 'cost rendering never queries prices online')
   assert.doesNotMatch(textContent(view), /per hour/, 'no request span: no hourly rate')
   data.activeFrom = 0; data.activeTo = 4 * 60000
@@ -657,7 +657,7 @@ test('cost UI shows native USD amounts, separate currencies, source freshness an
 test('compact cost chart and rows share currency subtotals without rounding bar widths', () => {
   const h = harness(), part = (usd, cny = null) => ({ amountUsd: usd, amountCny: cny,
     tokensUsd: usd === null ? null : Math.round(usd * 1e6), tokensCny: cny === null ? null : Math.round(cny * 1e6) })
-  const bucket = { pricedMessages: 1, unpricedMessages: 0, ...part(10), sources: { 'pi-ai': 1 },
+  const bucket = { pricedMessages: 1, unpricedMessages: 0, ...part(10), sources: { official: 1 },
     breakdown: { input: part(2), cache: part(3), output: part(5) } }
   const props = { useProjection: () => ({ session: bucket }) }
   let view = h.renderComponent(h.CostRow, props)

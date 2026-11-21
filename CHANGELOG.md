@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Cost estimates resolve a card by catalog identity instead of guessing the vendor from the model ID prefix: a vendor's own pi-ai card is found even when its ID does not start with the vendor name (`chat-latest`, `pixtral-12b`, `voxtral-*`), a vendor namespace reselling another vendor's model (Mistral listing GLM, Bedrock listing Claude) is skipped, and a model a vendor lists with an all-zero placeholder stays unknown. Models with no first-party card fall back to an OpenRouter reference (`source: openrouter`), then to `FALLBACK`, whose third-party entry is labelled `fallback-reference`. DeepSeek keeps its version identity, so V4 Flash reaches its own V4 card instead of the V4.1 one. `statuslineMetrics` refolds once (stateVersion 16). The panel's priced count now names its sources in parentheses, localized (official, OpenRouter, built-in snapshot).
 - Cost estimates keep one amount per request in the fold, its totals and the panel; the unused min/max range fields are removed (`statuslineMetrics` refolds once, stateVersion 15).
 - TPS skips its token estimate for sessions nobody is viewing; a viewer who arrives mid-stream sees a reading after half a second.
 - Git status and the line count run in parallel, so each refresh over SSH is one round trip instead of two.
