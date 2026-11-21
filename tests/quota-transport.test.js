@@ -41,3 +41,25 @@ test('quota dispatcher applies its local connection window, reuses connections a
   assert.equal(agent.destroyed, true)
   await assert.rejects(fetch(url, { dispatcher: agent }), 'a disposed plugin cannot open another connection')
 })
+
+test('fetchQuotaJson returns error bodies, reads non-JSON as null and keeps cancellation an error', async t => {
+  const { fetchQuotaJson } = require('../lib/quota-http.js')
+  const agent = createQuotaDispatcher()
+  const server = http.createServer((req, res) => {
+    if (req.url === '/hang') return
+    if (req.url === '/text') { res.statusCode = 200; return res.end('not json') }
+    res.statusCode = 401; res.setHeader('content-type', 'application/json'); res.end('{"error":"expired"}')
+  })
+  t.after(async () => { await agent.destroy(); await new Promise(resolve => server.close(resolve)) })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  const url = 'http://127.0.0.1:' + server.address().port
+  t.mock.method(console, 'warn', () => {})
+  const options = { source: 'test', dispatcher: agent, timeoutMs: 2000 }
+  assert.deepEqual(await fetchQuotaJson(url + '/denied', options), { status: 401, ok: false, json: { error: 'expired' } },
+    'an error status is read too, so its body never waits for GC')
+  assert.deepEqual(await fetchQuotaJson(url + '/text', options), { status: 200, ok: true, json: null })
+  const controller = new AbortController()
+  const pending = fetchQuotaJson(url + '/hang', { ...options, signal: controller.signal })
+  setTimeout(() => controller.abort(new Error('request-cancelled')), 20)
+  await assert.rejects(pending, /request-cancelled/, 'cancellation is never mistaken for a bad body')
+})

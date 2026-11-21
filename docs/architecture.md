@@ -14,7 +14,7 @@ projections. The browser half (`lib/client.js`) is loaded through `dsh.client` i
 | Settings | `config.js` |
 | Quota | `quota-order.js`, `quota-window.js`, `quota-magpie.js`, `quota-codex.js`, `quota-antigravity.js`, `quota-claude.js`, `quota-providers.js`, `provider-presets.js`, `quota-deepseek-account.js`, `quota-login-files.js`, `cpa-credentials.js`, `quota-http.js`, `quota-transport.js` |
 | Git | `git-status.js` |
-| Session | `session-log.js`, `session-metrics.js`, `model-pricing.js`, `tool-activity.js`, `subagent-activity.js`, `tps.js` |
+| Session | `session-log.js`, `session-metrics.js`, `model-pricing.js`, `tool-activity.js`, `subagent-activity.js`, `tps.js`, `session-records.js` (shared session-id spelling and stream usage record) |
 | Peak | `peak-schedule.js` |
 | Update | `update.js` |
 | Reload / restart, DSH update | `restart.js`, `host-update.js`, `host-update-runner.js` |
@@ -55,12 +55,17 @@ All live under `/statusline/api/`.
 
 Every route passes `connection.admit` inside `register`, because named routes bypass
 the built-in `/api` transport and its authentication. Handlers then call `guardRequest`
-from `http-route.js`. Quota routes answer HTTP 200 with `{ ok: false, error }`, and
+from `http-route.js`, which checks the method, the same-origin fence for every method (GET
+included) and the JSON content type. Quota routes answer HTTP 200 with `{ ok: false, error }`, and
 `quotaRoute` turns any error outside its allow-list into `network`, so raw exception
 text stays on the Host. A new stable error code must be added to
 `ACCOUNT_QUOTA_ERRORS` or `PROVIDER_QUOTA_ERRORS` and to the client's error text. The
-`git` route has its own list, `GIT_ERRORS`. The `usage` route does not use `quotaRoute` and
-returns the error message as it is.
+`git` route has its own list, `GIT_ERRORS`. The `usage` route uses `quotaRoute` with
+`USAGE_QUOTA_ERRORS`, which also passes `timeout` and `busy` through as before.
+
+Every quota source makes its request through `fetchQuotaJson` (`quota-http.js`): one
+deadline joined with the caller's signal, the logged fetch, and a bounded JSON read that
+always reads or releases the body. A new source uses it instead of its own fetch.
 
 ## Request pools
 

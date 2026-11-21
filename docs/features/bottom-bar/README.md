@@ -95,8 +95,8 @@ needing a new projection also needs a sample there.
 ## Adding a component
 
 1. Add it to `COMPONENTS` and `COMPONENT_ORDER`, and a factory to `dockComponents`.
-2. Add the `show*` default to `DEFAULT_CONFIG` and the schema in `lib/config.js`, and the
-   key to `RESET_KEYS`.
+2. Add the `show*` default to `DEFAULT_CONFIG` in `lib/config.js`; the key lists and the
+   boolean schema follow from it. Add the key to `RESET_KEYS`.
 3. Add a preview sample and locale strings.
 4. Add a page in this folder and a row in [the index](../../README.md).
 

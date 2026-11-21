@@ -44,6 +44,10 @@ so scope that hook by `uid`, never by object identity.
   misreported as unconfigured.
 - **`usageUrl` accepts only the official OpenCode endpoint**, and provider endpoints pass
   `sanitizeProviderEndpointUrl`, because a stored URL receives a credential.
+- **A new setting starts at its default.** `CONFIG_KEYS` and `BOOLEAN_CONFIG_KEYS` are
+  derived from `DEFAULT_CONFIG`, so adding the default is what admits the key and coerces a
+  boolean. Add a schema entry only for a non-plain shape or range, and add a display setting
+  to `RESET_KEYS`.
 - **Stored config is frozen.** `Schema.dict` assigns into it and throws, which is why
   `quotaSources` is `Schema.any().default({})`. Avoid `Schema.dict` for new settings.
 - **Invalid pins.** The Host accepts `{ "claude": "bogus" }`, and `quotaPinOf` drops it on
