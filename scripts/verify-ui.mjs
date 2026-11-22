@@ -285,7 +285,7 @@ async function verifyReset(page, folder) {
   const show = async (options, item, delayMs = 0) => {
     await page.evaluate(delay => { try { window.disposeResponsiveFixture?.() } catch (error) { /* already unmounted */ } window.slpResetNotices = []; window.slpQuotaDelayMs = delay }, delayMs)
     await mountResponsiveFixture(page, { ...options, overrides: { resetAlerts: 'on', resetAlertKinds: ['codex', 'antigravity'], resetAlertSeconds: 10, ...options.overrides } })
-    await page.evaluate(value => { window.slpFixtureRoot.unmount(); window.slpResetNotices = [value]; window.remountResponsiveFixture() }, item)
+    await page.evaluate(value => { window.slpFixtureRoot.unmount(); window.slpResetNotices = Array.isArray(value) ? value : [value]; window.remountResponsiveFixture() }, item)
   }
   const drawer = page.locator('.slp-reset-drawer')
   // The drawer's readiness check runs on the fake clock.
@@ -334,14 +334,17 @@ async function verifyReset(page, folder) {
   // down, and the sentence wraps only when it alone is wider than the cap.
   const layout = await drawer.evaluate(node => {
     const text = node.querySelector('.slp-reset-text'), ack = node.querySelector('.slp-reset-ack').getBoundingClientRect()
-    const tops = new Set([...text.getClientRects()].map(rect => Math.round(rect.top)))
+    const range = document.createRange(); range.selectNodeContents(text)
+    const tops = new Set([...range.getClientRects()].map(rect => Math.round(rect.top)))
+    const sheet = node.querySelector('.slp-reset-sheet').getBoundingClientRect(), padRight = parseFloat(getComputedStyle(node.querySelector('.slp-reset-sheet')).paddingRight)
     const probe = text.cloneNode(true); probe.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap'; node.querySelector('.slp-reset-sheet').appendChild(probe)
     const natural = probe.getBoundingClientRect().width; probe.remove()
-    return { textLines: tops.size, ackOnFirst: Math.abs(ack.top - text.getClientRects()[0].top) < 6, natural: Math.round(natural) }
+    return { textLines: tops.size, ackOnFirst: Math.abs(ack.top - range.getClientRects()[0].top) < 6, natural: Math.round(natural), ackRight: Math.round(sheet.right - padRight - ack.right) }
   })
   const cap = Math.floor(placed.chipWidth * 1.5)
   if (placed.width < placed.chipWidth - 1 || placed.width > cap + 1) throw new Error('Reset drawer width outside chip..1.5x chip: ' + JSON.stringify({ placed, cap }))
   if (layout.natural + 16 <= cap && layout.textLines !== 1) throw new Error('Sentence wrapped although it fits the cap: ' + JSON.stringify({ layout, cap }))
+  if (Math.abs(layout.ackRight) > 1) throw new Error('"Got it" is not at the right edge: ' + JSON.stringify(layout))
   if (layout.textLines === 1 && !layout.ackOnFirst && placed.height > 46) throw new Error('Reset drawer layout: ' + JSON.stringify({ layout, placed }))
   const screenshot = join(folder, 'reset-drawer.png')
   await page.screenshot({ path: screenshot, clip: { x: 0, y: 0, width: page.viewportSize().width, height: 160 } })
@@ -405,6 +408,23 @@ async function verifyReset(page, folder) {
   await page.clock.runFor(300)
   const otherListed = await panelText()
   if (!otherListed.includes('Antigravity resets around')) throw new Error('Codex panel does not list the Antigravity reset: ' + otherListed)
+  // Several notices: one drawer, one line each, one "Got it" for all.
+  await show(codex, [notice('fixture-many-a'), notice('fixture-many-b', 'antigravity')])
+  await appear()
+  await settle()
+  const group = await drawer.evaluate(node => ({ count: node.dataset.count, lines: node.querySelectorAll('.slp-reset-text').length, buttons: node.querySelectorAll('.slp-reset-ack').length,
+    tops: [...node.querySelectorAll('.slp-reset-text')].map(text => Math.round(text.getBoundingClientRect().top)) }))
+  if (group.count !== '2' || group.lines !== 2 || group.buttons !== 1 || !(group.tops[1] > group.tops[0])) throw new Error('Grouped reset drawer: ' + JSON.stringify(group))
+  if (await page.locator('.slp-reset-drawer').count() !== 1) throw new Error('Grouped notices opened more than one drawer')
+  const groupShot = join(folder, 'reset-drawer-group.png')
+  await page.screenshot({ path: groupShot, clip: { x: 0, y: 0, width: page.viewportSize().width, height: 120 } })
+  await drawer.getByRole('button', { name: 'Got it' }).click()
+  await page.clock.runFor(300)
+  await drawer.waitFor({ state: 'detached', timeout: 2000 })
+  const groupAcks = await page.evaluate(() => { try { return localStorage.getItem('statusline-plus:reset-ack') } catch (error) { return 'memory' } })
+  if (groupAcks !== 'memory' && !(groupAcks.includes('fixture-many-a|announced') && groupAcks.includes('fixture-many-b|announced'))) throw new Error('One "Got it" did not acknowledge every notice: ' + groupAcks)
+  await page.clock.runFor(3000)
+  if (await drawer.count()) throw new Error('An acknowledged group slid out again')
   // A direct DeepSeek model has only the peak chip: the drawer uses it.
   await show({ deepseek: true, overrides: { showQuota: false, showDeepseekPeak: true } }, notice('fixture-peak'))
   await appear()
@@ -421,7 +441,7 @@ async function verifyReset(page, folder) {
   await page.clock.runFor(5000)
   if (await drawer.count()) throw new Error('A reset drawer appeared with no chip to slide out of')
   await page.evaluate(() => { window.slpQuotaDelayMs = 0; window.disposeResponsiveFixture() })
-  return { panel: 'reset', waitsForChip: true, anchored: 'slides from Codex chip, 2px, chip width', compact: placed, material: 'translucent', otherKind: 'under the header chip, listed in Codex panel', peakChip: 'under the DeepSeek peak chip', noChip: 'no drawer',
+  return { panel: 'reset', waitsForChip: true, anchored: 'slides from Codex chip, 2px, chip width', compact: placed, material: 'translucent', otherKind: 'under the header chip, listed in Codex panel', grouped: 'two notices, one drawer, one Got it', peakChip: 'under the DeepSeek peak chip', noChip: 'no drawer',
     holdOnHover: true, oncePerPage: true, ack: true, detailsPanel: true, screenshots: [relative(root, midShot), relative(root, screenshot), relative(root, otherShot)] }
 }
 

@@ -34,7 +34,7 @@ could not exist without it. Please follow its terms (below) and polling guidance
 | Route | `reset-notices` in `lib/index.js` |
 | Subscriptions to ask for | `resetAlertKinds`, `catalogResetKinds`, `noteResetModel` in `lib/client.js` |
 | Shared list | `resetStore`, `publishResetNotices` (compares content, so a refined time or scope under the same id updates), `useResetNotices` |
-| Drawer | `ResetNoticeHost`, `ResetDrawer`, `resetAnchor`, `ackResetNotice`, `noteResetAnchors` |
+| Drawer | `ResetNoticeHost`, `ResetDrawer` (a group of notices), `resetAnchor(kinds)`, `resetKindsOf`, `ackResetNotice`, `noteResetAnchors` |
 | Chip ↔ subscription | `resetKindOfName`; chips carry `data-slp-reset-kind` and `data-slp-quota-ready` |
 | Details panel | `ResetPanelSection`, inserted by `quotaPanel` in every details panel |
 | Wording | `resetSentenceParts` (one source), `resetSentence` (tooltip text), `resetSentenceNodes` (coloured name, bold time), `resetDay` |
@@ -94,7 +94,11 @@ A notice's key is `id|phase`, so an announcement and its later confirmation are 
 | After "Got it" | Never again (`statusline-plus:reset-ack` in `localStorage`; memory where blocked) | Still listed |
 | Outside the 24 h windows | — | Gone |
 
-Several notices queue, one drawer after another.
+Several pending notices share **one drawer**: one line per notice, in the Host's order
+(upcoming first, then confirmed newest first), and one "Got it" that acknowledges all of
+them. Its anchor is a chip of any of their subscriptions. A notice arriving while the
+drawer is open waits for it to close, then gets a drawer of its own. One drawer per
+notice in sequence was dropped: two notices took twice the time to read.
 
 ## Which subscriptions
 
@@ -147,15 +151,19 @@ seen there for the first time is asked about at once (`resetPollNow`), not at th
 - **Material.** The sheet is the Host's menu material, like the details panel:
   `data-menu-material="translucent"`, `--dsw-specific-menu` (a 70%-opaque fill),
   `--dsw-menu-backdrop-filter` (blur) and `--dsw-elevation-prominent`.
-- **One sentence.** Who, what and when, then "Got it". The ↗ is joined to the last word
-  with a no-break space; the only break before the button is a plain space. The subscription
+- **One sentence per notice.** Who, what and when, one line each (`<br>` between them),
+  then a single "Got it" at the right edge. The ↗ is joined to
+  the last word with a no-break space. The button floats right after the sentence: on the
+  sentence's last line when there is room, otherwise right-aligned on the next line. A
+  flex row was tried and dropped: a wrapped sentence filled the row, so the button could
+  never share its last line and the drawer gained a line. The subscription
   name is in its plan colour (`planColor`; Grok uses the label colour) and the time phrase
   ("已于今天 09:23", "预计明天 18:00 前") is bold. Phrase-level wrapping
   (`word-break: keep-all`) never splits a Chinese word. The sentence is the AIHOT link;
   its tooltip carries the full sentence, the scope and the source. At a 167px Codex chip:
   "Codex 已于今天 09:23 重置额度 ↗" is one line (205px) with the button below it. The
   longest case (Antigravity, a time range, a reset card) wraps at 250px into two lines,
-  with the button at the end of the second.
+  with the button at the right of the second.
 - **Wording.** "Codex 已于今天 09:23 重置额度", "Codex 预计明天 18:00 前重置额度",
   "Codex 预计今天 13:35 左右重置额度", "Antigravity 可能在今天 13:24–16:24 发放重置卡".
   Days read 今天/明天/昨天, otherwise M/D, in the viewer's time zone. A `date`-only
@@ -187,7 +195,7 @@ drawer waiting while its chip loads, sliding out of a clipped frame on the Codex
 between the chip's width and 1.5 times it, the sentence on one line when it fits the cap,
 the menu material, hover hold and resume, once per session view (again after a session
 switch, not after a same-session remount), the coloured name and bold time, the
-details-panel box, an Antigravity notice sliding out of the Codex chip, the DeepSeek peak
-chip as the last anchor, and no drawer at all without a chip. `window.slpLocale = 'zh-CN'`
+details-panel box, an Antigravity notice sliding out of the Codex chip, two notices in one drawer with one
+"Got it" that acknowledges both, the DeepSeek peak chip as the last anchor, and no drawer at all without a chip. `window.slpLocale = 'zh-CN'`
 renders the fixture in Chinese. Each fixture mount loads a fresh plugin copy, so the check
 disposes the previous one first; otherwise its drawer host keeps polling.
