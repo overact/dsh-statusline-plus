@@ -91,9 +91,9 @@ export async function mountFixture(page, hostOptions) {
 // both show in the dock (the default leaves Git pending for resource checks).
 // deepseek: the session reports a direct DeepSeek model, so the header also
 // renders the peak chip; overrides: config values set before the first paint.
-export async function mountResponsiveFixture(page, { dockData = false, deepseek = false, overrides = {}, ...hostOptions } = {}) {
+export async function mountResponsiveFixture(page, { dockData = false, deepseek = false, model = null, overrides = {}, ...hostOptions } = {}) {
   await mountFixture(page, hostOptions)
-  await page.evaluate(({ dockData, deepseek, overrides }) => {
+  await page.evaluate(({ dockData, deepseek, model, overrides }) => {
     window.slpFixtureRoot.unmount()
     document.getElementById('shell').style.cssText = 'position:static;height:auto;overflow:visible'
     document.getElementById('root').style.cssText = 'position:static'
@@ -154,6 +154,16 @@ export async function mountResponsiveFixture(page, { dockData = false, deepseek 
           instanceId: activity.updateInstance } }) }
       }
       if (url === '/statusline/api/peak-schedule') return { json: async () => ({ ok: false }) }
+      if (url === '/statusline/api/codex-quota') {
+        // A test can hold the chip in its loading state for this long (fake clock).
+        if (window.slpQuotaDelayMs) await new Promise(resolve => setTimeout(resolve, window.slpQuotaDelayMs))
+        return { json: async () => ({ ok: true, data: { style: 'windows', windows: [{ id: '5h', minutes: 300, short: '5h', usedPercent: 30, resetInSec: 3600 }], fetchedAt: Date.now() }, serverNow: Date.now() }) }
+      }
+      // Reset notices come from window.slpResetNotices (none by default); requests are recorded.
+      if (url.indexOf('/statusline/api/reset-notices') === 0) {
+        activity.resetRequests = (activity.resetRequests || []).concat([url])
+        return { json: async () => ({ ok: true, data: { notices: window.slpResetNotices || [], checkedAt: {} }, serverNow: Date.now() }) }
+      }
       if (url.indexOf('/statusline/api/restart') === 0) {
         const state = window.slpRestart
         if (String(options.method || 'GET').toUpperCase() === 'POST') {
@@ -231,10 +241,13 @@ export async function mountResponsiveFixture(page, { dockData = false, deepseek 
           .map(item => React.createElement(EntryGuard, { key: item.id, slot: child, retire: () => {
             registrations.set(child, (registrations.get(child) || []).filter(other => other !== item)); bump(child) } }, React.createElement(item.component, { ...props, ...owner })))) } : {}) })
     const slot = (name, props) => React.createElement(React.Fragment, null, ...winners(name).map(entry => renderEntry(entry, props)))
-    components.apply({ configForms: { get: () => scope }, get: name => name === 'slots' ? slots : null,
+    components.apply({ configForms: { get: () => scope }, get: name => name === 'slots' ? slots
+        // window.slpLocale ('zh-CN') renders the plugin's own Chinese strings.
+        : name === 'locale' && window.slpLocale ? { getLocale: () => ({ active: window.slpLocale }) } : null,
       effect: setup => { const cleanup = setup(); if (cleanup) cleanups.push(cleanup) } })
     const settled = { session: { pricedMessages: 1, unpricedMessages: 0 } }
     const sessionProps = { sessionId: 'fixture-parent', useProjection: key => key === 'contextPressure' ? { pressureTokens: 12000, contextWindow: 200000 }
+      : model && key === 'modelSelection' ? { next: model }
       : deepseek && key === 'modelSelection' ? { next: { provider: 'deepseek', model: 'deepseek-chat' } }
       : dockData && key === 'statuslineMetrics' ? settled : { steps: 0 },
       useSessions: select => select({ byId: { 'fixture-parent': { cwd: '/fixture-repo' } } }) }
@@ -242,7 +255,9 @@ export async function mountResponsiveFixture(page, { dockData = false, deepseek 
       return React.createElement(React.Fragment, null,
         // Mirrors DSH 0.2.2's title cluster: the actions slot sits inside clip + mask.
         React.createElement('div', { style: { display: 'flex', overflow: 'clip', maskImage: 'linear-gradient(to left, transparent, #000 20px)' } },
-          React.createElement('div', { id: 'fixture-header', className: 'fixture-headerActions' }, slot('conversation.session.header.actions', sessionProps))),
+          // window.slpFixtureSession switches the header to another session id.
+          React.createElement('div', { id: 'fixture-header', className: 'fixture-headerActions' }, slot('conversation.session.header.actions',
+            window.slpFixtureSession ? { ...sessionProps, sessionId: window.slpFixtureSession } : sessionProps))),
         React.createElement('div', { id: 'fixture-dock' },
           React.createElement('div', { 'data-composer-card': true, style: { width: '100%', height: '1px' } }),
           React.createElement('div', { 'data-composer-dock': true, style: { display: 'inline-flex' } },
@@ -257,7 +272,7 @@ export async function mountResponsiveFixture(page, { dockData = false, deepseek 
     }
     window.disposeResponsiveFixture = () => { window.slpFixtureRoot.unmount(); cleanups.forEach(fn => fn()) }
     window.remountResponsiveFixture()
-  }, { dockData, deepseek, overrides })
+  }, { dockData, deepseek, model, overrides })
 }
 
 // The "no such subscription" status on its own, inside a header-sized (14px)

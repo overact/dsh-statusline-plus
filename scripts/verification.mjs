@@ -29,6 +29,7 @@ export function selectChecks(files, { all = false, ui = 'auto', styleOnly = fals
     'tool-activity': ['tool-activity', 'dsh-integration', 'client-lifecycle'],
     'request-pool': ['request-pool', 'statusline'],
     'provider-presets': ['provider-quota', 'statusline', 'client-lifecycle'],
+    'reset-feed': ['reset-feed', 'statusline'],
   }
   for (const file of files) {
     if (file === 'lib/client.js') { add('client-lifecycle'); panels.add('all') }

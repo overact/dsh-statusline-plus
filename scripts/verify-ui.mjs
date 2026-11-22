@@ -16,8 +16,8 @@ function options(args) {
       opts[arg.slice(2)] = value
     } else throw new Error('Unknown option: ' + arg)
   }
-  if (!['all', 'cost', 'subagents', 'chip', 'modelbar', 'responsive', 'restart'].includes(opts.panel)) throw new Error('--panel must be cost, subagents, chip, modelbar, responsive, restart or all')
-  if (opts.live && (opts.panel === 'responsive' || opts.panel === 'restart')) throw new Error('Responsive and restart verification use fixture state and are offline only')
+  if (!['all', 'cost', 'subagents', 'chip', 'modelbar', 'responsive', 'restart', 'reset'].includes(opts.panel)) throw new Error('--panel must be cost, subagents, chip, modelbar, responsive, restart, reset or all')
+  if (opts.live && ['responsive', 'restart', 'reset'].includes(opts.panel)) throw new Error('Responsive, restart and reset verification use fixture state and are offline only')
   if (opts.live && !opts.session) throw new Error('--live requires an explicitly selected --session ID')
   return opts
 }
@@ -267,6 +267,162 @@ async function verifyRestart(page, folder) {
   await progress.locator('.slp-rs-actions button').last().click()
   if (await page.locator('.slp-rs-progress').count()) throw new Error('Dismiss did not close the progress panel')
   return { panel: 'restart', lifecycle: 'green arrow badge, animated stop/install/reconcile/start steps, elapsed line, rollback actions passed', screenshot: relative(root, screenshot) }
+}
+
+// Reset drawer: waits for its own chip to load, slides down out of it at
+// exactly the chip's width in the Host's menu material, one sentence in at
+// most two lines, holds while hovered, leaves after resetAlertSeconds, shows
+// once per page load until "Got it", and every details panel keeps listing it.
+// Without its own chip it slides out of the chip the header has; with no chip
+// at all it never shows.
+async function verifyReset(page, folder) {
+  const notice = (id, kind = 'codex') => ({ id, kind, type: 'direct_reset', phase: 'announced', at: null,
+    window: { precision: 'approximate', from: Date.now() + 3600000, through: Date.now() + 3600000 },
+    scope: 'Plus / Pro', url: 'https://aihot.news/codex-reset', postUrl: 'https://x.com/fixture/status/1' })
+  const codex = { model: { provider: 'codex', model: 'gpt-5-codex' }, overrides: { quotaAuto: true, showCodexQuota: true } }
+  // Each mount loads a fresh copy of the plugin into the same document; dispose
+  // the previous one first, or its drawer host keeps polling and showing.
+  const show = async (options, item, delayMs = 0) => {
+    await page.evaluate(delay => { try { window.disposeResponsiveFixture?.() } catch (error) { /* already unmounted */ } window.slpResetNotices = []; window.slpQuotaDelayMs = delay }, delayMs)
+    await mountResponsiveFixture(page, { ...options, overrides: { resetAlerts: 'on', resetAlertKinds: ['codex', 'antigravity'], resetAlertSeconds: 10, ...options.overrides } })
+    await page.evaluate(value => { window.slpFixtureRoot.unmount(); window.slpResetNotices = [value]; window.remountResponsiveFixture() }, item)
+  }
+  const drawer = page.locator('.slp-reset-drawer')
+  // The drawer's readiness check runs on the fake clock.
+  const appear = async (limitMs = 5000) => {
+    for (let spent = 0; spent <= limitMs && !await drawer.count(); spent += 250) await page.clock.runFor(250)
+    await drawer.waitFor()
+  }
+  // CSS animations run on real time, not Playwright's fake clock: settle them before measuring.
+  const settle = () => page.evaluate(() => document.querySelectorAll('.slp-reset-sheet').forEach(sheet => sheet.getAnimations().forEach(animation => animation.finish())))
+  // The page first: no drawer while its chip is still loading.
+  await show(codex, notice('fixture-anchored'), 1500)
+  await page.clock.runFor(1000)
+  if (await drawer.count()) throw new Error('Reset drawer appeared before its quota chip had loaded')
+  if (await page.locator('[data-slp-reset-kind="codex"]').getAttribute('data-slp-quota-ready') !== 'false') throw new Error('Codex chip should still be loading')
+  await appear()
+  await page.mouse.move(2, 840)
+  // The sheet starts fully inside its clipped frame and slides down out of it.
+  const motion = await page.evaluate(() => {
+    const frame = document.querySelector('.slp-reset-drawer'), sheet = frame.querySelector('.slp-reset-sheet')
+    return { overflow: getComputedStyle(frame).overflow, names: sheet.getAnimations().map(animation => animation.animationName), material: sheet.dataset.menuMaterial }
+  })
+  if (motion.overflow !== 'hidden' || !motion.names.includes('slp-drawer-in')) throw new Error('Reset drawer does not slide out of a clipped frame: ' + JSON.stringify(motion))
+  if (motion.material !== 'translucent') throw new Error('Reset drawer is not on the Host menu material: ' + JSON.stringify(motion))
+  const midShot = join(folder, 'reset-drawer-sliding.png')
+  await page.clock.runFor(90)
+  await page.screenshot({ path: midShot, clip: { x: 0, y: 0, width: page.viewportSize().width, height: 160 } })
+  await settle()
+  const text = (await drawer.innerText()).replace(/\s+/g, ' ')
+  if (!/^Codex resets around (today|tomorrow) \d\d:\d\d ↗ Got it$/.test(text.trim())) throw new Error('Reset drawer text: ' + text)
+  // The subscription in its colour, the time phrase in bold.
+  const styled = await drawer.evaluate(node => ({ name: node.querySelector('.slp-reset-name')?.textContent, nameColour: getComputedStyle(node.querySelector('.slp-reset-name')).color,
+    text: getComputedStyle(node.querySelector('.slp-reset-src')).color, time: node.querySelector('b.slp-reset-time')?.textContent, weight: getComputedStyle(node.querySelector('.slp-reset-time')).fontWeight }))
+  if (styled.name !== 'Codex' || styled.nameColour === styled.text || !/^around /.test(styled.time || '') || Number(styled.weight) < 600) throw new Error('Reset drawer emphasis: ' + JSON.stringify(styled))
+  const hrefs = await drawer.locator('a').evaluateAll(links => links.map(link => link.href + '|' + link.target + '|' + link.rel))
+  if (hrefs.join() !== 'https://aihot.news/codex-reset|_blank|noopener noreferrer') throw new Error('Reset drawer links: ' + hrefs.join())
+  const kinds = await page.evaluate(() => window.slpResponsive.resetRequests || [])
+  if (!kinds.length || !kinds.every(url => url.endsWith('kinds=codex%2Cantigravity'))) throw new Error('Reset notices asked for: ' + kinds.join())
+  if (await drawer.count() !== 1) throw new Error('Two mounted hosts rendered two drawers')
+  const placed = await page.evaluate(() => {
+    const chip = document.querySelector('[data-slp-reset-kind="codex"]').getBoundingClientRect()
+    const frame = document.querySelector('.slp-reset-drawer'), sheet = frame.querySelector('.slp-reset-sheet').getBoundingClientRect()
+    return { gap: sheet.top - chip.bottom, left: Math.round(sheet.left - chip.left), width: Math.round(sheet.width), chipWidth: Math.round(chip.width), height: Math.round(sheet.height) }
+  })
+  if (Math.abs(placed.gap - 2) > 1 || Math.abs(placed.left) > 1) throw new Error('Reset drawer is not on the Codex chip: ' + JSON.stringify(placed))
+  // One line within 1.5x the chip when it fits; otherwise only "Got it" moves
+  // down, and the sentence wraps only when it alone is wider than the cap.
+  const layout = await drawer.evaluate(node => {
+    const text = node.querySelector('.slp-reset-text'), ack = node.querySelector('.slp-reset-ack').getBoundingClientRect()
+    const tops = new Set([...text.getClientRects()].map(rect => Math.round(rect.top)))
+    const probe = text.cloneNode(true); probe.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap'; node.querySelector('.slp-reset-sheet').appendChild(probe)
+    const natural = probe.getBoundingClientRect().width; probe.remove()
+    return { textLines: tops.size, ackOnFirst: Math.abs(ack.top - text.getClientRects()[0].top) < 6, natural: Math.round(natural) }
+  })
+  const cap = Math.floor(placed.chipWidth * 1.5)
+  if (placed.width < placed.chipWidth - 1 || placed.width > cap + 1) throw new Error('Reset drawer width outside chip..1.5x chip: ' + JSON.stringify({ placed, cap }))
+  if (layout.natural + 16 <= cap && layout.textLines !== 1) throw new Error('Sentence wrapped although it fits the cap: ' + JSON.stringify({ layout, cap }))
+  if (layout.textLines === 1 && !layout.ackOnFirst && placed.height > 46) throw new Error('Reset drawer layout: ' + JSON.stringify({ layout, placed }))
+  const screenshot = join(folder, 'reset-drawer.png')
+  await page.screenshot({ path: screenshot, clip: { x: 0, y: 0, width: page.viewportSize().width, height: 160 } })
+  // Hovering holds it past its deadline; leaving resumes the time left.
+  await drawer.hover()
+  await page.clock.runFor(12000)
+  if (!await drawer.isVisible()) throw new Error('Reset drawer left while hovered')
+  await page.mouse.move(2, 840)
+  await page.clock.runFor(7000)
+  if (!await drawer.isVisible()) throw new Error('Reset drawer did not resume with its remaining time')
+  await page.clock.runFor(3500)
+  await drawer.waitFor({ state: 'detached', timeout: 2000 })
+  // Collapsed without "Got it": not again on this page.
+  await page.evaluate(() => { window.slpFixtureRoot.unmount(); window.remountResponsiveFixture() })
+  await page.clock.runFor(4000)
+  if (await drawer.count()) throw new Error('A shown reset drawer slid out again on the same page')
+  // Opening another session is a new view: it slides out again, once.
+  await page.evaluate(() => { window.slpFixtureSession = 'fixture-other'; window.slpFixtureRoot.unmount(); window.remountResponsiveFixture() })
+  await appear()
+  if (await drawer.getAttribute('data-notice-id') !== 'fixture-anchored') throw new Error('Reset drawer did not slide out again in another session')
+  await page.clock.runFor(10500)
+  await drawer.waitFor({ state: 'detached', timeout: 2000 })
+  await page.evaluate(() => { window.slpFixtureRoot.unmount(); window.remountResponsiveFixture() })
+  await page.clock.runFor(4000)
+  if (await drawer.count()) throw new Error('Remounting the same session slid the drawer out again')
+  await page.evaluate(() => { delete window.slpFixtureSession })
+  const panelText = async () => {
+    await page.locator('[data-slp-reset-kind="codex"] .slp-quota-trigger').click()
+    const section = page.locator('.slp-reset-section')
+    await section.waitFor()
+    const value = (await section.innerText()).replace(/\s+/g, ' ')
+    await page.keyboard.press('Escape')
+    return value
+  }
+  const listed = await panelText()
+  if (!listed.includes('Codex resets around') || !listed.includes('Plus / Pro') || listed.includes('AIHOT') || !listed.includes('Post')) throw new Error('Details panel reset section: ' + listed)
+  // "Got it" closes it for good; the panel still shows the notice.
+  await show(codex, notice('fixture-ack'))
+  await appear()
+  await settle()
+  if (await drawer.getAttribute('data-notice-id') !== 'fixture-ack') throw new Error('Unexpected drawer before "Got it": ' + await drawer.getAttribute('data-notice-id'))
+  await drawer.getByRole('button', { name: 'Got it' }).click()
+  await page.clock.runFor(300)
+  await drawer.waitFor({ state: 'detached', timeout: 2000 })
+  const acked = await page.evaluate(() => { try { return localStorage.getItem('statusline-plus:reset-ack') } catch (error) { return 'memory' } })
+  if (acked !== 'memory' && !String(acked).includes('fixture-ack|announced')) throw new Error('"Got it" was not stored: ' + acked)
+  if (!(await panelText()).includes('Codex resets around')) throw new Error('An acknowledged notice left the details panel')
+  // A subscription without its own chip slides out of the chip the header has.
+  await show(codex, notice('fixture-other', 'antigravity'))
+  await appear()
+  await settle()
+  const otherShot = join(folder, 'reset-drawer-other.png')
+  await page.screenshot({ path: otherShot, clip: { x: 0, y: 0, width: page.viewportSize().width, height: 120 } })
+  const other = await page.evaluate(() => {
+    const chip = document.querySelector('[data-slp-reset-kind="codex"]').getBoundingClientRect()
+    const sheet = document.querySelector('.slp-reset-sheet').getBoundingClientRect()
+    return { gap: Math.round(sheet.top - chip.bottom), left: Math.round(sheet.left - chip.left), width: Math.round(sheet.width - chip.width), ratio: sheet.width / chip.width }
+  })
+  if (other.gap !== 2 || other.left !== 0 || other.width < -1 || other.ratio > 1.51) throw new Error('Antigravity notice is not under the header chip: ' + JSON.stringify(other))
+  await drawer.getByRole('button', { name: 'Got it' }).click()
+  await page.clock.runFor(300)
+  const otherListed = await panelText()
+  if (!otherListed.includes('Antigravity resets around')) throw new Error('Codex panel does not list the Antigravity reset: ' + otherListed)
+  // A direct DeepSeek model has only the peak chip: the drawer uses it.
+  await show({ deepseek: true, overrides: { showQuota: false, showDeepseekPeak: true } }, notice('fixture-peak'))
+  await appear()
+  await settle()
+  const peak = await page.evaluate(() => {
+    const chip = document.querySelector('[data-slp-reset-last]').getBoundingClientRect(), sheet = document.querySelector('.slp-reset-sheet').getBoundingClientRect()
+    return { gap: Math.round(sheet.top - chip.bottom), left: Math.round(sheet.left - chip.left), width: Math.round(sheet.width - chip.width), ratio: sheet.width / chip.width }
+  })
+  if (peak.gap !== 2 || peak.left !== 0 || peak.width < -1 || peak.ratio > 1.51) throw new Error('Reset drawer is not under the peak chip: ' + JSON.stringify(peak))
+  await drawer.getByRole('button', { name: 'Got it' }).click()
+  await page.clock.runFor(300)
+  // No chip in the header: no drawer, however long it waits.
+  await show({ model: null, overrides: { showQuota: false, showDeepseekPeak: false } }, notice('fixture-nochip'))
+  await page.clock.runFor(5000)
+  if (await drawer.count()) throw new Error('A reset drawer appeared with no chip to slide out of')
+  await page.evaluate(() => { window.slpQuotaDelayMs = 0; window.disposeResponsiveFixture() })
+  return { panel: 'reset', waitsForChip: true, anchored: 'slides from Codex chip, 2px, chip width', compact: placed, material: 'translucent', otherKind: 'under the header chip, listed in Codex panel', peakChip: 'under the DeepSeek peak chip', noChip: 'no drawer',
+    holdOnHover: true, oncePerPage: true, ack: true, detailsPanel: true, screenshots: [relative(root, midShot), relative(root, screenshot), relative(root, otherShot)] }
 }
 
 async function verifyResponsive(page, folder) {
@@ -630,7 +786,7 @@ try {
   page.on('pageerror', error => errors.push(redact(error.message)))
   let network = 0
   page.on('request', request => { if (/^https?:/.test(request.url())) network++ })
-  const data = opts.live ? await mountLive(page, opts) : opts.panel === 'responsive' || opts.panel === 'restart' ? {} : opts.panel === 'chip' ? (await mountFixture(page), {}) : opts.panel === 'modelbar' ? (await mountModelBarFixture(page), {}) : (await mountFixture(page), { hasCosts: true, subagents: 2 })
+  const data = opts.live ? await mountLive(page, opts) : ['responsive', 'restart', 'reset'].includes(opts.panel) ? {} : opts.panel === 'chip' ? (await mountFixture(page), {}) : opts.panel === 'modelbar' ? (await mountModelBarFixture(page), {}) : (await mountFixture(page), { hasCosts: true, subagents: 2 })
   const checks = []
   if (['all', 'cost'].includes(opts.panel)) {
     if (!data.hasCosts) throw new Error('Selected session has no priced usage')
@@ -653,6 +809,7 @@ try {
     checks.push(await verifyDockExtension(folder, errors))
   } else if (!opts.live) await page.evaluate(() => window.slpFixtureRoot?.unmount())
   if (!opts.live && ['all', 'restart'].includes(opts.panel)) checks.push(await verifyRestart(page, folder))
+  if (!opts.live && ['all', 'reset'].includes(opts.panel)) checks.push(await verifyReset(page, folder))
   if (errors.length || !opts.live && network) throw new Error(errors.join('; ') || 'Offline fixture made a network request')
   if (opts.live && await page.evaluate(() => window.slpModules.entries.state.getSnapshot().failures.length)) throw new Error('Native module loader reported failures')
   const report = { ok: true, mode: opts.live ? 'live' : 'fixture', durationMs: Math.round(performance.now() - started), checks, errors: 0 }

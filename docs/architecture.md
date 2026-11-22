@@ -16,6 +16,7 @@ projections. The browser half (`lib/client.js`) is loaded through `dsh.client` i
 | Git | `git-status.js` |
 | Session | `session-log.js`, `session-metrics.js`, `model-pricing.js`, `tool-activity.js`, `subagent-activity.js`, `tps.js`, `session-records.js` (shared session-id spelling and stream usage record) |
 | Peak | `peak-schedule.js` |
+| Reset notices | `reset-feed.js` |
 | Update | `update.js` |
 | Reload / restart, DSH update | `restart.js`, `host-update.js`, `host-update-runner.js` |
 | Shared | `request-pool.js`, `http-route.js` |
@@ -50,6 +51,7 @@ All live under `/statusline/api/`.
 | `git` | POST | Git status for a `cwd` |
 | `tps` | GET | Server-sent speed events for one session |
 | `peak-schedule` | GET | Holiday calendar and official-rule check |
+| `reset-notices` | GET | Provider-wide reset notices for `kinds` (AIHOT, 10 min + ETag) |
 | `version` | GET, POST | Update check, and install |
 | `restart` | GET, POST | Reload/restart capability and progress; start one |
 

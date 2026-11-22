@@ -14,6 +14,7 @@ record what they cannot show, so correct a page in the same change when it goes 
 | The quota rail on the model button and in the model picker | [features/model-quota-bar.md](features/model-quota-bar.md) |
 | A quota source, its endpoint, parser or reading order | [features/quota/sources.md](features/quota/sources.md) |
 | DeepSeek peak status, countdown, holiday calendar | [features/peak-hours.md](features/peak-hours.md) |
+| Subscription reset notices (AIHOT feed, toast) | [features/reset-alerts.md](features/reset-alerts.md) |
 | Bottom row order, wrapping, presets, preview | [features/bottom-bar/README.md](features/bottom-bar/README.md) |
 | The `statusline-plus.dock.item` slot other plugins register into | [extending/README.md](extending/README.md) |
 | Git chip | [features/bottom-bar/git.md](features/bottom-bar/git.md) |
@@ -37,6 +38,7 @@ docs/
 |   |-- quota/                Header chips: behavior, then source protocols
 |   |-- model-quota-bar.md   Composer model seat: quota rail, picker rows
 |   |-- peak-hours.md         DeepSeek peak indicators
+|   |-- reset-alerts.md       Provider-wide reset notices
 |   |-- bottom-bar/           Composer row: layout, then one page per component
 |   |-- settings.md           Settings page
 |   |-- self-update.md        Update button
