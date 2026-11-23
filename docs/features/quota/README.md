@@ -4,6 +4,10 @@ A chip in the session header shows the balance or usage windows of the subscript
 paying for the current model. Clicking it opens a panel with every window, reset times,
 the data source and a refresh button.
 
+The chip carries the subscription name; the header slot is narrow, so Antigravity reads
+as `Agy` there (the reset drawer uses the same label). The details panel keeps the full
+name in its heading and messages.
+
 This page covers what the browser shows and when it refreshes. Where the numbers come
 from is in [sources.md](sources.md).
 
@@ -88,9 +92,15 @@ pauses recovery. Data already on screen stays during retries and is marked stale
 | `auth` | Login expired or rejected | The official tool signs in again |
 | `rate-limit` | Service returned 429 | Automatic retry |
 | `network` | Unreachable, timed out, or an unlisted error | Automatic retry |
-| `invalid-response` | The response did not parse | Code, if the service changed |
-| `disabled`, `not-found` | Switched off, or no such source | Settings |
+| `invalid-response` | The response did not parse, or a route answered with plain text instead of JSON | Code, if the service changed; a version mismatch or proxy if the body is not JSON |
+| `disabled`, `not-found` | The Host switched the source off, or does not know it | Settings; check the plugin/Host versions if the page shows it enabled |
+| `unauthorized`, `forbidden` | The page's session, Host/Origin fence, or remote credential was rejected | Refresh or sign in; check the URL host and origin |
 | `signed-out`, `no-account` | DeepSeek signed-in account only | User signs in |
+| `aborted`, `busy` | The request was cancelled, or the Host was busy | Retry, refocus, or wait |
+
+`QUOTA_REASON_KEYS` is the one place that turns a code into the chip's short label; every
+known code has its own. The chip's tooltip appends the raw code in parentheses, so even
+the `unavailable` fallback (an unknown code) can be traced.
 
 `QUOTA_ABSENT_ERRORS` are the codes a `subscriptionOnly` chip reports as "subscription not
 found" rather than as a failure.

@@ -361,15 +361,21 @@ async function verifyReset(page, folder) {
   await page.evaluate(() => { window.slpFixtureRoot.unmount(); window.remountResponsiveFixture() })
   await page.clock.runFor(4000)
   if (await drawer.count()) throw new Error('A shown reset drawer slid out again on the same page')
-  // Opening another session is a new view: it slides out again, once.
-  await page.evaluate(() => { window.slpFixtureSession = 'fixture-other'; window.slpFixtureRoot.unmount(); window.remountResponsiveFixture() })
-  await appear()
-  if (await drawer.getAttribute('data-notice-id') !== 'fixture-anchored') throw new Error('Reset drawer did not slide out again in another session')
-  await page.clock.runFor(10500)
-  await drawer.waitFor({ state: 'detached', timeout: 2000 })
+  // Switching to another session is not a new notice: it does not slide out again.
+  await page.evaluate(() => window.slpSetSession('fixture-other'))
+  await page.clock.runFor(4000)
+  if (await drawer.count()) throw new Error('Switching sessions showed the same notice again')
   await page.evaluate(() => { window.slpFixtureRoot.unmount(); window.remountResponsiveFixture() })
   await page.clock.runFor(4000)
   if (await drawer.count()) throw new Error('Remounting the same session slid the drawer out again')
+  // A drawer open at the switch belongs to its session: it closes, and the next
+  // session does not get it again.
+  await page.evaluate(item => { window.slpResetNotices = [item]; window.slpFixtureRoot.unmount(); window.remountResponsiveFixture() }, notice('fixture-switch'))
+  await appear()
+  await page.evaluate(() => window.slpSetSession('fixture-third'))
+  await drawer.waitFor({ state: 'detached', timeout: 2000 })
+  await page.clock.runFor(4000)
+  if (await drawer.count()) throw new Error('The previous session\'s drawer slid out in the next session')
   await page.evaluate(() => { delete window.slpFixtureSession })
   const panelText = async () => {
     await page.locator('[data-slp-reset-kind="codex"] .slp-quota-trigger').click()
@@ -390,12 +396,24 @@ async function verifyReset(page, folder) {
   await page.clock.runFor(300)
   await drawer.waitFor({ state: 'detached', timeout: 2000 })
   const acked = await page.evaluate(() => { try { return localStorage.getItem('statusline-plus:reset-ack') } catch (error) { return 'memory' } })
-  if (acked !== 'memory' && !String(acked).includes('fixture-ack|announced')) throw new Error('"Got it" was not stored: ' + acked)
+  if (acked !== 'memory' && !String(acked).includes('codex|fixture-ack')) throw new Error('"Got it" was not stored: ' + acked)
   if (!(await panelText()).includes('Codex resets around')) throw new Error('An acknowledged notice left the details panel')
+  // The same event confirmed later is the same notice: "Got it" follows it, so
+  // no second drawer, while the details panel updates to the confirmation.
+  const confirmed = { ...notice('fixture-ack'), phase: 'confirmed', at: Date.now(), window: null }
+  await page.evaluate(item => { window.slpResetNotices = [item]; window.slpFixtureRoot.unmount(); window.remountResponsiveFixture() }, confirmed)
+  await page.clock.runFor(4000)
+  if (await drawer.count()) throw new Error('A confirmed event slid out after "Got it"')
+  if (!(await panelText()).includes('was reset')) throw new Error('The details panel did not show the confirmation')
   // A subscription without its own chip slides out of the chip the header has.
-  await show(codex, notice('fixture-other', 'antigravity'))
+  // Its window is an estimate: the drawer names it as the chip does, and the
+  // panel marks the estimate without naming the source.
+  const estimated = { ...notice('fixture-other', 'antigravity'), window: { precision: 'estimate', from: Date.now() + 3600000, through: Date.now() + 3600000 } }
+  await show(codex, estimated)
   await appear()
   await settle()
+  const otherText = (await drawer.innerText()).replace(/\s+/g, ' ').trim()
+  if (!/^Agy resets around (today|tomorrow) \d\d:\d\d ↗ Got it$/.test(otherText)) throw new Error('Antigravity drawer text: ' + otherText)
   const otherShot = join(folder, 'reset-drawer-other.png')
   await page.screenshot({ path: otherShot, clip: { x: 0, y: 0, width: page.viewportSize().width, height: 120 } })
   const other = await page.evaluate(() => {
@@ -407,7 +425,8 @@ async function verifyReset(page, folder) {
   await drawer.getByRole('button', { name: 'Got it' }).click()
   await page.clock.runFor(300)
   const otherListed = await panelText()
-  if (!otherListed.includes('Antigravity resets around')) throw new Error('Codex panel does not list the Antigravity reset: ' + otherListed)
+  if (!otherListed.includes('Agy resets around')) throw new Error('Codex panel does not list the Antigravity reset: ' + otherListed)
+  if (!otherListed.includes('estimated') || otherListed.includes('AIHOT')) throw new Error('Estimated reset wording: ' + otherListed)
   // Several notices: one drawer, one line each, one "Got it" for all.
   await show(codex, [notice('fixture-many-a'), notice('fixture-many-b', 'antigravity')])
   await appear()
@@ -422,7 +441,7 @@ async function verifyReset(page, folder) {
   await page.clock.runFor(300)
   await drawer.waitFor({ state: 'detached', timeout: 2000 })
   const groupAcks = await page.evaluate(() => { try { return localStorage.getItem('statusline-plus:reset-ack') } catch (error) { return 'memory' } })
-  if (groupAcks !== 'memory' && !(groupAcks.includes('fixture-many-a|announced') && groupAcks.includes('fixture-many-b|announced'))) throw new Error('One "Got it" did not acknowledge every notice: ' + groupAcks)
+  if (groupAcks !== 'memory' && !(groupAcks.includes('codex|fixture-many-a') && groupAcks.includes('antigravity|fixture-many-b'))) throw new Error('One "Got it" did not acknowledge every notice: ' + groupAcks)
   await page.clock.runFor(3000)
   if (await drawer.count()) throw new Error('An acknowledged group slid out again')
   // A direct DeepSeek model has only the peak chip: the drawer uses it.

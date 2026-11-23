@@ -65,7 +65,13 @@ function harness({ hidden = false, wallTime = Date.now(), panelLayout = null } =
     clearInterval(token) { timers.delete(token) },
     fetch(url, opts) {
       return new Promise((resolve, reject) => {
-        requests.push({ url, opts, resolve: data => resolve({ json: async () => data }), reject })
+        requests.push({ url, opts, resolve: data => resolve({
+          status: data && typeof data.status === 'number' ? data.status : 200,
+          json: async () => {
+            if (data && data.plain === true) throw new SyntaxError('Unexpected token <')
+            return data
+          },
+        }), reject })
         opts?.signal?.addEventListener('abort', () => resolve({ json: async () => ({ ok: false, error: 'aborted' }) }))
       })
     },
@@ -79,7 +85,7 @@ function harness({ hidden = false, wallTime = Date.now(), panelLayout = null } =
       disconnect() { this.nodes.clear() }
     }
   }
-  const source = fs.readFileSync(require.resolve('../lib/client'), 'utf8').replace('return module.exports', 'return { magpieSubscriptionHint, ContextProjection, ContextRow, componentOrder, layoutOrder, isExtensionId, dockExtensionsOf, componentEnabled, reorderComponent, layoutPreset, matchingPreset, dockComponents, LayoutEditor, LayoutPreview, ToolActivityRow, toolElapsed, quotaRefreshOnStep, TpsRow, useLiveTps, useQuotaResource, formatPathSegs, fmtResetHours, minutesLabel, primarySubscriptionKind, looksLikeSubscription, providerMatchesModel, modelQuotaSource, modelQuotaMeter, meterPaint, modelQuotaTitle, planColor, fmtMoney, QuotaLine, parseSeconds, PeakPanel, PeakFooterDot, RestartFooterButton, restartStep, restartPollDelay, restartProgressSteps, quotaStepRefreshDue, useModelQuota, deepseekPeakStatus, HeaderChip, SettingsPage, DeepseekPeakChip, ActivityRow, childActivityRows, childElapsed, CostRow, estimateCost, quotaFreshness, pickFoldLevel, QuotaSource, QUOTA_SOURCES, QuotaChip, QuotaUnavailable, quotaState, fmtRetryIn, contextUsage, ContextPanel, formatTokens, STR, publishConfig, apiSetConfig, setScope: function (scope) { settingsScope = scope } }')
+  const source = fs.readFileSync(require.resolve('../lib/client'), 'utf8').replace('return module.exports', 'return { magpieSubscriptionHint, ContextProjection, ContextRow, componentOrder, layoutOrder, isExtensionId, dockExtensionsOf, componentEnabled, reorderComponent, layoutPreset, matchingPreset, dockComponents, LayoutEditor, LayoutPreview, ToolActivityRow, toolElapsed, quotaRefreshOnStep, TpsRow, useLiveTps, useQuotaResource, formatPathSegs, fmtResetHours, minutesLabel, primarySubscriptionKind, looksLikeSubscription, providerMatchesModel, modelQuotaSource, modelQuotaMeter, meterPaint, modelQuotaTitle, planColor, fmtMoney, QuotaLine, parseSeconds, PeakPanel, PeakFooterDot, RestartFooterButton, restartStep, restartPollDelay, restartProgressSteps, quotaStepRefreshDue, useModelQuota, deepseekPeakStatus, HeaderChip, SettingsPage, DeepseekPeakChip, ActivityRow, childActivityRows, childElapsed, CostRow, estimateCost, quotaFreshness, pickFoldLevel, QuotaSource, QUOTA_SOURCES, QuotaChip, QuotaUnavailable, quotaState, fmtRetryIn, contextUsage, ContextPanel, formatTokens, STR, resetSentence, resetSentenceParts, quotaRequest, publishConfig, apiSetConfig, setScope: function (scope) { settingsScope = scope } }')
   vm.runInNewContext(source, context)
   exported.setScope(scope)
   return {
@@ -783,6 +789,43 @@ test('quota errors are retry buttons with localized reasons; loading is inert', 
     assert.equal(h.QuotaLine({ kind: name, provider: { label: 'Test' }, data: null, error: null, refresh() {} }).children[0].type, 'span')
   }
   assert.equal(calls, 4)
+  // Every Host failure code has a readable label; the raw code stays in the tooltip.
+  const codes = [
+    ['invalid-response', 'bad response'], ['invalid-json', 'bad response'], ['body-too-large', 'bad response'],
+    ['not-found', 'not found'], ['disabled', 'disabled'], ['unauthorized', 'sign-in needed'],
+    ['forbidden', 'request rejected'], ['aborted', 'cancelled'], ['busy', 'busy'],
+  ]
+  for (const [code, label] of codes) {
+    const chip = h.QuotaLine({ kind: 'provider', provider: { id: 'deepseek', label: 'DeepSeek' }, error: code, refresh() {} }).children[0]
+    assert.equal(textContent(chip).replace(/\s+/g, ' ').trim(), 'DeepSeek ' + label, code)
+    assert.match(chip.props.title, new RegExp('\\(' + code + '\\)'), code)
+    assert.doesNotMatch(textContent(chip), /unavailable/, code + ' is not the fallback')
+  }
+  // An unknown code keeps the fallback but still names itself in the tooltip.
+  const unknown = h.QuotaLine({ kind: 'provider', provider: { label: 'DeepSeek' }, error: 'fixture-unknown', refresh() {} }).children[0]
+  assert.equal(textContent(unknown).replace(/\s+/g, ' ').trim(), 'DeepSeek unavailable')
+  assert.match(unknown.props.title, /\(fixture-unknown\)/)
+})
+
+test('a plain-text authenticated route rejection keeps its HTTP status as the code', async () => {
+  const h = harness()
+  const resource = { kind: 'provider', id: 'deepseek', modelProvider: 'deepseek-account', key: 'provider:deepseek' }
+  const unauthorized = h.quotaRequest(resource, true)
+  h.requests[0].resolve({ status: 401, plain: true })
+  const unauthorizedResult = await unauthorized
+  assert.equal(unauthorizedResult.ok, false)
+  assert.equal(unauthorizedResult.error, 'unauthorized')
+  const forbidden = h.quotaRequest(resource, true)
+  h.requests[1].resolve({ status: 403, plain: true })
+  const forbiddenResult = await forbidden
+  assert.equal(forbiddenResult.ok, false)
+  assert.equal(forbiddenResult.error, 'forbidden')
+  const missing = h.quotaRequest(resource, true)
+  h.requests[2].resolve({ status: 404, plain: true })
+  const missingResult = await missing
+  assert.equal(missingResult.ok, false)
+  assert.equal(missingResult.error, 'invalid-response')
+  h.unmount()
 })
 
 test('failed quota chips name the error and expose exhausted recovery without inventing a number', () => {
@@ -2126,6 +2169,8 @@ test('Antigravity chip falls back to Claude/GPT windows and never shows a bare q
   const data = { style: 'windows', chipWindows: 2, email: 'u@example.invalid', windows: third }
   let view = h.renderComponent(h.QuotaLine, { kind: 'antigravity', data, mode: 'used', refresh() {} })
   const chip = view.children[0]
+  const chipName = descendants(chip, node => node.props?.className === 'slp-quota-name').map(textContent)[0]
+  assert.equal(chipName, 'Agy', 'the header chip uses the short subscription label')
   assert.match(textContent(chip), /10%.*60%/)
   assert.doesNotMatch(textContent(chip), /\?/)
   assert.match(chip.props.title, /5 hours: 10% used · this week: 60% used/)
@@ -2143,9 +2188,26 @@ test('Antigravity chip falls back to Claude/GPT windows and never shows a bare q
   h.unmount()
   const empty = harness()
   const blank = empty.renderComponent(empty.QuotaLine, { kind: 'antigravity', data: { style: 'windows', windows: [] }, mode: 'used', refresh() {} })
-  assert.match(textContent(blank), /Antigravity unknown/)
+  assert.match(textContent(blank), /Agy unknown/)
   assert.doesNotMatch(textContent(blank), /\?/)
   empty.unmount()
+})
+
+test('reset notices name Antigravity as the chip does and mark an estimate without AIHOT', () => {
+  const h = harness()
+  const at = Date.now() + 3600000
+  const notice = { kind: 'antigravity', type: 'direct_reset', phase: 'announced', window: { precision: 'estimate', from: at, through: at } }
+  const brief = h.resetSentence(notice, true)
+  assert.match(brief, /^Agy /, 'the drawer uses the short subscription label')
+  assert.doesNotMatch(brief, /AIHOT|estimated/, 'the drawer leaves the estimate note to the panel')
+  const full = h.resetSentence(notice, false)
+  assert.match(full, /^Agy /)
+  assert.match(full, /estimated/, 'an estimated window is marked as estimated')
+  assert.doesNotMatch(full, /AIHOT/, 'the estimate note does not name the source')
+  const approximate = h.resetSentence({ ...notice, window: { precision: 'approximate', from: at, through: at } }, false)
+  assert.doesNotMatch(approximate, /estimated|AIHOT/, 'only an estimate carries the note')
+  assert.match(h.resetSentence({ ...notice, kind: 'codex' }, true), /^Codex /, 'other subscriptions keep their names')
+  h.unmount()
 })
 
 test('header chip keeps the fullest form that fits', () => {

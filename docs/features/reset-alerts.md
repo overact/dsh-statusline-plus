@@ -33,8 +33,8 @@ could not exist without it. Please follow its terms (below) and polling guidance
 | Feed, parser, notice rule, cache | `lib/reset-feed.js` (`ResetFeed`, `parseResetFeed`, `pickResetNotices`) |
 | Route | `reset-notices` in `lib/index.js` |
 | Subscriptions to ask for | `resetAlertKinds`, `catalogResetKinds`, `noteResetModel` in `lib/client.js` |
-| Shared list | `resetStore`, `publishResetNotices` (compares content, so a refined time or scope under the same id updates), `useResetNotices` |
-| Drawer | `ResetNoticeHost`, `ResetDrawer` (a group of notices), `resetAnchor(kinds)`, `resetKindsOf`, `ackResetNotice`, `noteResetAnchors` |
+| Shared list | `resetStore`, `publishResetNotices` (compares content, so a refined time or scope under the same id updates), `useResetNotices`; `resetNoticeKey` is `kind|id`, the event's identity across phases |
+| Drawer | `ResetNoticeHost`, `ResetDrawer` (a group of notices), `resetAnchor(kinds)`, `resetKindsOf`, `ackResetNotice`, `noteResetAnchors`, `enterResetView` / `leaveResetView`, `resetShownThisPage` (shown once per page) |
 | Chip ↔ subscription | `resetKindOfName`; chips carry `data-slp-reset-kind` and `data-slp-quota-ready` |
 | Details panel | `ResetPanelSection`, inserted by `quotaPanel` in every details panel |
 | Wording | `resetSentenceParts` (one source), `resetSentence` (tooltip text), `resetSentenceNodes` (coloured name, bold time), `resetDay` |
@@ -86,13 +86,21 @@ announces them reports them done. A rule limited to announcements would miss mos
 resets. The live history had 18 of 64 Codex events, 15 of 15 Antigravity and 13 of 17
 Claude in that shape.
 
-A notice's key is `id|phase`, so an announcement and its later confirmation are two notices.
+A notice's key is `kind|id`. AIHOT's later confirmation of the same event is **the same
+notice**: it updates the sentence in place and does not slide out again after the
+announcement was shown or acknowledged.
 
 | | Drawer | Details panel |
 | --- | --- | --- |
-| Not acknowledged | Slides out once per session view: page load, and each switch to another session | Listed in every details panel, own subscription first |
-| After "Got it" | Never again (`statusline-plus:reset-ack` in `localStorage`; memory where blocked) | Still listed |
+| Not acknowledged | Slides out once per page load; switching sessions closes it and does not show it again | Listed in every details panel, own subscription first |
+| After "Got it" | Never again for that event, in every session on this origin (`statusline-plus:reset-ack` in `localStorage`; memory where blocked). A later confirmation does not slide out | Still listed, updated to the confirmed sentence |
 | Outside the 24 h windows | — | Gone |
+
+The acknowledgement and the once-per-page ledger are keyed by the event, not by its
+phase or the session. A step that changes the session's model, a poll that refines the
+time or scope, and a confirmation all keep the same key, so none of them can bring the
+drawer back. A different browser origin (for example `localhost:3080` versus a remote
+access URL) has its own `localStorage` and therefore its own acknowledgements.
 
 Several pending notices share **one drawer**: one line per notice, in the Host's order
 (upcoming first, then confirmed newest first), and one "Got it" that acknowledges all of
@@ -121,10 +129,12 @@ seen there for the first time is asked about at once (`resetPollNow`), not at th
   at all it does not show; the details panels still list the notice. Every such chip
   carries `data-slp-reset-kind`, empty when no feed matches. Leaving it off unknown chips
   was a bug: a session on an OpenCode model never showed a drawer.
-- **When it slides out.** Until "Got it", once per session view: on page load and again each
-  time another session opens (`enterResetView`, keyed by the header's `sessionId`).
-  Remounting the same session's header (a layout change) is not a new view. A drawer
-  still open across the switch is not shown twice. After "Got it", never.
+- **When it slides out.** Until "Got it", once per page load, never on a poll or a session
+  switch. An open drawer belongs to the session view it slid out of: entering another
+  session, or unmounting that session's header, closes it (`enterResetView` /
+  `leaveResetView`, keyed by the header's `sessionId`), and the notice stays marked as
+  shown, so it does not slide out again there. Remounting the same session's header (a
+  layout change) is not a new view: it never re-shows the notice. After "Got it", never.
 - **After the page has loaded.** Nothing slides out before the `load` event, web fonts
   (`document.fonts.ready`) and one browser idle moment (`requestIdleCallback`, at most 1.5s),
   so the session content renders first (`whenResetPageReady`). The fixture page is already
@@ -162,13 +172,14 @@ seen there for the first time is asked about at once (`resetPollNow`), not at th
   (`word-break: keep-all`) never splits a Chinese word. The sentence is the AIHOT link;
   its tooltip carries the full sentence, the scope and the source. At a 167px Codex chip:
   "Codex 已于今天 09:23 重置额度 ↗" is one line (205px) with the button below it. The
-  longest case (Antigravity, a time range, a reset card) wraps at 250px into two lines,
+  longest case (Agy, a time range, a reset card) wraps at 250px into two lines,
   with the button at the right of the second.
 - **Wording.** "Codex 已于今天 09:23 重置额度", "Codex 预计明天 18:00 前重置额度",
-  "Codex 预计今天 13:35 左右重置额度", "Antigravity 可能在今天 13:24–16:24 发放重置卡".
-  Days read 今天/明天/昨天, otherwise M/D, in the viewer's time zone. A `date`-only
-  promise is a Beijing date and says so. An AIHOT estimate reads "可能在"; the panel
-  adds "（AIHOT 推算）".
+  "Codex 预计今天 13:35 左右重置额度", "Agy 可能在今天 13:24–16:24 发放重置卡".
+  The subscription reads as the header chip does ("Agy"); the settings list keeps the
+  full name. Days read 今天/明天/昨天, otherwise M/D, in the viewer's time zone. A
+  `date`-only promise is a Beijing date and says so. An announced estimate reads "可能在";
+  the panel adds "（estimated）", without naming the source.
 - **Placement follows events.** Measured on open, then on a `ResizeObserver` of the chip
   and its header, window resize, scroll, and chip announcements. Never per frame.
 - **Time.** It stays `resetAlertSeconds` (5). Hover or focus holds it, and leaving resumes
@@ -193,9 +204,11 @@ found again.
 `nextCheckAt`). `npm run verify -- --files lib/reset-feed.js lib/client.js --ui reset`: the
 drawer waiting while its chip loads, sliding out of a clipped frame on the Codex chip,
 between the chip's width and 1.5 times it, the sentence on one line when it fits the cap,
-the menu material, hover hold and resume, once per session view (again after a session
-switch, not after a same-session remount), the coloured name and bold time, the
-details-panel box, an Antigravity notice sliding out of the Codex chip, two notices in one drawer with one
+the menu material, hover hold and resume, once per page (not again after a session
+switch or a same-session remount), an open drawer closing when another session opens, the
+coloured name and bold time, the
+details-panel box, an estimated Agy notice sliding out of the Codex chip, a confirmation
+after "Got it" staying out of the drawer while the panel updates, two notices in one drawer with one
 "Got it" that acknowledges both, the DeepSeek peak chip as the last anchor, and no drawer at all without a chip. `window.slpLocale = 'zh-CN'`
 renders the fixture in Chinese. Each fixture mount loads a fresh plugin copy, so the check
 disposes the previous one first; otherwise its drawer host keeps polling.

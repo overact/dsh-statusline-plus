@@ -55,15 +55,20 @@ All live under `/statusline/api/`.
 | `version` | GET, POST | Update check, and install |
 | `restart` | GET, POST | Reload/restart capability and progress; start one |
 
-Every route passes `connection.admit` inside `register`, because named routes bypass
-the built-in `/api` transport and its authentication. Handlers then call `guardRequest`
-from `http-route.js`, which checks the method, the same-origin fence for every method (GET
-included) and the JSON content type. Quota routes answer HTTP 200 with `{ ok: false, error }`, and
-`quotaRoute` turns any error outside its allow-list into `network`, so raw exception
-text stays on the Host. A new stable error code must be added to
-`ACCOUNT_QUOTA_ERRORS` or `PROVIDER_QUOTA_ERRORS` and to the client's error text. The
-`git` route has its own list, `GIT_ERRORS`. The `usage` route uses `quotaRoute` with
-`USAGE_QUOTA_ERRORS`, which also passes `timeout` and `busy` through as before.
+Named routes bypass the built-in `/api` transport and its authentication. DSH
+0.2.3-alpha admits registered WebServer routes itself (their `auth` defaults to
+`required`) and passes the admitted Peer as the handler's third argument; `register`
+reuses that Peer instead of admitting the same request twice. Older Hosts pass only
+`(req, res)`, so the same wrapper falls back to `connection.admit`. Handlers then call
+`guardRequest` from `http-route.js`, which checks the method, the same-origin fence for
+every method (GET included) and the JSON content type. Quota routes answer HTTP 200 with
+`{ ok: false, error }`, and `quotaRoute` turns any error outside its allow-list into
+`network`, so raw exception text stays on the Host. A new stable error code must be
+added to `ACCOUNT_QUOTA_ERRORS` or `PROVIDER_QUOTA_ERRORS` and to the client's reason
+table (`QUOTA_REASON_KEYS`); codes the table does not know fall back to "unavailable"
+while their raw value stays in the tooltip. The `git` route has its own list,
+`GIT_ERRORS`. The `usage` route uses `quotaRoute` with `USAGE_QUOTA_ERRORS`, which also
+passes `timeout` and `busy` through as before.
 
 Every quota source makes its request through `fetchQuotaJson` (`quota-http.js`): one
 deadline joined with the caller's signal, the logged fetch, and a bounded JSON read that

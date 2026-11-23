@@ -35,7 +35,7 @@ If you installed an earlier version by hand, remove the `@local/dsh-statusline-p
 
 ### 1 · Balances and quotas
 
-Chips in the session header for DeepSeek, Kimi Code, Z.ai / Zhipu, Claude, Antigravity, Codex, OpenCode Go and OpenRouter, plus any other subscription your Magpie reports. By default the chip follows the model the session uses; **Show all subscription quotas** shows every enabled source instead. Click a chip for details and a manual refresh. When Codex, Antigravity, Claude or Grok resets quota for everyone, a short notice slides out under the chip ([reset notices](docs/features/reset-alerts.md)).
+Chips in the session header for DeepSeek, Kimi Code, Z.ai / Zhipu, Claude, Antigravity (shown as `Agy` to keep the header short), Codex, OpenCode Go and OpenRouter, plus any other subscription your Magpie reports. By default the chip follows the model the session uses; **Show all subscription quotas** shows every enabled source instead. Click a chip for details and a manual refresh. When Codex, Antigravity, Claude or Grok resets quota for everyone, a short notice slides out under the chip ([reset notices](docs/features/reset-alerts.md)).
 
 <p><img src="docs/images/quota-panel.png" width="560" alt="The DeepSeek balance chip opened: total ¥12.34 with topped-up and granted balances, update time and a Refresh button"></p>
 
@@ -178,7 +178,7 @@ dsh plugin --profile web add dsh-statusline-plus
 
 ### 功能
 
-**① 余额与额度。** 顶栏芯片支持 DeepSeek、Kimi Code、Z.ai／智谱、Claude、Antigravity、Codex、OpenCode Go、OpenRouter，以及 Magpie 报告的其他订阅。默认只显示当前模型对应的来源，开启“显示全部订阅额度”可全部显示。点击芯片查看详情并手动刷新。Codex、Antigravity、Claude、Grok 全员重置额度时，芯片下方会滑出简短提醒。使用 DSH 登录账号（`deepseek-account`）的模型，通过宿主读取该账号的充值余额与赠送余额，不需要 API Key。
+**① 余额与额度。** 顶栏芯片支持 DeepSeek、Kimi Code、Z.ai／智谱、Claude、Antigravity（顶栏显示为 `Agy` 以节省空间）、Codex、OpenCode Go、OpenRouter，以及 Magpie 报告的其他订阅。默认只显示当前模型对应的来源，开启“显示全部订阅额度”可全部显示。点击芯片查看详情并手动刷新。Codex、Antigravity、Claude、Grok 全员重置额度时，芯片下方会滑出简短提醒。使用 DSH 登录账号（`deepseek-account`）的模型，通过宿主读取该账号的充值余额与赠送余额，不需要 API Key。
 
 <p><img src="docs/images/quota-panel.png" width="560" alt="DeepSeek 余额详情"></p>
 

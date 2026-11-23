@@ -16,11 +16,13 @@ async function fixture(options) {
     dsh('cordis'), dsh('dsh-session'), dsh('dsh-session-projection'), dsh('dsh-settings'),
   ])
   const ctx = new Context(), routes = new Map()
+  let admitted = 0
   new SessionStore(ctx); new SessionProjectionRegistry(ctx)
   const { installSettings } = await import('./native-settings-fixture.mjs')
   const attach = await installSettings(ctx, dsh)
   ctx.provide('webServer', { register(spec) { routes.set(spec.path, spec.handler); return () => routes.delete(spec.path) } })
   ctx.provide('connection', { admit(req) {
+    admitted++
     return req.headers['x-fixture-auth'] === 'denied' ? { rejection: 401 }
       : req.headers['x-fixture-auth'] === 'forbidden' ? { rejection: 403 } : { peer: {} }
   } })
@@ -29,13 +31,13 @@ async function fixture(options) {
   const fiber = options === undefined ? ctx.plugin(plugin) : ctx.plugin(plugin, options)
   await fiber.await()
   attach('statusline-plus', fiber)
-  return { ctx, fiber, routes, entries: attach.entries, close: () => ctx.fiber.dispose() }
+  return { ctx, fiber, routes, entries: attach.entries, admissions: () => admitted, close: () => ctx.fiber.dispose() }
 }
-async function call(route, body = {}, method = 'POST') {
+async function call(route, body = {}, method = 'POST', peer) {
   const req = new EventEmitter(), res = new EventEmitter()
   Object.assign(req, { method, headers: { host: 'localhost', origin: 'http://localhost', 'content-type': 'application/json' } })
   Object.assign(res, { setHeader() {}, writeHead(status) { this.status = status }, end(text) { this.value = JSON.parse(text); this.writableEnded = true } })
-  const pending = route(req, res)
+  const pending = peer === undefined ? route(req, res) : route(req, res, peer)
   req.emit('data', JSON.stringify(body)); req.emit('end')
   await pending
   return res
@@ -46,6 +48,20 @@ test('the Git route answers with a stable code, never a raw exception', async t 
   // The fixture's subprocess service has no spawn, so the host hits a real TypeError.
   const response = await call(f.routes.get('/statusline/api/git'), { cwd: '/tmp', sessionId: 's1' })
   assert.deepEqual(response.value, { ok: false, error: 'git-failed' })
+})
+
+test('a Host that admits a route itself does not re-run the plugin admission', async t => {
+  const f = await fixture(); t.after(f.close)
+  const route = f.routes.get('/statusline/api/peak-schedule')
+  const before = f.admissions()
+  // DSH 0.2.3-alpha admits the route and passes the Peer as the third argument.
+  const admitted = await call(route, {}, 'GET', { id: 'peer-fixture' })
+  assert.equal(admitted.status, 200)
+  assert.equal(f.admissions(), before, 'a supplied Peer replaces the plugin admission')
+  // Older Hosts pass only (req, res), so the plugin's own fence still runs.
+  const legacy = await call(route, {}, 'GET')
+  assert.equal(legacy.status, 200)
+  assert.equal(f.admissions(), before + 1, 'older Hosts still admit in the plugin')
 })
 
 test('quota network diagnostics identify transport failures without leaking exception text', async t => {

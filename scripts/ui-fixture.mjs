@@ -252,12 +252,16 @@ export async function mountResponsiveFixture(page, { dockData = false, deepseek 
       : dockData && key === 'statuslineMetrics' ? settled : { steps: 0 },
       useSessions: select => select({ byId: { 'fixture-parent': { cwd: '/fixture-repo' } } }) }
     function App() {
+      // window.slpFixtureSession seeds the header's session; window.slpSetSession
+      // switches it live, so a test can change sessions without remounting.
+      const [session, setSession] = React.useState(() => window.slpFixtureSession || null)
+      window.slpSetSession = value => { window.slpFixtureSession = value || undefined; setSession(value || null) }
       return React.createElement(React.Fragment, null,
         // Mirrors DSH 0.2.2's title cluster: the actions slot sits inside clip + mask.
         React.createElement('div', { style: { display: 'flex', overflow: 'clip', maskImage: 'linear-gradient(to left, transparent, #000 20px)' } },
-          // window.slpFixtureSession switches the header to another session id.
+          // A session switch keeps the sidebar footer mounted, as the Host does.
           React.createElement('div', { id: 'fixture-header', className: 'fixture-headerActions' }, slot('conversation.session.header.actions',
-            window.slpFixtureSession ? { ...sessionProps, sessionId: window.slpFixtureSession } : sessionProps))),
+            session ? { ...sessionProps, sessionId: session } : sessionProps))),
         React.createElement('div', { id: 'fixture-dock' },
           React.createElement('div', { 'data-composer-card': true, style: { width: '100%', height: '1px' } }),
           React.createElement('div', { 'data-composer-dock': true, style: { display: 'inline-flex' } },
