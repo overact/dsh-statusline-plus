@@ -6,7 +6,7 @@ The **Statusline** section under DSH Web settings. Settings are saved under
 
 ## Code
 
-`SettingsPage`, `apiSetConfig`, `apiResetConfig`, `useConfigSnapshot`, `RESET_KEYS` in
+`SettingsPage`, `useSettingsForm`, `apiSetConfig`, `apiResetConfig`, `useConfigSnapshot`, `RESET_KEYS` in
 `lib/client.js`; `DEFAULT_CONFIG`, `sanitizeConfig`, `SettingsSchema`, `rawConfigProblems`,
 `assertRawConfig` in `lib/config.js`; the `internal/config` and `settings/document-updated`
 listeners in `lib/index.js`.

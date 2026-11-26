@@ -32,7 +32,7 @@ could not exist without it. Please follow its terms (below) and polling guidance
 | --- | --- |
 | Feed, parser, notice rule, cache | `lib/reset-feed.js` (`ResetFeed`, `parseResetFeed`, `pickResetNotices`) |
 | Route | `reset-notices` in `lib/index.js` |
-| Subscriptions to ask for | `resetAlertKinds`, `catalogResetKinds`, `noteResetModel` in `lib/client.js` |
+| Subscriptions to ask for | `resetAlertKinds`, `catalogResetKinds`, `noteResetModel` in `lib/client.js`; names, kinds and aliases come from `SUBSCRIPTIONS` |
 | Shared list | `resetStore`, `publishResetNotices` (compares content, so a refined time or scope under the same id updates), `useResetNotices`; `resetNoticeKey` is `kind|id`, the event's identity across phases |
 | Drawer | `ResetNoticeHost`, `ResetDrawer` (a group of notices), `resetAnchor(kinds)`, `resetKindsOf`, `ackResetNotice`, `noteResetAnchors`, `enterResetView` / `leaveResetView`, `resetShownThisPage` (shown once per page) |
 | Chip ↔ subscription | `resetKindOfName`; chips carry `data-slp-reset-kind` and `data-slp-quota-ready` |

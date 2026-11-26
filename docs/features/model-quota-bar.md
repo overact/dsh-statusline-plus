@@ -20,7 +20,7 @@ The image comes from `npm run screenshots` (sample data).
 | Rail geometry | `modelQuotaMeter`, `meterPaint`, `applyModelRail`, `clearModelRail` |
 | Shared fetch | `modelQuotaStore`, `useModelQuota` |
 | Empty-session signal | `setComposerStarted`, `useComposerStarted` (set by `StatusPanel`) |
-| Colours | `planColor`, `planKeyOf` |
+| Colours | `planColor`, `planKeyOf`, `PLAN_COLORS`, `SUBSCRIPTIONS[].color` |
 | Host slot | declared by `@deepseek-ai/dsh-client-ui-model-selection` |
 
 ## Where it appears
@@ -91,14 +91,17 @@ invented:
 | Anything else | `--dsw-alias-label-secondary` |
 
 The fill is 15% of that colour; the track is 10% of `--dsw-alias-label-tertiary`.
+`SUBSCRIPTIONS` in `lib/client.js` owns the subscription rows; `planKeyOf`
+canonicalizes Magpie aliases (`agy-cli`, `claude-code`) before the lookup, so the
+rail and the chip name the same subscription.
 
 ## Requests
 
 `modelQuotaStore` keeps one result per subscription key (`provider:<id>`, `codex`,
 `claude`, `antigravity`, `opencode`, `magpie:<id>`), so four Claude models in the
-picker are one request. The store answers from cache for `max(15000, cacheTtlMs)`
-and backs off 15 s after an error (60 s for `rate-limit`), staying behind the Host's
-own error cache. Rows fetch when the picker opens; the button fetches on mount. Agent steps do not
+picker are one request. The store answers from cache for `quotaTtlMs(cacheTtlMs)`
+and backs off through `quotaRetryMs(error)` (15 s, 60 s for `rate-limit`), the same
+policy as the chip and behind the Host's own error cache. Rows fetch when the picker opens; the button fetches on mount. Agent steps do not
 invalidate the store: re-rendering the picker inside the cache window asks nothing, and
 a failed entry keeps its backoff. Notifications are per subscription key, so one
 subscription's answer repaints only the rows that use it; `ModelQuotaLabel` is memoized

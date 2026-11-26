@@ -15,7 +15,7 @@ plugin.
 | DSH update check and start | `createHostUpdater`, `resolveHostInstall`, `fetchDistTag`, `hostPackageDir`, `systemdRunAvailable` in `lib/host-update.js` |
 | Out-of-process update | `runHostUpdate` in `lib/host-update-runner.js` |
 | Route | `restart` route, `hostReady`, `hostUpdater`, `profileContext` in `lib/index.js` |
-| Page | `RestartFooterButton`, `useRestartCaps`, `openRestartDialog`, `runRestart`, `restartStep`, `restartProgressSteps`, `updateRestartProgress`, `restartPollDelay` in `lib/client.js` |
+| Page | `RestartFooterButton`, `useRestartCaps`, `openRestartDialog`, `runRestart`, `restartStep`, `restartProgressSteps`, `updateRestartProgress`, `restartPollDelay`, `RESTART_STEPS`, `RESTART_PHASES`, `RESTART_ERRORS` in `lib/client.js` |
 
 ## What each environment gets
 

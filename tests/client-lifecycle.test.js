@@ -85,7 +85,7 @@ function harness({ hidden = false, wallTime = Date.now(), panelLayout = null } =
       disconnect() { this.nodes.clear() }
     }
   }
-  const source = fs.readFileSync(require.resolve('../lib/client'), 'utf8').replace('return module.exports', 'return { magpieSubscriptionHint, ContextProjection, ContextRow, componentOrder, layoutOrder, isExtensionId, dockExtensionsOf, componentEnabled, reorderComponent, layoutPreset, matchingPreset, dockComponents, LayoutEditor, LayoutPreview, ToolActivityRow, toolElapsed, quotaRefreshOnStep, TpsRow, useLiveTps, useQuotaResource, formatPathSegs, fmtResetHours, minutesLabel, primarySubscriptionKind, looksLikeSubscription, providerMatchesModel, modelQuotaSource, modelQuotaMeter, meterPaint, modelQuotaTitle, planColor, fmtMoney, QuotaLine, parseSeconds, PeakPanel, PeakFooterDot, RestartFooterButton, restartStep, restartPollDelay, restartProgressSteps, quotaStepRefreshDue, useModelQuota, deepseekPeakStatus, HeaderChip, SettingsPage, DeepseekPeakChip, ActivityRow, childActivityRows, childElapsed, CostRow, estimateCost, quotaFreshness, pickFoldLevel, QuotaSource, QUOTA_SOURCES, QuotaChip, QuotaUnavailable, quotaState, fmtRetryIn, contextUsage, ContextPanel, formatTokens, STR, resetSentence, resetSentenceParts, resetKindOfName, quotaRequest, publishConfig, apiSetConfig, setScope: function (scope) { settingsScope = scope } }')
+  const source = fs.readFileSync(require.resolve('../lib/client'), 'utf8').replace('return module.exports', 'return { magpieSubscriptionHint, ContextProjection, ContextRow, componentOrder, layoutOrder, isExtensionId, dockExtensionsOf, componentEnabled, reorderComponent, layoutPreset, matchingPreset, dockComponents, LayoutEditor, LayoutPreview, ToolActivityRow, toolElapsed, quotaRefreshOnStep, TpsRow, useLiveTps, useQuotaResource, formatPathSegs, fmtResetHours, minutesLabel, primarySubscriptionKind, looksLikeSubscription, providerMatchesModel, modelQuotaSource, modelQuotaMeter, meterPaint, modelQuotaTitle, planColor, planKeyOf, fmtMoney, QuotaLine, parseSeconds, PeakPanel, PeakFooterDot, RestartFooterButton, restartStep, restartPollDelay, restartProgressSteps, quotaStepRefreshDue, useModelQuota, deepseekPeakStatus, HeaderChip, SettingsPage, DeepseekPeakChip, ActivityRow, childActivityRows, childElapsed, CostRow, estimateCost, quotaFreshness, pickFoldLevel, QuotaSource, QUOTA_SOURCES, QuotaChip, QuotaUnavailable, quotaState, fmtRetryIn, contextUsage, ContextPanel, formatTokens, STR, resetSentence, resetSentenceParts, resetKindOfName, quotaRequest, publishConfig, apiSetConfig, setScope: function (scope) { settingsScope = scope } }')
   vm.runInNewContext(source, context)
   exported.setScope(scope)
   return {
@@ -2252,6 +2252,10 @@ test('model selection reaches any Magpie subscription without a name list', () =
   assert.equal(h.primarySubscriptionKind({ provider: 'magpie', model: 'claude/opus' }), 'claude')
   assert.equal(h.primarySubscriptionKind({ provider: 'anthropic', model: 'claude-opus' }), null)
   assert.equal(h.primarySubscriptionKind({ provider: 'magpie', model: 'antigravity/claude-opus' }), 'antigravity')
+  // A Magpie alias takes its subscription's tint, so the rail and the chip
+  // cannot disagree about the same subscription.
+  assert.equal(h.planColor(h.planKeyOf({ kind: 'magpie', id: 'agy-cli' })), h.planColor('antigravity'))
+  assert.equal(h.planColor(h.planKeyOf({ kind: 'magpie', id: 'claude-code' })), h.planColor('claude'))
 })
 
 async function settingsUpdate(data) {

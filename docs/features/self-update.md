@@ -7,7 +7,7 @@ installs in place, and the Host swaps the new copy into the running profile.
 
 `createUpdateChecker`, `applyUpdate`, `resolveInstall`, `enginesAllow`, `compareVersions` in
 `lib/update.js`; the `version` route and `hotApplyUpdate` in `lib/index.js`; the update state
-in `SettingsPage` (`lib/client.js`).
+in `useUpdateInstall` (`lib/client.js`).
 
 ## Checking
 

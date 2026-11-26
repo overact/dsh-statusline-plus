@@ -16,7 +16,7 @@ from is in [sources.md](sources.md).
 | Part | Location |
 | --- | --- |
 | Chip selection | `HeaderChip` in `lib/client.js` |
-| Model to subscription | `modelQuotaSource` (the one resolver, also used by the model seat), `quotaKindEnabled`, `primarySubscriptionKind`, `magpieSubscriptionHint`, `looksLikeSubscription`, `providerMatchesModel` |
+| Model to subscription | `modelQuotaSource` (the one resolver, also used by the model seat), `quotaKindEnabled`, `primarySubscriptionKind`, `SUBSCRIPTIONS`, `magpieSubscriptionHint`, `looksLikeSubscription`, `providerMatchesModel` |
 | Fetch, retry, freshness | `useQuotaResource`, `quotaFreshness` |
 | Rendering | `QuotaChip`, `QuotaLine`, `ChipFold`, `windowsView`, `balanceView` |
 | Host gate and cache | `quota()` and `quotaRoute` in `lib/index.js` |
@@ -143,10 +143,12 @@ Under `prefers-reduced-motion` the animation is off but the removal still happen
 1. Write the fetcher returning the shape in `lib/quota-window.js`, reading through
    `readInOrder`, and add a section to [sources.md](sources.md).
 2. Add the route and gate in `lib/index.js`, and the setting in `lib/config.js`.
-3. Add it to `QUOTA_KINDS`, `primarySubscriptionKind`, `quotaKindEnabled` and
-   `DEDICATED_SUBSCRIPTION_RE` in `lib/client.js`, and give it a source card. The
-   model seat's rail follows automatically because it resolves through
-   `modelQuotaSource`; add a `planColor` entry if it needs its own tint.
+3. Add one entry to `SUBSCRIPTIONS` in `lib/client.js`: its name and label keys,
+   tint, settings switch, model/provider match, reset coverage and aliases.
+   `QUOTA_SUBSCRIPTION_KINDS`, `primarySubscriptionKind`,
+   `quotaKindEnabled`, `DEDICATED_SUBSCRIPTION_RE` and the rail palette derive
+   from that table. Give it a source card; the model seat's rail follows through
+   `modelQuotaSource`.
 4. Add parser tests with invented values, shaped like a real response.
 
 ## Tests
