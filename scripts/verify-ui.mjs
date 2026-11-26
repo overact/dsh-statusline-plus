@@ -269,6 +269,21 @@ async function verifyRestart(page, folder) {
   return { panel: 'restart', lifecycle: 'green arrow badge, animated stop/install/reconcile/start steps, elapsed line, rollback actions passed', screenshot: relative(root, screenshot) }
 }
 
+// The sentence and scope's own line boxes, not the paragraph (which spans the
+// float), so a post link sharing their last line can be told from one below it.
+function measurePostLine() {
+  const line = document.querySelector('.slp-reset-section .slp-reset-line')
+  const link = line.querySelector('.slp-reset-link'), main = line.querySelector('.slp-reset-main')
+  const lineRect = line.getBoundingClientRect(), linkRect = link.getBoundingClientRect()
+  const range = document.createRange(); range.selectNodeContents(main)
+  const rects = [...range.getClientRects()].filter(rect => rect.width > 0)
+  const lastTop = rects.reduce((top, rect) => Math.max(top, rect.top), -Infinity)
+  const last = rects.filter(rect => Math.abs(rect.top - lastTop) < 1)
+  return { lineRight: lineRect.right, lineBottom: lineRect.bottom, linkLeft: linkRect.left, linkRight: linkRect.right, linkTop: linkRect.top,
+    lastTop, lastRight: last.reduce((right, rect) => Math.max(right, rect.right), 0), lastBottom: last.reduce((bottom, rect) => Math.max(bottom, rect.bottom), 0),
+    lines: new Set(rects.map(rect => Math.round(rect.top))).size }
+}
+
 // Reset drawer: waits for its own chip to load, slides down out of it at
 // exactly the chip's width in the Host's menu material, one sentence in at
 // most two lines, holds while hovered, leaves after resetAlertSeconds, shows
@@ -387,22 +402,41 @@ async function verifyReset(page, folder) {
   }
   const listed = await panelText()
   if (!listed.includes('Codex resets around') || !listed.includes('Plus / Pro') || listed.includes('AIHOT') || !listed.includes('Post')) throw new Error('Details panel reset section: ' + listed)
-  // The original-post link is a separate, right-aligned flex item: it never
-  // reads as part of the scope ("Plus / Pro") or the sentence.
+  // The original-post link floats right after the sentence and scope: it never
+  // reads as part of the scope ("Plus / Pro") and shares the last line instead
+  // of spending a line of its own.
   await page.locator('[data-slp-reset-kind="codex"] .slp-quota-trigger').click()
   const panel = page.locator('.slp-panel').filter({ has: page.locator('.slp-reset-section') }).last()
   await panel.waitFor()
   const panelShot = join(folder, 'reset-panel.png')
   await panel.screenshot({ path: panelShot })
-  const postLayout = await page.evaluate(() => {
-    const line = document.querySelector('.slp-reset-section .slp-reset-line')
-    const link = line.querySelector('.slp-reset-link'), main = line.querySelector('.slp-reset-main')
-    const lineRect = line.getBoundingClientRect(), linkRect = link.getBoundingClientRect(), mainRect = main.getBoundingClientRect()
-    return { lineRight: lineRect.right, linkRight: linkRect.right, gap: linkRect.left - mainRect.right }
-  })
+  const postLayout = await page.evaluate(measurePostLine)
   await page.keyboard.press('Escape')
   if (Math.abs(postLayout.lineRight - postLayout.linkRight) > 1.5) throw new Error('Details panel post link is not right-aligned: ' + JSON.stringify(postLayout))
-  if (postLayout.gap < 4) throw new Error('Details panel post link touches the scope: ' + JSON.stringify(postLayout))
+  if (postLayout.linkLeft - postLayout.lastRight < 4) throw new Error('Details panel post link touches the scope: ' + JSON.stringify(postLayout))
+  if (postLayout.linkTop > postLayout.lastBottom - 2) throw new Error('Details panel post link sits below a last line with room: ' + JSON.stringify(postLayout))
+  // A long credit-reset line (the Codex "reset cards issued … Go, Plus, Pro,
+  // Business" shape) wraps. "Post" takes the room left on its last line instead
+  // of adding a third line whenever the sentence alone wraps.
+  const longNotice = { ...notice('fixture-long'), type: 'reset_credit', phase: 'confirmed', at: Date.now() - 86400000, window: null, scope: 'Go, Plus, Pro, Business' }
+  await show(codex, longNotice)
+  await page.clock.runFor(1000)
+  await appear()
+  await settle()
+  await drawer.getByRole('button', { name: 'Got it' }).click()
+  await page.clock.runFor(300)
+  await drawer.waitFor({ state: 'detached', timeout: 2000 })
+  await page.locator('[data-slp-reset-kind="codex"] .slp-quota-trigger').click()
+  await page.waitForFunction(() => document.querySelector('.slp-reset-section')?.textContent.includes('reset cards issued'))
+  const wrappedPanel = page.locator('.slp-panel').filter({ has: page.locator('.slp-reset-section') }).last()
+  const wrappedShot = join(folder, 'reset-panel-wrapped.png')
+  await wrappedPanel.screenshot({ path: wrappedShot })
+  const wrapped = await page.evaluate(measurePostLine)
+  await page.keyboard.press('Escape')
+  if (wrapped.lines < 2) throw new Error('The long details-panel notice did not wrap: ' + JSON.stringify(wrapped))
+  if (wrapped.linkTop > wrapped.lastBottom - 2) throw new Error('Details panel post link left the last line of a wrapped notice: ' + JSON.stringify(wrapped))
+  if (wrapped.lineBottom - wrapped.lastBottom > 8) throw new Error('Details panel post link added a line under a wrapped notice: ' + JSON.stringify(wrapped))
+  if (Math.abs(wrapped.lineRight - wrapped.linkRight) > 1.5) throw new Error('Wrapped details panel post link is not right-aligned: ' + JSON.stringify(wrapped))
   // "Got it" closes it for good; the panel still shows the notice.
   await show(codex, notice('fixture-ack'))
   await appear()

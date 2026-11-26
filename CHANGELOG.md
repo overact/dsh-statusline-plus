@@ -3,7 +3,7 @@
 ## Unreleased
 
 - Subscription reset notices now default to On with Codex, Antigravity and Claude ticked (Grok stays opt-in), so a provider-wide reset is not missed when its model is absent from the picker; an explicit Auto, Off or subset still wins. Magpie's `agy-cli/` (local agy CLI) models and `agy-cli` quota rows are recognized as the same Antigravity subscription.
-- The details panel's original-post link ("原帖 ↗" / "Post ↗") is right-aligned on its own flex item, so it cannot read as part of the scope text.
+- The details panel's original-post link ("原帖 ↗" / "Post ↗") floats right after the sentence and scope: it shares their last line whenever that line has room and only drops to a line of its own when it does not, so it cannot read as part of the scope text and no longer adds an empty line under a wrapped notice.
 
 ## 0.2.1
 

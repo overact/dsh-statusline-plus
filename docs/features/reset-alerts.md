@@ -196,12 +196,14 @@ cannot disagree with the chip about it.
 ## Details panel
 
 Every details panel with current notices shows one rounded box under its rows. The box
-has one flowing line per notice, wrapping only when needed. The sentence and scope are
-the left item; the original-post link ("原帖 ↗" / "Post ↗") is a separate, right-aligned
-item, so it cannot read as part of the scope. It wraps to its own line only when the
-panel is too narrow. The panel's own subscription comes first. Notices stay until they
-leave the 24h windows, acknowledged or not, so a dismissed drawer can always be found
-again.
+has one flowing line per notice, wrapping only when needed. The sentence and scope flow
+as one text; the original-post link ("原帖 ↗" / "Post ↗") floats right after them, so it
+cannot read as part of the scope. It sits at the right of their last line whenever that
+line leaves room for it (10px apart), and only takes a line of its own when it does not.
+A flex item was tried and dropped for the same reason as in the drawer: a wrapped
+sentence filled the row, so the link could never share its last line and the box gained
+a line. The panel's own subscription comes first. Notices stay until they leave the 24h
+windows, acknowledged or not, so a dismissed drawer can always be found again.
 
 ## Tests
 
@@ -212,7 +214,8 @@ between the chip's width and 1.5 times it, the sentence on one line when it fits
 the menu material, hover hold and resume, once per page (not again after a session
 switch or a same-session remount), an open drawer closing when another session opens, the
 coloured name and bold time, the
-details-panel box with its right-aligned original-post link, an estimated Agy notice
+details-panel box with its original-post link right-aligned on the last line of a
+wrapped notice, an estimated Agy notice
 sliding out of the Codex chip, a confirmation
 after "Got it" staying out of the drawer while the panel updates, two notices in one drawer with one
 "Got it" that acknowledges both, the DeepSeek peak chip as the last anchor, and no drawer at all without a chip. `window.slpLocale = 'zh-CN'`
