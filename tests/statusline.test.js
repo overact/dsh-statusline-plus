@@ -9,7 +9,7 @@ const { homedir, tmpdir } = require('node:os')
 const { join, resolve } = require('node:path')
 
 process.env.SLP_TEST = '1'
-const { __test } = require('../lib/index.js')
+const __test = require('./test-api.js')
 
 function createFakeLocale(active = 'en') {
   const namespaces = {}

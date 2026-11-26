@@ -5,7 +5,7 @@ const { mkdtempSync, rmSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { join } = require('node:path')
 process.env.SLP_TEST = '1'
-const { __test: api } = require('../lib/index')
+const api = require('./test-api.js')
 const { RequestPool } = require('../lib/request-pool')
 const credentials = [100, 10, 0, -1].map((priority, i) => ({ priority, fileName: `account-${i}.json`, email: `test-${i}@example.invalid` }))
 const win = (id, group, exhausted, remainingPercent = exhausted ? 0 : 100) => ({ id, group, remainingPercent, usedPercent: 100 - remainingPercent, ...(exhausted ? { exhausted: true } : {}) })

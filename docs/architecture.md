@@ -19,10 +19,19 @@ projections. The browser half (`lib/client.js`) is loaded through `dsh.client` i
 | Reset notices | `reset-feed.js` |
 | Update | `update.js` |
 | Reload / restart, DSH update | `restart.js`, `host-update.js`, `host-update-runner.js` |
-| Shared | `request-pool.js`, `http-route.js` |
+| Shared | `request-pool.js`, `http-route.js`, `ttl-map.js`, `json-store.js`, `cached-refresh.js` |
 
 `lib/client.js` is a single large file. Find a component by searching for its name; the
 feature pages name the ones they own.
+
+Two tables are the single source for the data that used to be copied around:
+`SUBSCRIPTIONS` in `lib/client.js` (labels, tint, settings switch, model/provider
+match, reset coverage and aliases), and `RESTART_PHASES`/`RESTART_ERRORS` (the
+probe step, progress step and error sentence for one Host job phase). The
+quota cache lifetime and retry delays are `quotaTtlMs`/`quotaRetryMs`; the Host's
+bounded caches share `lib/ttl-map.js`, its JSON state files share `lib/json-store.js`,
+and its single-flight refresh gates share `lib/cached-refresh.js`. Add a row there
+instead of a parallel list.
 
 ## Browser slots
 
@@ -135,5 +144,6 @@ Harness HMR can reload the plugin repeatedly. Release every route, listener, poo
 projection through `ctx.effect` or the `disposers` list so no handler is duplicated.
 Before advising a Host restart, run `npm run dev:runtime`.
 
-`SLP_TEST=1` exposes pure functions as `__test`. Tests use that instead of a real Host,
-except the integration tests, where `DSH_PACKAGE_DIR` selects an installed runtime.
+`SLP_TEST=1` exposes only the index-local `hotApplyUpdate` as `__test`; other tests
+import module internals through `tests/test-api.js` instead of a real Host, except the
+integration tests, where `DSH_PACKAGE_DIR` selects an installed runtime.

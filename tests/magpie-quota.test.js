@@ -6,7 +6,7 @@ const { tmpdir } = require('node:os')
 const { join } = require('node:path')
 process.env.SLP_TEST = '1'
 const windowOf = (result, id) => result.windows.find(item => item.id === id)
-const { __test: api } = require('../lib/index')
+const api = require('./test-api.js')
 const { RequestPool } = require('../lib/request-pool')
 
 const now = Date.parse('2026-10-25T12:00:00+11:00')

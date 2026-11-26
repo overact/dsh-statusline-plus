@@ -8,6 +8,7 @@ const { EventEmitter } = require('node:events')
 const { hostPiVersion } = require('./native-pricing-fixture.cjs')
 process.env.SLP_TEST = '1'
 const plugin = require('../lib/index')
+const __test = require('./test-api.js')
 const fromDsh = createRequire(process.env.DSH_PACKAGE_DIR ? join(process.env.DSH_PACKAGE_DIR, 'package.json') : require.resolve('@deepseek-ai/dsh/package.json'))
 const dsh = name => import(pathToFileURL(fromDsh.resolve('@deepseek-ai/' + name)).href)
 
@@ -71,11 +72,11 @@ test('quota network diagnostics identify transport failures without leaking exce
     Object.assign(new Error(secret), { code: 'ENETUNREACH' }),
     Object.assign(new Error(secret), { code: secret }),
   ]) })
-  const detail = plugin.__test.quotaNetworkDetails(error)
+  const detail = __test.quotaNetworkDetails(error)
   assert.deepEqual(detail, { reason: 'timeout', codes: ['ETIMEDOUT', 'ENETUNREACH'] })
-  assert.equal(plugin.__test.quotaNetworkDetails({ cause: { code: 'ENOTFOUND' } }).reason, 'dns')
-  assert.equal(plugin.__test.quotaNetworkDetails({ cause: { code: 'ECONNREFUSED' } }).reason, 'connection-refused')
-  assert.equal(plugin.__test.quotaNetworkDetails({ cause: { code: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' } }).reason, 'tls')
+  assert.equal(__test.quotaNetworkDetails({ cause: { code: 'ENOTFOUND' } }).reason, 'dns')
+  assert.equal(__test.quotaNetworkDetails({ cause: { code: 'ECONNREFUSED' } }).reason, 'connection-refused')
+  assert.equal(__test.quotaNetworkDetails({ cause: { code: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' } }).reason, 'tls')
   const warnings = [], warn = console.warn, originalFetch = global.fetch
   console.warn = (...args) => warnings.push(args.join(' '))
   global.fetch = async () => { throw error }
@@ -167,36 +168,36 @@ test('one invalid stored provider is skipped with a warning instead of failing t
   // id is dropped. Both must be stable, because apply() normalises repeatedly
   // (Config -> SettingsSchema -> sanitizeConfig) and a second pass used to resurrect the
   // builtin it had just dropped.
-  const builtinFallback = plugin.__test.sanitizeConfig({ providers: [{ id: 'deepseek', endpoints: [{ url: 'https://api.deepseek.com/user/balance' }] }] })
+  const builtinFallback = __test.sanitizeConfig({ providers: [{ id: 'deepseek', endpoints: [{ url: 'https://api.deepseek.com/user/balance' }] }] })
   const deepseek = builtinFallback.providers.find(provider => provider.id === 'deepseek')
   assert.ok(deepseek, 'a malformed builtin override falls back to its default')
   assert.ok(deepseek.endpoints.length > 0, 'and the fallback carries usable endpoints')
-  assert.deepEqual(plugin.__test.sanitizeConfig({ providers: builtinFallback.providers }).providers, builtinFallback.providers,
+  assert.deepEqual(__test.sanitizeConfig({ providers: builtinFallback.providers }).providers, builtinFallback.providers,
     'sanitizeConfig is idempotent')
-  const custom = plugin.__test.sanitizeConfig({ providers: [{ id: 'broken-source', endpoints: [{ url: 'https://api.deepseek.com/user/balance' }] }] })
+  const custom = __test.sanitizeConfig({ providers: [{ id: 'broken-source', endpoints: [{ url: 'https://api.deepseek.com/user/balance' }] }] })
   assert.ok(!custom.providers.some(provider => provider.id === 'broken-source'), 'an unknown malformed id is dropped')
   // A JSON-valued id such as {toString:1} makes String()/join() throw; the tolerant read
   // path must not be defeated by its own warning.
-  assert.doesNotThrow(() => plugin.__test.SettingsSchema({ providers: [{ id: { toString: 1 } }] }),
+  assert.doesNotThrow(() => __test.SettingsSchema({ providers: [{ id: { toString: 1 } }] }),
     'a JSON-valued provider id must not defeat the tolerant read path')
   // Every stored string field is coerced with the same safe helper: String(value) throws
   // for {toString:1} and for null-prototype objects, and that crash would land inside
   // apply() once the schema stops rejecting those values.
   for (const key of ['apiKeyEnv', 'usageUrl', 'gitCwd', 'codexAccount', 'antigravityAccount']) {
     for (const value of [{ toString: 1 }, Object.create(null)]) {
-      assert.doesNotThrow(() => plugin.__test.sanitizeConfig({ [key]: value }), key + ' must survive an unstringifiable stored value')
+      assert.doesNotThrow(() => __test.sanitizeConfig({ [key]: value }), key + ' must survive an unstringifiable stored value')
     }
   }
   // Numeric fields coerce through a guarded reader too: Number({toString:1}) throws.
   for (const key of ['cacheTtlMs', 'fetchTimeoutMs']) {
-    assert.doesNotThrow(() => plugin.__test.sanitizeConfig({ [key]: { toString: 1 } }), key + ' must survive an unstringifiable stored value')
+    assert.doesNotThrow(() => __test.sanitizeConfig({ [key]: { toString: 1 } }), key + ' must survive an unstringifiable stored value')
   }
-  assert.doesNotThrow(() => plugin.__test.sanitizeConfig({ providers: [{ id: 'zai', redBelow: { toString: 1 }, endpoints: [{ url: { toString: 1 }, parse: { mode: 'zai-quota' } }] }] }),
+  assert.doesNotThrow(() => __test.sanitizeConfig({ providers: [{ id: 'zai', redBelow: { toString: 1 }, endpoints: [{ url: { toString: 1 }, parse: { mode: 'zai-quota' } }] }] }),
     'provider overrides must survive unstringifiable stored values')
 })
 
 test('provider endpoints reject internal hosts in their fully-qualified and mapped spellings', () => {
-  const guard = plugin.__test.sanitizeProviderEndpointUrl
+  const guard = __test.sanitizeProviderEndpointUrl
   for (const url of [
     'https://169.254.169.254/x', 'https://localhost/x', 'https://localhost./x', 'https://svc.local./x',
     'https://[::ffff:169.254.169.254]/x', 'https://[::ffff:a9fe:a9fe]/x', 'https://[fd00::1]/x', 'https://10.0.0.5/x',
@@ -240,7 +241,7 @@ test('native DSH settings drive the plugin, reject stale edits, and clean up on 
   assert.equal(initial.value.hideBottomOnNarrow, false)
   await f.ctx.settings.update('statusline-plus', { hideBottomOnNarrow: true })
   assert.equal(f.ctx.settings.describe().find(s => s.ns === 'statusline-plus').value.hideBottomOnNarrow, true)
-  assert.throws(() => plugin.__test.SettingsSchema({ hideBottomOnNarrow: 'yes' }))
+  assert.throws(() => __test.SettingsSchema({ hideBottomOnNarrow: 'yes' }))
   assert.equal(initial.value.compactLayout, undefined)
   assert.equal(initial.value.showTokens, undefined)
   assert.equal(initial.value.showOpenCodeQuota, true)
@@ -248,10 +249,10 @@ test('native DSH settings drive the plugin, reject stale edits, and clean up on 
   assert.equal(initial.value.quotaOnStep, undefined)
   await f.ctx.settings.update('statusline-plus', { quotaOnStep: false })
   assert.equal(f.ctx.settings.describe().find(s => s.ns === 'statusline-plus').value.quotaOnStep, false)
-  assert.equal(plugin.__test.SettingsSchema({}).providers.find(provider => provider.id === 'zai').apiKeyEnv, 'ZAI_API_KEY')
-  assert.equal(plugin.__test.SettingsSchema({}).usageUrl, 'https://opencode.ai/zen/go/v1/usage',
+  assert.equal(__test.SettingsSchema({}).providers.find(provider => provider.id === 'zai').apiKeyEnv, 'ZAI_API_KEY')
+  assert.equal(__test.SettingsSchema({}).usageUrl, 'https://opencode.ai/zen/go/v1/usage',
     'the documented usageUrl default must survive the hostValidated wrapper')
-  assert.throws(() => plugin.__test.assertRawConfig({ ...initial.value, showGit: 'yes' }), /showGit|invalid|boolean/i, 'an invalid value must not reach the profile')
+  assert.throws(() => __test.assertRawConfig({ ...initial.value, showGit: 'yes' }), /showGit|invalid|boolean/i, 'an invalid value must not reach the profile')
   await f.ctx.settings.update('statusline-plus', { enabled: false })
   await Promise.resolve()
   const reply = await call(f.routes.get('/statusline/api/usage'))
@@ -358,7 +359,7 @@ test('Host-only validation serializes stable declarative schemas with volatile f
 
 test('quota payload readers reject oversized actual Response streams', async () => {
   const response = new Response('x'.repeat(1024 * 1024 + 1))
-  await assert.rejects(plugin.__test.readQuotaJson(response), /invalid-response/)
+  await assert.rejects(__test.readQuotaJson(response), /invalid-response/)
 })
 
 test('native settings reject account paths rather than silently choosing another account', async t => {

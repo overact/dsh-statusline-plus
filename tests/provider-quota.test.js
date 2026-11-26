@@ -6,7 +6,7 @@ const { parseDeepSeekBalance, parseKimiWindows, parseZaiWindows } = require('../
 const { accountWalletsToBalance, fetchDeepseekAccountBalance } = require('../lib/quota-deepseek-account.js')
 
 process.env.SLP_TEST = '1'
-const { __test } = require('../lib/index.js')
+const __test = require('./test-api.js')
 
 const NOW = Date.parse('2026-10-02T00:00:00Z')
 const RESET = '2026-10-02T01:00:00Z'
