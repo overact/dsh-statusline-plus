@@ -533,6 +533,14 @@ test('quota percentage mode accepts only used/left and defaults to used', () => 
   assert.equal(__test.sanitizeConfig({ quotaPercentMode: 'remaining' }).quotaPercentMode, 'used')
 })
 
+test('subscription reset notices default to On with the model-backed kinds', () => {
+  const out = __test.sanitizeConfig({})
+  assert.equal(out.resetAlerts, 'on')
+  assert.deepEqual(out.resetAlertKinds, ['codex', 'antigravity', 'claude'], 'Grok stays opt-in')
+  assert.equal(__test.sanitizeConfig({ resetAlerts: 'auto' }).resetAlerts, 'auto', 'an explicit auto survives')
+  assert.deepEqual(__test.sanitizeConfig({ resetAlertKinds: ['codex'] }).resetAlertKinds, ['codex'], 'an explicit subset survives')
+})
+
 test('narrow-screen preference defaults off and survives config sanitization', () => {
   assert.equal(__test.sanitizeConfig({}).hideBottomOnNarrow, false)
   assert.equal(__test.sanitizeConfig({ hideBottomOnNarrow: true }).hideBottomOnNarrow, true)

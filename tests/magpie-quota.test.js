@@ -51,6 +51,14 @@ test('magpie antigravity rows map to the account shape and keep the Gemini pair'
   assert.equal(result.selectedFileName, result.accounts[0].fileName)
 })
 
+test('magpie agy-cli rows are the same Antigravity subscription', () => {
+  const rows = antigravityRows.map(row => ({ ...row, provider: 'agy-cli' }))
+  const result = api.parseMagpieAntigravity(rows, now)
+  assert.equal(result.email, 'a@example.invalid')
+  assert.equal(windowOf(result, 'gemini-5h').usedPercent, 95)
+  assert.equal(windowOf(result, 'third-5h').remainingPercent, 100)
+})
+
 test('magpie antigravity marks a fully spent window as exhausted and ignores empty rows', () => {
   const exhausted = api.parseMagpieAntigravity([{ provider: 'antigravity', user: 'b@example.invalid', windows: [{ name: 'Gemini · 5 hours', used: 100 }] }], now)
   assert.equal(exhausted.status, 'exhausted')

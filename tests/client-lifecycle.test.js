@@ -85,7 +85,7 @@ function harness({ hidden = false, wallTime = Date.now(), panelLayout = null } =
       disconnect() { this.nodes.clear() }
     }
   }
-  const source = fs.readFileSync(require.resolve('../lib/client'), 'utf8').replace('return module.exports', 'return { magpieSubscriptionHint, ContextProjection, ContextRow, componentOrder, layoutOrder, isExtensionId, dockExtensionsOf, componentEnabled, reorderComponent, layoutPreset, matchingPreset, dockComponents, LayoutEditor, LayoutPreview, ToolActivityRow, toolElapsed, quotaRefreshOnStep, TpsRow, useLiveTps, useQuotaResource, formatPathSegs, fmtResetHours, minutesLabel, primarySubscriptionKind, looksLikeSubscription, providerMatchesModel, modelQuotaSource, modelQuotaMeter, meterPaint, modelQuotaTitle, planColor, fmtMoney, QuotaLine, parseSeconds, PeakPanel, PeakFooterDot, RestartFooterButton, restartStep, restartPollDelay, restartProgressSteps, quotaStepRefreshDue, useModelQuota, deepseekPeakStatus, HeaderChip, SettingsPage, DeepseekPeakChip, ActivityRow, childActivityRows, childElapsed, CostRow, estimateCost, quotaFreshness, pickFoldLevel, QuotaSource, QUOTA_SOURCES, QuotaChip, QuotaUnavailable, quotaState, fmtRetryIn, contextUsage, ContextPanel, formatTokens, STR, resetSentence, resetSentenceParts, quotaRequest, publishConfig, apiSetConfig, setScope: function (scope) { settingsScope = scope } }')
+  const source = fs.readFileSync(require.resolve('../lib/client'), 'utf8').replace('return module.exports', 'return { magpieSubscriptionHint, ContextProjection, ContextRow, componentOrder, layoutOrder, isExtensionId, dockExtensionsOf, componentEnabled, reorderComponent, layoutPreset, matchingPreset, dockComponents, LayoutEditor, LayoutPreview, ToolActivityRow, toolElapsed, quotaRefreshOnStep, TpsRow, useLiveTps, useQuotaResource, formatPathSegs, fmtResetHours, minutesLabel, primarySubscriptionKind, looksLikeSubscription, providerMatchesModel, modelQuotaSource, modelQuotaMeter, meterPaint, modelQuotaTitle, planColor, fmtMoney, QuotaLine, parseSeconds, PeakPanel, PeakFooterDot, RestartFooterButton, restartStep, restartPollDelay, restartProgressSteps, quotaStepRefreshDue, useModelQuota, deepseekPeakStatus, HeaderChip, SettingsPage, DeepseekPeakChip, ActivityRow, childActivityRows, childElapsed, CostRow, estimateCost, quotaFreshness, pickFoldLevel, QuotaSource, QUOTA_SOURCES, QuotaChip, QuotaUnavailable, quotaState, fmtRetryIn, contextUsage, ContextPanel, formatTokens, STR, resetSentence, resetSentenceParts, resetKindOfName, quotaRequest, publishConfig, apiSetConfig, setScope: function (scope) { settingsScope = scope } }')
   vm.runInNewContext(source, context)
   exported.setScope(scope)
   return {
@@ -1981,9 +1981,13 @@ test('subscription kind prefers the model namespace over a neutral provider', ()
   assert.equal(h.primarySubscriptionKind({ provider: 'magpie-workbuddy', model: 'codex/gpt-6-astra' }), 'codex')
   assert.equal(h.primarySubscriptionKind({ provider: 'codex-sub', model: 'gpt-5.6' }), 'codex')
   assert.equal(h.primarySubscriptionKind({ provider: 'antigravity-sub', model: 'gemini-3.8-flash' }), 'antigravity')
+  assert.equal(h.primarySubscriptionKind({ provider: 'magpie', model: 'agy-cli/gemini-4-hydrogen' }), 'antigravity', 'the local agy CLI namespace is Antigravity')
+  assert.equal(h.primarySubscriptionKind({ provider: 'agy-cli', model: 'gemini-4-hydrogen' }), 'antigravity')
   assert.equal(h.primarySubscriptionKind({ provider: 'deepseek', model: 'deepseek-v4.1-flash' }), null)
   assert.equal(h.looksLikeSubscription({ provider: 'magpie-workbuddy', model: 'workbuddy-ai/deepseek-v4.1-flash' }), true)
   assert.equal(h.looksLikeSubscription({ provider: 'deepseek', model: 'deepseek-v4.1-flash' }), false)
+  assert.equal(h.resetKindOfName('agy-cli'), 'antigravity', 'the reset drawer can anchor to an agy-cli chip')
+  assert.equal(h.resetKindOfName('Agy'), 'antigravity')
   h.unmount()
 })
 

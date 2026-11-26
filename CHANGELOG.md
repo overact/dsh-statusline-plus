@@ -1,5 +1,10 @@
 # Release notes
 
+## Unreleased
+
+- Subscription reset notices now default to On with Codex, Antigravity and Claude ticked (Grok stays opt-in), so a provider-wide reset is not missed when its model is absent from the picker; an explicit Auto, Off or subset still wins. Magpie's `agy-cli/` (local agy CLI) models and `agy-cli` quota rows are recognized as the same Antigravity subscription.
+- The details panel's original-post link ("原帖 ↗" / "Post ↗") is right-aligned on its own flex item, so it cannot read as part of the scope text.
+
 ## 0.2.1
 
 - DSH 0.2.3-alpha compatibility: registered routes reuse the WebServer's admitted Peer instead of authenticating twice, with a fallback for older Hosts; plain-text 401/403 responses keep their status instead of becoming an invalid response.

@@ -387,6 +387,22 @@ async function verifyReset(page, folder) {
   }
   const listed = await panelText()
   if (!listed.includes('Codex resets around') || !listed.includes('Plus / Pro') || listed.includes('AIHOT') || !listed.includes('Post')) throw new Error('Details panel reset section: ' + listed)
+  // The original-post link is a separate, right-aligned flex item: it never
+  // reads as part of the scope ("Plus / Pro") or the sentence.
+  await page.locator('[data-slp-reset-kind="codex"] .slp-quota-trigger').click()
+  const panel = page.locator('.slp-panel').filter({ has: page.locator('.slp-reset-section') }).last()
+  await panel.waitFor()
+  const panelShot = join(folder, 'reset-panel.png')
+  await panel.screenshot({ path: panelShot })
+  const postLayout = await page.evaluate(() => {
+    const line = document.querySelector('.slp-reset-section .slp-reset-line')
+    const link = line.querySelector('.slp-reset-link'), main = line.querySelector('.slp-reset-main')
+    const lineRect = line.getBoundingClientRect(), linkRect = link.getBoundingClientRect(), mainRect = main.getBoundingClientRect()
+    return { lineRight: lineRect.right, linkRight: linkRect.right, gap: linkRect.left - mainRect.right }
+  })
+  await page.keyboard.press('Escape')
+  if (Math.abs(postLayout.lineRight - postLayout.linkRight) > 1.5) throw new Error('Details panel post link is not right-aligned: ' + JSON.stringify(postLayout))
+  if (postLayout.gap < 4) throw new Error('Details panel post link touches the scope: ' + JSON.stringify(postLayout))
   // "Got it" closes it for good; the panel still shows the notice.
   await show(codex, notice('fixture-ack'))
   await appear()
@@ -461,7 +477,7 @@ async function verifyReset(page, folder) {
   if (await drawer.count()) throw new Error('A reset drawer appeared with no chip to slide out of')
   await page.evaluate(() => { window.slpQuotaDelayMs = 0; window.disposeResponsiveFixture() })
   return { panel: 'reset', waitsForChip: true, anchored: 'slides from Codex chip, 2px, chip width', compact: placed, material: 'translucent', otherKind: 'under the header chip, listed in Codex panel', grouped: 'two notices, one drawer, one Got it', peakChip: 'under the DeepSeek peak chip', noChip: 'no drawer',
-    holdOnHover: true, oncePerPage: true, ack: true, detailsPanel: true, screenshots: [relative(root, midShot), relative(root, screenshot), relative(root, otherShot)] }
+    detailsScreenshot: relative(root, panelShot), holdOnHover: true, oncePerPage: true, ack: true, detailsPanel: true, screenshots: [relative(root, midShot), relative(root, screenshot), relative(root, otherShot)] }
 }
 
 async function verifyResponsive(page, folder) {

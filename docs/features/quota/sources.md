@@ -134,14 +134,17 @@ Shape sources: durandom/token-burn and steipete/CodexBar (Claude), raycast/exten
 
 - Request: `GET http://127.0.0.1:3425/v1/magpie/quotas` (loopback, no auth).
   `MAGPIE_GATEWAY_URL` overrides the base URL.
-- Response: `{ "data": [ { "provider": "antigravity" | "codex", "user",
+- Response: `{ "data": [ { "provider": "antigravity" | "agy-cli" | "codex", "user",
   "plan", "windows": [ { "name", "used", "remaining", "resetsAt" } ] } ] }`.
+  `agy-cli` is the local agy CLI Magpie manages; it reports the same Antigravity
+  subscription.
 - `windows[].used` is already a percentage (0–100), unlike Antigravity's
   `remainingFraction` (0–1); `remaining` is the complement. `resetsAt` is ISO.
 - Antigravity names: `Gemini · 5 hours`, `Gemini · 7 days`,
   `Claude & GPT · 5 hours`, `Claude & GPT · 7 days`. Starter accounts may list
   per-model rows alongside the aggregate pair; the parser only takes the
-  aggregate names above.
+  aggregate names above. The parser accepts both the `antigravity` and `agy-cli`
+  providers, so the local agy CLI is not a second, empty subscription.
 - Codex names: `5 hours`, `7 days`; the parser sorts by the length parsed from
   the name, shortest first.
 - Any provider is accepted. `parseMagpieSubscriptions` assumes no names, so each
@@ -176,8 +179,8 @@ Shape sources: durandom/token-burn and steipete/CodexBar (Claude), raycast/exten
 ## Subscription selection
 
 - The header chip picks a subscription from the model ID namespace first
-  (`antigravity/`, `codex/`, `claude/`, `opencode/`), then from the provider name
-  (`antigravity-sub`, `codex-sub`, `magpie-*`, ...).
+  (`antigravity/`, `agy-cli/`, `agy/`, `codex/`, `claude/`, `opencode/`), then from
+  the provider name (`antigravity-sub`, `agy-cli`, `codex-sub`, `magpie-*`, ...).
 - One model shows one subscription. If that subscription returns
   `no-credential`, `auth`, `invalid-response` or `not-found`, the chip says
   "Subscription not found" (the short reason stays in the tooltip); it never

@@ -104,7 +104,7 @@ Open **DSH Web → Settings → Statusline**. Settings are saved under `statusli
 | `modelQuotaBar` | `true` | Quota rail on the composer's model button while the session is empty; it hides once the conversation starts and the header chip takes over |
 | `modelQuotaRows` | `true` | Quota rail on every row of the model picker (a balance source shows its amount instead) |
 | `showDeepseekPeak`, `deepseekPeakCountdown`, `showPeakDot` | `true` | DeepSeek peak indicators and countdown |
-| `resetAlerts`, `resetAlertKinds`, `resetAlertSeconds` | `auto`, Codex/Antigravity/Claude, `5` | Subscription reset notices ([docs](docs/features/reset-alerts.md)) |
+| `resetAlerts`, `resetAlertKinds`, `resetAlertSeconds` | `on`, Codex/Antigravity/Claude, `5` | Subscription reset notices ([docs](docs/features/reset-alerts.md)) |
 | `showRestartButton` | `true` | Reload/restart/DSH-update button; off also stops the Host's DSH release check and restart route |
 | `cacheTtlMs` | `60000` | Quota result reuse; UI displays seconds, effective minimum 15s |
 | `fetchTimeoutMs` | `10000` | Request timeout; UI displays seconds |

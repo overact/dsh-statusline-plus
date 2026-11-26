@@ -112,13 +112,16 @@ notice in sequence was dropped: two notices took twice the time to read.
 
 | `resetAlerts` | Asks for |
 | --- | --- |
-| `auto` (default) | Codex, Antigravity and Claude when they have a model in the Host's model catalog (`remote.session.modelCatalog()`, the list the picker shows) or the header has resolved one on this page; plus Grok when ticked. A user with none makes no request to AIHOT |
-| `on` | `resetAlertKinds` (default: all but Grok) |
+| `auto` | Codex, Antigravity and Claude when they have a model in the Host's model catalog (`remote.session.modelCatalog()`, the list the picker shows) or the header has resolved one on this page; plus Grok when ticked. A user with none makes no request to AIHOT |
+| `on` (default) | `resetAlertKinds` (default: Codex/Antigravity/Claude; Grok stays opt-in) |
 | `off` | Nothing; the route answers `disabled` |
 
 Kinds come from `primarySubscriptionKind`, the same mapping as the quota chip. On a Host
 without the catalog API, auto falls back to the models the header has seen. A subscription
 seen there for the first time is asked about at once (`resetPollNow`), not at the next poll.
+Magpie's local agy CLI is the same Antigravity subscription under the `agy-cli/` model
+namespace (and the `agy-cli` quota provider); both are recognized, so On mode and auto
+cannot disagree with the chip about it.
 
 ## The drawer
 
@@ -193,21 +196,24 @@ seen there for the first time is asked about at once (`resetPollNow`), not at th
 ## Details panel
 
 Every details panel with current notices shows one rounded box under its rows. The box
-has one flowing line per notice, wrapping only when needed. The sentence is the AIHOT link
-(↗), followed by the scope and "原帖 ↗". The panel's own subscription comes first. Notices stay until
-they leave the 24h windows, acknowledged or not, so a dismissed drawer can always be
-found again.
+has one flowing line per notice, wrapping only when needed. The sentence and scope are
+the left item; the original-post link ("原帖 ↗" / "Post ↗") is a separate, right-aligned
+item, so it cannot read as part of the scope. It wraps to its own line only when the
+panel is too narrow. The panel's own subscription comes first. Notices stay until they
+leave the 24h windows, acknowledged or not, so a dismissed drawer can always be found
+again.
 
 ## Tests
 
-`tests/reset-feed.test.js` (parser, 24 h rule, ETag/304, 429, cache restart, Grok,
+`tests/reset-feed.test.js` (parser, 24 h rule, ETag/304, 429, cache restart, Grok opt-in,
 `nextCheckAt`). `npm run verify -- --files lib/reset-feed.js lib/client.js --ui reset`: the
 drawer waiting while its chip loads, sliding out of a clipped frame on the Codex chip,
 between the chip's width and 1.5 times it, the sentence on one line when it fits the cap,
 the menu material, hover hold and resume, once per page (not again after a session
 switch or a same-session remount), an open drawer closing when another session opens, the
 coloured name and bold time, the
-details-panel box, an estimated Agy notice sliding out of the Codex chip, a confirmation
+details-panel box with its right-aligned original-post link, an estimated Agy notice
+sliding out of the Codex chip, a confirmation
 after "Got it" staying out of the drawer while the panel updates, two notices in one drawer with one
 "Got it" that acknowledges both, the DeepSeek peak chip as the last anchor, and no drawer at all without a chip. `window.slpLocale = 'zh-CN'`
 renders the fixture in Chinese. Each fixture mount loads a fresh plugin copy, so the check
