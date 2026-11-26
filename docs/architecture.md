@@ -14,7 +14,7 @@ projections. The browser half (`lib/client.js`) is loaded through `dsh.client` i
 | Settings | `config.js` |
 | Quota | `quota-order.js`, `quota-window.js`, `quota-magpie.js`, `quota-codex.js`, `quota-antigravity.js`, `quota-claude.js`, `quota-providers.js`, `provider-presets.js`, `quota-deepseek-account.js`, `quota-login-files.js`, `cpa-credentials.js`, `quota-http.js`, `quota-transport.js` |
 | Git | `git-status.js` |
-| Session | `session-log.js`, `session-metrics.js`, `model-pricing.js`, `tool-activity.js`, `subagent-activity.js`, `tps.js`, `session-records.js` (shared session-id spelling and stream usage record) |
+| Session | `session-log.js`, `session-metrics.js`, `model-pricing.js`, `tool-activity.js`, `subagent-activity.js`, `session-fold.js` (shared fold invariants), `tps.js`, `session-records.js` (shared session-id spelling and stream usage record) |
 | Peak | `peak-schedule.js` |
 | Reset notices | `reset-feed.js` |
 | Update | `update.js` |

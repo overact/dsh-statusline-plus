@@ -12,6 +12,7 @@ recent calls and durations in its panel.
 | Subagents, fold | `createSubagentActivityProjection` in `lib/subagent-activity.js` |
 | Tools, display | `ToolActivityRow`, `toolElapsed` in `lib/client.js` |
 | Tools, fold | `createToolActivityProjection` in `lib/tool-activity.js` |
+| Shared fold rules | `acceptEvent`, `appendBounded`, `inheritedCount` in `lib/session-fold.js` |
 
 Settings: `showActivity`, `showTools`.
 
@@ -83,5 +84,5 @@ Changing the fold requires a `stateVersion` bump. See
 ## Tests
 
 `npm run verify -- --files lib/tool-activity.js lib/subagent-activity.js --ui subagents`.
-`tests/tool-activity.test.js`, `tests/subagent-activity.test.js`,
+`tests/tool-activity.test.js`, `tests/subagent-activity.test.js`, `tests/session-fold.test.js`,
 `tests/client-lifecycle.test.js`, `tests/dsh-integration.test.js`.
