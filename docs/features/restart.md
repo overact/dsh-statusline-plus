@@ -12,7 +12,7 @@ plugin.
 | Area | Symbols |
 | --- | --- |
 | Reload and restart | `createRestartController`, `reconcileProfile`, `planAfterReload`, `activeSessionCount`, `restartUnit`, `systemdUnitOf` in `lib/restart.js` |
-| DSH update check and start | `createHostUpdater`, `resolveHostInstall`, `fetchDistTag`, `hostPackageDir`, `systemdRunAvailable` in `lib/host-update.js` |
+| DSH update check and start | `createHostUpdater`, `resolveHostInstall`, `fetchDistTag`, `systemdRunAvailable` in `lib/host-update.js`; `hostPackageDir` in `lib/update.js` |
 | Out-of-process update | `runHostUpdate` in `lib/host-update-runner.js` |
 | Route | `restart` route, `hostReady`, `hostUpdater`, `profileContext` in `lib/index.js` |
 | Page | `RestartFooterButton`, `useRestartCaps`, `openRestartDialog`, `runRestart`, `restartStep`, `restartProgressSteps`, `updateRestartProgress`, `restartPollDelay`, `RESTART_STEPS`, `RESTART_PHASES`, `RESTART_ERRORS` in `lib/client.js` |
