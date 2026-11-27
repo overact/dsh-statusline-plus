@@ -142,7 +142,7 @@ npm run verify:all
 npm run screenshots          # regenerates docs/images from sample data
 ```
 
-Pass the files you changed. `--ui` picks a browser panel (`cost`, `subagents`, `chip`, `modelbar`, `restart`, `responsive`, or `none`), `--style-only` is for CSS-only edits, and `--plan` previews the selection. Run `verify:all` once at the end. `npm run check` and `npm test` are also available; `DSH_PACKAGE_DIR` selects an installed DSH runtime for integration tests.
+Pass the files you changed. `--ui` picks a browser panel (`cost`, `subagents`, `chip`, `magpie-accounts`, `modelbar`, `restart`, `responsive`, or `none`), `--style-only` is for CSS-only edits, and `--plan` previews the selection. Run `verify:all` once at the end. `npm run check` and `npm test` are also available; `DSH_PACKAGE_DIR` selects an installed DSH runtime for integration tests.
 
 ```sh
 npm run dev:runtime        # does the active profile HMR-watch this checkout's lib/?

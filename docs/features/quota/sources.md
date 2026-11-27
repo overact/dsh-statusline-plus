@@ -148,9 +148,16 @@ Shape sources: durandom/token-burn and steipete/CodexBar (Claude), raycast/exten
 - Codex names: `5 hours`, `7 days`; the parser sorts by the length parsed from
   the name, shortest first.
 - Any provider is accepted. `parseMagpieSubscriptions` assumes no names, so each
-  user's list works as it is. A row with `error` or no measured window is left out;
-  several accounts of one provider show the first with quota left. Window `display`,
-  `unit` and `pool` are not used; `used` is enough for credit-type windows too.
+  user's list works as it is. A row with `error` or no measured window is left out.
+  Several accounts of one provider stay separate: the chip and headline use the
+  first with quota left, while the details panel lists every account with its own
+  windows and Magpie `user` (no priority is invented when Magpie omits it).
+  Antigravity-shaped windows are recognized from their names alone, so even an
+  unknown `agy-cli` alias gets the local "5 hours", "this week" and third-party
+  labels instead of raw service names. A known alias (`agy-cli`) also uses the
+  local subscription name in the chip and panel heading; an unknown one keeps
+  Magpie's own label. Window `display`, `unit` and `pool` are not
+  used; `used` is enough for credit-type windows too.
   `limit` is read for one purpose: a credit pool reported as parts plus a total
   (`Credits`, `Extra credits`, `Total credits`, where the total's `limit` is the
   sum of two or three siblings') puts that total first and alone on the chip. The

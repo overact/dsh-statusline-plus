@@ -331,7 +331,32 @@ test('Magpie subscriptions are read whatever they are called, and unreadable row
   assert.equal(list[1].windows[0].short, '5h')
   assert.equal(list[2].accountCount, 2)
   assert.equal(list[2].windows[0].usedPercent, 5)
-  assert.ok(!JSON.stringify(list).includes('example.invalid'))
+  assert.equal(list[2].accounts.length, 2)
+  assert.deepEqual(list[2].accounts.map(account => account.email), ['a@example.invalid', 'b@example.invalid'])
+  assert.deepEqual(list[2].accounts.map(account => account.status), ['exhausted', 'available'])
+  assert.equal(list[2].selectedFileName, list[2].accounts[1].fileName)
+})
+
+test('several accounts of one Magpie subscription keep their own Antigravity-shaped windows', () => {
+  const windows = (used) => [
+    { name: 'Gemini · 5 hours', used, resetsAt: '2099-01-01T00:00:00Z' },
+    { name: 'Gemini · 7 days', used: used + 1, resetsAt: '2099-01-08T00:00:00Z' },
+    { name: 'Claude & GPT · 5 hours', used: used + 2, resetsAt: '2099-01-01T00:00:00Z' },
+    { name: 'Claude & GPT · 7 days', used: used + 3, resetsAt: '2099-01-08T00:00:00Z' },
+  ]
+  const list = api.parseMagpieSubscriptions([
+    { provider: 'agy-cli', name: 'Antigravity (local agy CLI)', user: 'one@example.invalid', windows: windows(40) },
+    { provider: 'agy-cli', name: 'Antigravity (local agy CLI)', user: 'two@example.invalid', windows: windows(10) },
+  ], now)
+  const [item] = list
+  assert.equal(item.accountCount, 2)
+  assert.equal(item.accounts.length, 2)
+  assert.equal(item.selectedFileName, item.accounts[0].fileName)
+  assert.deepEqual(item.windows.map(win => win.usedPercent), [40, 41, 42, 43])
+  assert.deepEqual(item.accounts[0].windows.map(win => win.group), ['gemini', 'gemini', 'third', 'third'])
+  assert.deepEqual(item.accounts[0].windows.map(win => win.minutes), [300, 10080, 300, 10080])
+  // A duration label is left to the browser, which names it in the active language.
+  assert.ok(item.accounts[0].windows.every(win => win.label === undefined))
 })
 
 test('a credit pool reported as parts plus a total leads with the total, and the chip shows only it', () => {

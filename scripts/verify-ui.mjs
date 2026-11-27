@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join, relative, resolve } from 'node:path'
 import { artifacts, excerpt, redact, root } from './verification.mjs'
-import { mountChipFixture, mountFixture, mountModelBarFixture, mountResponsiveFixture, uiRequire } from './ui-fixture.mjs'
+import { mountChipFixture, mountFixture, mountMagpieAccountsFixture, mountModelBarFixture, mountResponsiveFixture, uiRequire } from './ui-fixture.mjs'
 
 function options(args) {
   const opts = { panel: 'all', live: false, session: null, service: 'dsh-web', output: null }
@@ -16,7 +16,7 @@ function options(args) {
       opts[arg.slice(2)] = value
     } else throw new Error('Unknown option: ' + arg)
   }
-  if (!['all', 'cost', 'subagents', 'chip', 'modelbar', 'responsive', 'restart', 'reset'].includes(opts.panel)) throw new Error('--panel must be cost, subagents, chip, modelbar, responsive, restart, reset or all')
+  if (!['all', 'cost', 'subagents', 'chip', 'magpie-accounts', 'modelbar', 'responsive', 'restart', 'reset'].includes(opts.panel)) throw new Error('--panel must be cost, subagents, chip, magpie-accounts, modelbar, responsive, restart, reset or all')
   if (opts.live && ['responsive', 'restart', 'reset'].includes(opts.panel)) throw new Error('Responsive, restart and reset verification use fixture state and are offline only')
   if (opts.live && !opts.session) throw new Error('--live requires an explicitly selected --session ID')
   return opts
@@ -98,6 +98,27 @@ async function verifyChip(page, folder) {
   await page.clock.runFor(10000)
   await chip.waitFor({ state: 'detached', timeout: 2000 })
   return { panel: 'chip', fontSize, fadeMs: 10000, screenshot: relative(root, screenshot) }
+}
+
+async function verifyMagpieAccounts(page, folder) {
+  const chip = page.locator('.slp-quota-trigger').first()
+  await chip.waitFor()
+  await chip.click()
+  const panel = page.locator('.slp-panel').first()
+  await panel.waitFor()
+  if (!(await panel.innerText()).includes('Antigravity usage')) throw new Error('A known Magpie alias did not use its local subscription name')
+  const rows = page.locator('.slp-acct')
+  if (await rows.count() !== 2) throw new Error('Generic Magpie details did not render both accounts')
+  const labels = await rows.allInnerTexts()
+  if (!labels[0].includes('one@example.invalid') || !labels[0].includes('#1')) throw new Error('First account identity is missing')
+  if (!labels[1].includes('two@example.invalid') || !labels[1].includes('#2')) throw new Error('Second account identity is missing')
+  for (const expected of ['5 hours', 'this week', 'third-party 5 hours', 'third-party this week']) {
+    if (!labels[0].includes(expected)) throw new Error('Account windows are missing ' + expected)
+  }
+  if ((await panel.innerText()).includes('showing the first')) throw new Error('The first-account-only note survived the multi-account view')
+  const screenshot = join(folder, 'magpie-accounts.png')
+  await panel.screenshot({ path: screenshot, animations: 'disabled' })
+  return { panel: 'magpie-accounts', accounts: 2, screenshot: relative(root, screenshot) }
 }
 
 async function verifyModelBar(page, folder) {
@@ -878,7 +899,7 @@ try {
   page.on('pageerror', error => errors.push(redact(error.message)))
   let network = 0
   page.on('request', request => { if (/^https?:/.test(request.url())) network++ })
-  const data = opts.live ? await mountLive(page, opts) : ['responsive', 'restart', 'reset'].includes(opts.panel) ? {} : opts.panel === 'chip' ? (await mountFixture(page), {}) : opts.panel === 'modelbar' ? (await mountModelBarFixture(page), {}) : (await mountFixture(page), { hasCosts: true, subagents: 2 })
+  const data = opts.live ? await mountLive(page, opts) : ['responsive', 'restart', 'reset'].includes(opts.panel) ? {} : opts.panel === 'chip' ? (await mountFixture(page), {}) : opts.panel === 'magpie-accounts' ? (await mountMagpieAccountsFixture(page), {}) : opts.panel === 'modelbar' ? (await mountModelBarFixture(page), {}) : (await mountFixture(page), { hasCosts: true, subagents: 2 })
   const checks = []
   if (['all', 'cost'].includes(opts.panel)) {
     if (!data.hasCosts) throw new Error('Selected session has no priced usage')
@@ -888,6 +909,10 @@ try {
   if (!opts.live && ['all', 'chip'].includes(opts.panel)) {
     await mountChipFixture(page)
     checks.push(await verifyChip(page, folder))
+  }
+  if (!opts.live && ['all', 'magpie-accounts'].includes(opts.panel)) {
+    if (opts.panel === 'all') await mountMagpieAccountsFixture(page)
+    checks.push(await verifyMagpieAccounts(page, folder))
   }
   if (!opts.live && ['all', 'modelbar'].includes(opts.panel)) {
     if (opts.panel === 'all') await mountModelBarFixture(page)

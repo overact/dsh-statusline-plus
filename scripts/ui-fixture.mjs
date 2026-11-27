@@ -47,7 +47,7 @@ export async function mountFixture(page, hostOptions) {
   })
   const source = await readFile(join(root, 'lib/client.js'), 'utf8')
   if (!source.includes('return module.exports')) throw new Error('Client factory format changed; update UI fixture adapter')
-  await page.addScriptTag({ content: source.replace('return module.exports', 'return { apply, ActivityRow, CostRow, QuotaUnavailable, ModelQuotaLabel, publishConfig, setComposerStarted, CSS }') })
+  await page.addScriptTag({ content: source.replace('return module.exports', 'return { apply, ActivityRow, CostRow, QuotaUnavailable, QuotaChip, ModelQuotaLabel, publishConfig, setComposerStarted, CSS }') })
   await page.evaluate(() => {
     const { React, ReactDOM, slpComponents: components } = window
     const style = document.createElement('style'); style.textContent = components.CSS; document.head.appendChild(style)
@@ -292,6 +292,41 @@ export async function mountChipFixture(page) {
     window.slpChipRoot = ReactDOM.createRoot(host)
     window.slpChipRoot.render(React.createElement(slpComponents.QuotaUnavailable,
       { title: 'Subscription not found', detail: 'no-credential' }))
+  })
+}
+
+// A generic Magpie subscription with several accounts: no dedicated reader,
+// but the details panel must still show every account and localized window
+// names. The data mirrors what parseMagpieSubscriptions returns for agy-cli.
+export async function mountMagpieAccountsFixture(page) {
+  await mountFixture(page)
+  await page.evaluate(() => {
+    window.slpFixtureRoot.unmount()
+    const { React, ReactDOM, slpComponents } = window
+    document.getElementById('shell').style.cssText = 'position:static;height:auto;overflow:visible'
+    const root = document.getElementById('root')
+    root.style.cssText = 'position:relative;font-size:14px;font-family:sans-serif;padding:24px'
+    root.innerHTML = ''
+    const now = Date.now()
+    const windows = used => [
+      { id: 'gemini-5h', group: 'gemini', minutes: 300, usedPercent: used, remainingPercent: 100 - used, resetInSec: 9000 },
+      { id: 'gemini-weekly', group: 'gemini', minutes: 10080, usedPercent: used + 1, remainingPercent: 99 - used, resetInSec: 600000 },
+      { id: 'third-5h', group: 'third', minutes: 300, usedPercent: used + 2, remainingPercent: 98 - used, resetInSec: 9000 },
+      { id: 'third-weekly', group: 'third', minutes: 10080, usedPercent: used + 3, remainingPercent: 97 - used, resetInSec: 600000 },
+    ]
+    const first = { fileName: 'magpie:agy-cli:1', email: 'one@example.invalid', windows: windows(10), status: 'available', fetchedAt: now }
+    const second = { fileName: 'magpie:agy-cli:2', email: 'two@example.invalid', windows: windows(20), status: 'available', fetchedAt: now }
+    const item = { id: 'agy-cli', style: 'windows', label: 'Antigravity (local agy CLI)', accountCount: 2,
+      accounts: [first, second], selectedFileName: first.fileName, windows: first.windows, chipWindows: 2, fetchedAt: now, source: 'magpie' }
+    const config = { enabled: true, showQuota: true, quotaPercentMode: 'used', cacheTtlMs: 60000 }
+    window.fetch = async url => {
+      if (String(url).indexOf('/statusline/api/magpie-quota') === 0) return { json: async () => ({ ok: true, data: item }) }
+      throw new Error('Unexpected Magpie fixture request: ' + url)
+    }
+    slpComponents.publishConfig(config)
+    ReactDOM.createRoot(root).render(React.createElement(slpComponents.QuotaChip, {
+      resource: { kind: 'magpie', id: 'agy-cli', key: 'magpie:agy-cli' }, config: config, stepCount: 0,
+    }))
   })
 }
 

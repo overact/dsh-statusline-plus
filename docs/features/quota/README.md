@@ -155,4 +155,5 @@ Under `prefers-reduced-motion` the animation is off but the removal still happen
 
 `tests/magpie-quota.test.js`, `tests/provider-quota.test.js`, `tests/antigravity.test.js`,
 `tests/statusline.test.js`, `tests/client-lifecycle.test.js`. The header chip's
-"not found" state is covered in the browser by `verify-ui --panel chip`.
+"not found" state is covered in the browser by `verify-ui --panel chip`, and the
+multi-account fallback by `verify-ui --panel magpie-accounts`.
