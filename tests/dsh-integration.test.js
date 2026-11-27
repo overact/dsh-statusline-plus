@@ -306,7 +306,7 @@ test('native settings round-trip component order and reject unknown widgets with
   const f = await fixture(); t.after(f.close)
   const value = () => f.ctx.settings.describe().find(s => s.ns === 'statusline-plus').value
   const accounts = JSON.stringify(value().providers)
-  assert.equal(value().showTools, true)
+  assert.equal(value().showTools, false)
   assert.deepEqual(value().componentOrder, ['git', 'context', 'tps', 'cost', 'activity', 'tools'])
   await f.ctx.settings.update('statusline-plus', { componentOrder: ['tools', 'activity', 'tools'], showTools: false })
   assert.deepEqual(value().componentOrder, ['tools', 'activity', 'git', 'context', 'tps', 'cost'])

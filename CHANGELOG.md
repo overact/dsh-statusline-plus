@@ -6,6 +6,7 @@
 - The details panel's original-post link ("原帖 ↗" / "Post ↗") floats right after the sentence and scope: it shares their last line whenever that line has room and only drops to a line of its own when it does not, so it cannot read as part of the scope text and no longer adds an empty line under a wrapped notice.
 - The model picker's rail uses the subscription's own tint for Magpie aliases (`agy-cli`, `claude-code`), so a row and the header chip no longer disagree about the same subscription.
 - Cost estimates now price Gemini 4 Hydrogen from an offline official card ($1.50 input / $7.50 output / $0.075 cache-read per 1M tokens) until the Host's bundled catalog includes it. The model is matched by identity, not by the `antigravity/` or `google/` route prefix; a versioned or `-preview` spelling stays unpriced rather than borrowing this card.
+- New profiles show the streaming TPS row by default and leave the Tools row off; the TPS, Tools and Activity switches still override either way.
 
 ## 0.2.1
 

@@ -94,10 +94,11 @@ Open **DSH Web → Settings → Statusline**. Settings are saved under `statusli
 | --- | --- | --- |
 | `enabled` | `true` | All plugin displays and refreshes |
 | `hideBottomOnNarrow` | `false` | At input-area widths ≤480px, unmount this plugin's bottom row and stop its client activity; restore it when wider. Native stats remain visible |
-| `showGit`, `showContext`, `showCost`, `showActivity`, `showTools` | `true` | Individual bottom components |
+| `showGit`, `showContext`, `showCost`, `showActivity` | `true` | Individual bottom components |
+| `showTools` | `false` | Tool activity |
 | `showCwd` | `true` | Repository path in the Git chip |
 | `gitCwd` | `''` | Fixed repository directory for every session; empty follows the session's working directory. While set, the chip no longer follows `working_directory` |
-| `showTps` | `false` | Streaming speed |
+| `showTps` | `true` | Streaming speed |
 | `componentOrder` | Git, context, TPS, cost, activity, tools | Bottom component order, including items other plugins add ([docs/extending](docs/extending/README.md)) |
 | `hiddenComponents` | `[]` | Ids of other plugins' bottom-row items that are switched off |
 | `showQuota`, `quotaAuto`, `quotaOnStep` | `true` | Header quotas, provider selection and shared step refresh |

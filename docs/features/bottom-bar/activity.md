@@ -14,7 +14,7 @@ recent calls and durations in its panel.
 | Tools, fold | `createToolActivityProjection` in `lib/tool-activity.js` |
 | Shared fold rules | `acceptEvent`, `appendBounded`, `inheritedCount` in `lib/session-fold.js` |
 
-Settings: `showActivity`, `showTools`.
+Settings: `showActivity` (on by default), `showTools` (off by default).
 
 ## Subagents
 

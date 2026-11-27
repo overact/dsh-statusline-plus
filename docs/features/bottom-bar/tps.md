@@ -1,6 +1,6 @@
 # TPS
 
-Shows streaming output speed for the session. Off by default (`showTps`).
+Shows streaming output speed for the session. On by default (`showTps`).
 
 ## Code
 
