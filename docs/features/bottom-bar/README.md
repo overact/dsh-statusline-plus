@@ -34,6 +34,17 @@ Settings: `componentOrder`, `hideBottomOnNarrow`, and each component's `show*` s
   `[data-composer-card]`, because the dock shrinks to its contents and would latch the
   row hidden. A hidden probe survives suppression so a resize can restore the row.
   Header quotas and native stats stay.
+- **Two lines, then hide.** The live row wraps at most twice. A group that would begin a
+  third line gets `data-overflow="true"` and is removed from the flow, so no empty row is
+  reserved. When the second line would hold only one group, a zero-height flex break moves
+  the last group of line one down so both lines carry information. This budget covers this
+  plugin's groups; the Host's own ContextMeter is a sibling. At ≤480px the plugin row
+  reserves 76px for a direct native `<span>` so the official reading shares line one
+  instead of adding a third line; the plugin does not hide host content.
+- **Git on narrow screens.** At ≤480px the repository path shrinks to 5em and fades its
+  right edge; branch and counts keep priority. At ≤360px the path is hidden entirely.
+- **Touch targets.** On coarse pointers and ≤480px, small buttons get a 32px minimum and
+  row links a 28px minimum; settings check rows are 32px tall.
 - **Hidden pages.** Components stop live work through `usePageVisible`.
 - **Order.** `componentOrder` drops unknown ids and appends missing built-ins, so a
   component added in a new version appears for users with a saved order. Namespaced

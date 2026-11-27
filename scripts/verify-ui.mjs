@@ -16,7 +16,7 @@ function options(args) {
       opts[arg.slice(2)] = value
     } else throw new Error('Unknown option: ' + arg)
   }
-  if (!['all', 'cost', 'subagents', 'chip', 'magpie-accounts', 'modelbar', 'responsive', 'restart', 'reset'].includes(opts.panel)) throw new Error('--panel must be cost, subagents, chip, magpie-accounts, modelbar, responsive, restart, reset or all')
+  if (!['all', 'cost', 'subagents', 'chip', 'magpie-accounts', 'mobile', 'modelbar', 'responsive', 'restart', 'reset'].includes(opts.panel)) throw new Error('--panel must be cost, subagents, chip, magpie-accounts, mobile, modelbar, responsive, restart, reset or all')
   if (opts.live && ['responsive', 'restart', 'reset'].includes(opts.panel)) throw new Error('Responsive, restart and reset verification use fixture state and are offline only')
   if (opts.live && !opts.session) throw new Error('--live requires an explicitly selected --session ID')
   return opts
@@ -633,6 +633,70 @@ async function verifyResponsive(page, folder) {
     lifecycle: 'three retries/exhaustion hint/focus recovery/container suppression/native stats/settings save/remount/resource cleanup passed', screenshot: relative(root, screenshot) }
 }
 
+async function verifyMobile(page, folder) {
+  await page.setViewportSize({ width: 320, height: 844 })
+  await mountResponsiveFixture(page, { dockData: true, overrides: {
+    hideBottomOnNarrow: false, showGit: true, showContext: true, showCwd: true, showCost: true,
+    showTps: true, showActivity: true, showTools: true,
+    componentOrder: ['git', 'context', 'tps', 'cost', 'activity', 'tools'],
+  } })
+  await page.locator('#fixture-dock .slp-root').waitFor()
+  // The real composer puts its own ContextMeter beside this plugin. Replace
+  // the fixture's long text stand-in with a compact span so the shared line is
+  // measured, not a synthetic full-width native row.
+  await page.evaluate(() => {
+    const old = document.querySelector('#fixture-native')
+    const native = document.createElement('span')
+    native.id = 'fixture-native'; native.setAttribute('data-composer-stats', 'true'); native.textContent = '42%'; native.style.cssText = 'flex:none;white-space:nowrap;width:50px;box-sizing:border-box'
+    old.replaceWith(native)
+  })
+  const actual = await page.evaluate(() => {
+    const row = document.querySelector('#fixture-dock .slp-row')
+    const visible = [...row.children].filter(node => !node.classList.contains('slp-row-break') && getComputedStyle(node).display !== 'none')
+    const tops = []
+    visible.forEach(node => {
+      const top = node.offsetTop
+      if (!tops.some(seen => Math.abs(seen - top) <= 2)) tops.push(top)
+    })
+    const path = row.querySelector('.slp-git-path')
+    const native = document.querySelector('#fixture-native').getBoundingClientRect()
+    return { lines: tops.length, path: path && getComputedStyle(path).display, scrollWidth: document.documentElement.scrollWidth,
+      minButton: parseFloat(getComputedStyle(document.querySelector('.slp-btn-sm')).minHeight),
+      sharedNative: Math.abs(native.top - row.getBoundingClientRect().top) <= 2 }
+  })
+  if (actual.scrollWidth > 320) throw new Error('The mobile row created horizontal overflow')
+  if (actual.lines > 2) throw new Error('The bottom row used more than two lines: ' + actual.lines)
+  if (actual.path !== 'none') throw new Error('The narrow Git path was not hidden')
+  if (!actual.sharedNative) throw new Error('The official context meter did not share the first plugin line')
+  if (actual.minButton < 32) throw new Error('The mobile button hit area is too small')
+  await page.getByRole('button', { name: 'Narrow 320px' }).click()
+  await page.evaluate(() => {
+    const preview = document.querySelector('.slp-preview')
+    preview.style.width = '250px'
+    preview.querySelector('.slp-row').style.width = '250px'
+  })
+  await page.waitForFunction(() => document.querySelector('.slp-preview .slp-row')?.querySelector('[data-overflow="true"]'))
+  const preview = await page.evaluate(() => {
+    const row = document.querySelector('.slp-preview .slp-row')
+    const visible = [...row.children].filter(node => !node.classList.contains('slp-row-break') && getComputedStyle(node).display !== 'none')
+    const tops = []
+    visible.forEach(node => { const top = node.offsetTop; if (!tops.some(seen => Math.abs(seen - top) <= 2)) tops.push(top) })
+    return { lines: tops.length, hidden: [...row.children].filter(node => node.getAttribute('data-overflow') === 'true').length,
+      height: Math.round(row.getBoundingClientRect().height) }
+  })
+  if (preview.lines > 2 || preview.hidden < 1) throw new Error('The narrow preview did not hide its third line: ' + JSON.stringify(preview))
+  if (preview.height > 68) throw new Error('The overflow row left a large empty area: ' + preview.height + 'px')
+  await page.evaluate(() => {
+    const preview = document.querySelector('.slp-preview')
+    preview.style.width = '320px'
+    preview.querySelector('.slp-row').style.width = '320px'
+  })
+  await page.waitForFunction(() => !document.querySelector('.slp-preview .slp-row')?.querySelector('[data-overflow="true"]'))
+  const screenshot = join(folder, 'mobile-320.png')
+  await page.screenshot({ path: screenshot, clip: { x: 0, y: 0, width: 320, height: 180 } })
+  return { panel: 'mobile', width: 320, lines: actual.lines, hidden: preview.hidden, height: preview.height, screenshot: relative(root, screenshot) }
+}
+
 // DSH 0.2.2-rc.2 dropped useAnchoredPosition from its primitives. Clicking a
 // header chip then threw and the Host removed the chip until reload (issue #1).
 async function verifyAnchorFallback(folder, errors) {
@@ -903,7 +967,7 @@ try {
   page.on('pageerror', error => errors.push(redact(error.message)))
   let network = 0
   page.on('request', request => { if (/^https?:/.test(request.url())) network++ })
-  const data = opts.live ? await mountLive(page, opts) : ['responsive', 'restart', 'reset'].includes(opts.panel) ? {} : opts.panel === 'chip' ? (await mountFixture(page), {}) : opts.panel === 'magpie-accounts' ? (await mountMagpieAccountsFixture(page), {}) : opts.panel === 'modelbar' ? (await mountModelBarFixture(page), {}) : (await mountFixture(page), { hasCosts: true, subagents: 2 })
+  const data = opts.live ? await mountLive(page, opts) : ['responsive', 'restart', 'reset'].includes(opts.panel) ? {} : opts.panel === 'chip' ? (await mountFixture(page), {}) : opts.panel === 'magpie-accounts' ? (await mountMagpieAccountsFixture(page), {}) : opts.panel === 'mobile' ? (await mountFixture(page), {}) : opts.panel === 'modelbar' ? (await mountModelBarFixture(page), {}) : (await mountFixture(page), { hasCosts: true, subagents: 2 })
   const checks = []
   if (['all', 'cost'].includes(opts.panel)) {
     if (!data.hasCosts) throw new Error('Selected session has no priced usage')
@@ -929,6 +993,7 @@ try {
     checks.push(await verifyDockDrag(folder, errors))
     checks.push(await verifyDockExtension(folder, errors))
   } else if (!opts.live) await page.evaluate(() => window.slpFixtureRoot?.unmount())
+  if (!opts.live && ['all', 'mobile'].includes(opts.panel)) checks.push(await verifyMobile(page, folder))
   if (!opts.live && ['all', 'restart'].includes(opts.panel)) checks.push(await verifyRestart(page, folder))
   if (!opts.live && ['all', 'reset'].includes(opts.panel)) checks.push(await verifyReset(page, folder))
   if (errors.length || !opts.live && network) throw new Error(errors.join('; ') || 'Offline fixture made a network request')

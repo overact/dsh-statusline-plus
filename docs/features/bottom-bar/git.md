@@ -31,6 +31,10 @@ sub-project repository (a repository inside the workspace repository) shows its 
 The Host commits a `cd` only through the `working_directory` tool, so a `cd` inside a shell
 command does not move the chip.
 
+**Narrow screens.** Below 480px the path is limited to 5em and fades its cut edge; the
+branch and counts keep their space. Below 360px the path is hidden, so the chip starts
+with `⎇`. The path's full value remains in its tooltip.
+
 ## When it refreshes
 
 There is no polling. It refreshes on mount, on a change of session or directory, when a step
