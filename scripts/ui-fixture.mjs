@@ -91,9 +91,9 @@ export async function mountFixture(page, hostOptions) {
 // both show in the dock (the default leaves Git pending for resource checks).
 // deepseek: the session reports a direct DeepSeek model, so the header also
 // renders the peak chip; overrides: config values set before the first paint.
-export async function mountResponsiveFixture(page, { dockData = false, deepseek = false, model = null, overrides = {}, ...hostOptions } = {}) {
+export async function mountResponsiveFixture(page, { dockData = false, deepseek = false, model = null, nativeLines = null, overrides = {}, ...hostOptions } = {}) {
   await mountFixture(page, hostOptions)
-  await page.evaluate(({ dockData, deepseek, model, overrides }) => {
+  await page.evaluate(({ dockData, deepseek, model, nativeLines, overrides }) => {
     window.slpFixtureRoot.unmount()
     document.getElementById('shell').style.cssText = 'position:static;height:auto;overflow:visible'
     document.getElementById('root').style.cssText = 'position:static'
@@ -265,7 +265,11 @@ export async function mountResponsiveFixture(page, { dockData = false, deepseek 
         React.createElement('div', { id: 'fixture-dock' },
           React.createElement('div', { 'data-composer-card': true, style: { width: '100%', height: '1px' } }),
           React.createElement('div', { 'data-composer-dock': true, style: { display: 'inline-flex' } },
-            React.createElement('div', { id: 'fixture-native', 'data-composer-stat': 'usage' }, 'Native composer stats'),
+            nativeLines
+              ? React.createElement('div', { id: 'fixture-native', 'data-composer-stats': true,
+                style: { display: 'inline-flex', flexWrap: 'wrap', justifyContent: 'center', gap: '4px 16px', minWidth: 0, maxWidth: '100%' } },
+                nativeLines.map(line => React.createElement('span', { key: line }, line)))
+              : React.createElement('div', { id: 'fixture-native', 'data-composer-stat': 'usage' }, 'Native composer stats'),
             React.createElement('div', { 'data-slot': 'conversation.composer.dock' }, slot('conversation.composer.dock', sessionProps)))),
         React.createElement('div', { id: 'fixture-footer' }, slot('sidebar.footer.action')),
         slot('settings.section'))
@@ -276,7 +280,7 @@ export async function mountResponsiveFixture(page, { dockData = false, deepseek 
     }
     window.disposeResponsiveFixture = () => { window.slpFixtureRoot.unmount(); cleanups.forEach(fn => fn()) }
     window.remountResponsiveFixture()
-  }, { dockData, deepseek, model, overrides })
+  }, { dockData, deepseek, model, nativeLines, overrides })
 }
 
 // The "no such subscription" status on its own, inside a header-sized (14px)

@@ -635,40 +635,75 @@ async function verifyResponsive(page, folder) {
 
 async function verifyMobile(page, folder) {
   await page.setViewportSize({ width: 320, height: 844 })
-  await mountResponsiveFixture(page, { dockData: true, overrides: {
+  // Two official lines leave no room for the plugin row: the whole info area
+  // must stay at two lines, so the plugin row hides itself.
+  await mountResponsiveFixture(page, { dockData: true, nativeLines: [
+    '13 turns 664 steps · 300 tok/s', '165M tok · Cache hit 98%',
+  ], overrides: {
     hideBottomOnNarrow: false, showGit: true, showContext: true, showCwd: true, showCost: true,
     showTps: true, showActivity: true, showTools: true,
     componentOrder: ['git', 'context', 'tps', 'cost', 'activity', 'tools'],
   } })
-  await page.locator('#fixture-dock .slp-root').waitFor()
-  // The real composer puts its own ContextMeter beside this plugin. Replace
-  // the fixture's long text stand-in with a compact span so the shared line is
-  // measured, not a synthetic full-width native row.
-  await page.evaluate(() => {
-    const old = document.querySelector('#fixture-native')
-    const native = document.createElement('span')
-    native.id = 'fixture-native'; native.setAttribute('data-composer-stats', 'true'); native.textContent = '42%'; native.style.cssText = 'flex:none;white-space:nowrap;width:50px;box-sizing:border-box'
-    old.replaceWith(native)
+  const pluginRoot = page.locator('#fixture-dock .slp-root')
+  await pluginRoot.waitFor({ state: 'attached' })
+  await page.waitForFunction(() => document.querySelector('#fixture-dock .slp-root')?.getAttribute('data-official-hidden') === 'true')
+  const narrow = await page.evaluate(() => {
+    const root = document.querySelector('#fixture-dock .slp-root')
+    return { display: getComputedStyle(root).display, scrollWidth: document.documentElement.scrollWidth }
   })
-  const actual = await page.evaluate(() => {
+  if (narrow.display !== 'none') throw new Error('The plugin row did not yield to two official lines')
+  if (narrow.scrollWidth > 320) throw new Error('The mobile row created horizontal overflow')
+  const officialScreenshot = join(folder, 'mobile-320-official.png')
+  await page.screenshot({ path: officialScreenshot, clip: { x: 0, y: 0, width: 320, height: 180 } })
+  // One official line leaves exactly one plugin line.
+  await page.setViewportSize({ width: 600, height: 844 })
+  await page.waitForFunction(() => document.querySelector('#fixture-dock .slp-root')?.getAttribute('data-official-hidden') === null)
+  await page.waitForFunction(() => document.querySelector('#fixture-dock .slp-row')?.getAttribute('data-lines') === '1')
+  const wide = await page.evaluate(() => {
     const row = document.querySelector('#fixture-dock .slp-row')
-    const visible = [...row.children].filter(node => !node.classList.contains('slp-row-break') && getComputedStyle(node).display !== 'none')
+    const shown = [...row.children].filter(node => !node.classList.contains('slp-row-break') && getComputedStyle(node).display !== 'none')
     const tops = []
-    visible.forEach(node => {
-      const top = node.offsetTop
-      if (!tops.some(seen => Math.abs(seen - top) <= 2)) tops.push(top)
-    })
-    const path = row.querySelector('.slp-git-path')
-    const native = document.querySelector('#fixture-native').getBoundingClientRect()
-    return { lines: tops.length, path: path && getComputedStyle(path).display, scrollWidth: document.documentElement.scrollWidth,
-      minButton: parseFloat(getComputedStyle(document.querySelector('.slp-btn-sm')).minHeight),
-      sharedNative: Math.abs(native.top - row.getBoundingClientRect().top) <= 2 }
+    shown.forEach(node => { if (!tops.some(seen => Math.abs(seen - node.offsetTop) <= 2)) tops.push(node.offsetTop) })
+    return { lines: tops.length, hidden: [...row.children].filter(node => node.getAttribute('data-overflow') === 'true').length }
   })
-  if (actual.scrollWidth > 320) throw new Error('The mobile row created horizontal overflow')
-  if (actual.lines > 2) throw new Error('The bottom row used more than two lines: ' + actual.lines)
-  if (actual.path !== 'none') throw new Error('The narrow Git path was not hidden')
-  if (!actual.sharedNative) throw new Error('The official context meter did not share the first plugin line')
-  if (actual.minButton < 32) throw new Error('The mobile button hit area is too small')
+  if (wide.lines !== 1) throw new Error('The official one-line budget did not cap the plugin at one line: ' + JSON.stringify(wide))
+  const wideScreenshot = join(folder, 'mobile-600.png')
+  await page.screenshot({ path: wideScreenshot, clip: { x: 0, y: 0, width: 600, height: 180 } })
+  // With one official line at 320, Git keeps its right-hand information and
+  // loses the path first; it is the Git group's own detail being hidden.
+  await page.setViewportSize({ width: 320, height: 844 })
+  await page.waitForFunction(() => document.querySelector('#fixture-dock .slp-root')?.getAttribute('data-official-hidden') === 'true')
+  await page.evaluate(() => {
+    const native = document.querySelector('#fixture-native')
+    native.textContent = ''
+    const line = document.createElement('span')
+    line.textContent = '42%'
+    native.appendChild(line)
+  })
+  await page.waitForFunction(() => document.querySelector('#fixture-dock .slp-root')?.getAttribute('data-official-hidden') === null)
+  await page.waitForFunction(() => document.querySelector('#fixture-dock .slp-row')?.getAttribute('data-lines') === '1')
+  await page.waitForFunction(() => {
+    const path = document.querySelector('#fixture-dock .slp-row .slp-git-path')
+    return path !== null && getComputedStyle(path).display === 'none'
+  })
+  const git = await page.evaluate(() => {
+    const row = document.querySelector('#fixture-dock .slp-row')
+    const group = row.querySelector('[data-component="git"]')
+    const path = row.querySelector('.slp-git-path')
+    const visible = group && getComputedStyle(group).display !== 'none'
+    const lines = []
+    ;[...row.children].filter(node => !node.classList.contains('slp-row-break') && getComputedStyle(node).display !== 'none')
+      .forEach(node => { if (!lines.some(seen => Math.abs(seen - node.offsetTop) <= 2)) lines.push(node.offsetTop) })
+    return { visible, pathPresent: !!path, path: path && getComputedStyle(path).display, lines: lines.length,
+      minButton: parseFloat(getComputedStyle(document.querySelector('.slp-btn-sm')).minHeight) }
+  })
+  if (!git.visible) throw new Error('The Git group was hidden instead of its path')
+  if (!git.pathPresent || git.path !== 'none') throw new Error('The narrow Git path was not hidden: ' + JSON.stringify(git))
+  if (git.lines !== 1) throw new Error('The one-line official budget left a second plugin line: ' + JSON.stringify(git))
+  if (git.minButton < 32) throw new Error('The mobile button hit area is too small')
+  const gitScreenshot = join(folder, 'mobile-320-git.png')
+  await page.screenshot({ path: gitScreenshot, clip: { x: 0, y: 0, width: 320, height: 180 } })
+  // The layout preview has no Host dock, so its own two-line cap still applies.
   await page.getByRole('button', { name: 'Narrow 320px' }).click()
   await page.evaluate(() => {
     const preview = document.querySelector('.slp-preview')
@@ -694,7 +729,9 @@ async function verifyMobile(page, folder) {
   await page.waitForFunction(() => !document.querySelector('.slp-preview .slp-row')?.querySelector('[data-overflow="true"]'))
   const screenshot = join(folder, 'mobile-320.png')
   await page.screenshot({ path: screenshot, clip: { x: 0, y: 0, width: 320, height: 180 } })
-  return { panel: 'mobile', width: 320, lines: actual.lines, hidden: preview.hidden, height: preview.height, screenshot: relative(root, screenshot) }
+  return { panel: 'mobile', width: 320, officialLines: 2, pluginHidden: true, wideLines: wide.lines,
+    gitPath: git.path, previewHidden: preview.hidden, screenshot: relative(root, screenshot),
+    screenshots: [officialScreenshot, wideScreenshot, gitScreenshot].map(path => relative(root, path)) }
 }
 
 // DSH 0.2.2-rc.2 dropped useAnchoredPosition from its primitives. Clicking a

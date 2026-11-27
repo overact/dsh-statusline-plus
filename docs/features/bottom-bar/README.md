@@ -34,13 +34,15 @@ Settings: `componentOrder`, `hideBottomOnNarrow`, and each component's `show*` s
   `[data-composer-card]`, because the dock shrinks to its contents and would latch the
   row hidden. A hidden probe survives suppression so a resize can restore the row.
   Header quotas and native stats stay.
-- **Two lines, then hide.** The live row wraps at most twice. A group that would begin a
-  third line gets `data-overflow="true"` and is removed from the flow, so no empty row is
-  reserved. When the second line would hold only one group, a zero-height flex break moves
-  the last group of line one down so both lines carry information. This budget covers this
-  plugin's groups; the Host's own ContextMeter is a sibling. At ≤480px the plugin row
-  reserves 76px for a direct native `<span>` so the official reading shares line one
-  instead of adding a third line; the plugin does not hide host content.
+- **Two lines for the whole area.** The plugin row and the Host's official stats share one
+  two-line budget; the plugin never hides host content. The official area is measured from
+  its text line boxes. With two or more official lines the plugin row stands down, so the
+  area stays at two lines. With one official line the plugin row gets one line. With no
+  official stats it gets two. The plugin row marks groups past its allowance with
+  `data-overflow="true"` and removes them from flow, and a zero-height flex break balances a
+  lone second-line group when two plugin lines are allowed. At ≤480px it also reserves 76px
+  for a direct native `<span>` so a one-line official reading can share the plugin's first
+  line.
 - **Git on narrow screens.** At ≤480px the repository path shrinks to 5em and fades its
   right edge; branch and counts keep priority. At ≤360px the path is hidden entirely.
 - **Touch targets.** On coarse pointers and ≤480px, small buttons get a 32px minimum and
