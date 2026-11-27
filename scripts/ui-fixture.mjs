@@ -148,7 +148,7 @@ export async function mountResponsiveFixture(page, { dockData = false, deepseek 
           activity.updateInstance = 'fixture-after-install'
           return { json: async () => ({ ok: true, data: { version: '9.9.9', output: '', instanceId: 'fixture-before-install' } }) }
         }
-        return { json: async () => ({ ok: true, data: { installed: '0.1.9', latest: '9.9.9', latestEngines: '>=0.2.0-rc.2',
+        return { json: async () => ({ ok: true, data: { loaded: '0.1.9', installed: '0.1.9', latest: '9.9.9', latestEngines: '>=0.2.0-rc.2',
           compatible: true, updateAvailable: true, checkedAt: new Date().toISOString(), error: null,
           install: { linked: false, profile: 'fixture', dir: '/fixture' }, host: '0.2.1-rc.5',
           instanceId: activity.updateInstance } }) }

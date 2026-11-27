@@ -11,6 +11,9 @@ in `useUpdateInstall` (`lib/client.js`).
 
 ## Checking
 
+The settings title shows the running version (`loaded`, or `installed` when the Host does
+not report `loaded`); a live swap updates it to the new version.
+
 The page asks once per settings visit, never on a timer, and the Host caches the registry
 answer for a minute. Only that answer is cached: `updateAvailable`, `compatible` and
 `restartRequired` are worked out on each call, because an install changes them inside the

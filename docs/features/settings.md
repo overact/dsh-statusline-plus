@@ -6,6 +6,9 @@ The **Statusline** section under DSH Web settings. Settings are saved under
 
 ## Code
 
+The header shows the running plugin version from the same `/statusline/api/version`
+check that drives the update button.
+
 `SettingsPage`, `useSettingsForm`, `apiSetConfig`, `apiResetConfig`, `useConfigSnapshot`, `RESET_KEYS` in
 `lib/client.js`; `DEFAULT_CONFIG`, `sanitizeConfig`, `SettingsSchema`, `rawConfigProblems`,
 `assertRawConfig` in `lib/config.js`; the `internal/config` and `settings/document-updated`

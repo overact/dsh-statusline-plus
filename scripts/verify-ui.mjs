@@ -580,6 +580,9 @@ async function verifyResponsive(page, folder) {
   // The update affordance: named after the new version, installed on one click,
   // and it reports the live swap the page detects through the instance id. The
   // fixture records the request instead of running pnpm.
+  const versionBadge = page.locator('.slp-version')
+  await versionBadge.waitFor()
+  if ((await versionBadge.innerText()).trim() !== 'v0.1.9') throw new Error('Settings did not show the running version')
   const updateButton = page.locator('.slp-update')
   await updateButton.waitFor()
   if (!(await updateButton.innerText()).includes('9.9.9')) throw new Error('Update button did not name the new version')
