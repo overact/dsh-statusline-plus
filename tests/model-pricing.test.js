@@ -30,6 +30,19 @@ test('host catalog is read entirely offline through its public exported provider
   assert.equal(native.resolve({ provider: 'llamacpp', model: 'qwen3.8-flash-next' }).source, 'fallback-reference')
 })
 
+test('the Hydrogen fallback prices a model newer than the bundled catalog', () => {
+  const c = createPricingCatalog()
+  for (const model of ['gemini-4-hydrogen', 'google/gemini-4-hydrogen', 'antigravity/gemini-4-hydrogen']) {
+    const card = c.resolve({ provider: 'antigravity', model })
+    assert.equal(card.source, 'fallback')
+    assert.equal(card.vendor, 'google')
+    assert.equal(card.cost.input, 1.5)
+    assert.equal(card.cost.output, 7.5)
+    assert.equal(card.cost.cacheRead, 0.075)
+  }
+  assert.equal(c.resolve({ provider: 'google', model: 'gemini-4-hydrogen-preview' }), null, 'a qualifier keeps its own identity')
+})
+
 test('all channels use the vendor model card and never borrow subscription or gateway prices', () => {
   const goPrice = { input: 0.15, output: 0.6, cacheRead: 0.003, cacheWrite: 0 }
   const zenPrice = { input: 0.14, output: 0.28, cacheRead: 0.028, cacheWrite: 0 }
