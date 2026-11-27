@@ -154,7 +154,8 @@ Shape sources: durandom/token-burn and steipete/CodexBar (Claude), raycast/exten
   windows and Magpie `user` (no priority is invented when Magpie omits it).
   Antigravity-shaped windows are recognized from their names alone, so even an
   unknown `agy-cli` alias gets the local "5 hours", "this week" and third-party
-  labels instead of raw service names. A known alias (`agy-cli`) also uses the
+  labels instead of raw service names. When a generic row lists a 5-hour and a
+  weekly window, the 5-hour one is read first. A known alias (`agy-cli`) also uses the
   local subscription name in the chip and panel heading; an unknown one keeps
   Magpie's own label. Window `display`, `unit` and `pool` are not
   used; `used` is enough for credit-type windows too.

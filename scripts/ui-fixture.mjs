@@ -318,15 +318,22 @@ export async function mountMagpieAccountsFixture(page) {
     const second = { fileName: 'magpie:agy-cli:2', email: 'two@example.invalid', windows: windows(20), status: 'available', fetchedAt: now }
     const item = { id: 'agy-cli', style: 'windows', label: 'Antigravity (local agy CLI)', accountCount: 2,
       accounts: [first, second], selectedFileName: first.fileName, windows: first.windows, chipWindows: 2, fetchedAt: now, source: 'magpie' }
+    // An unknown alias keeps its Magpie label in the panel heading. The chip
+    // clips that label to nine code points and fades the cut edge.
+    const longName = { id: 'custom-agent-cli', style: 'windows', label: 'Custom Long Subscription', windows: first.windows, chipWindows: 2, fetchedAt: now, source: 'magpie' }
     const config = { enabled: true, showQuota: true, quotaPercentMode: 'used', cacheTtlMs: 60000 }
-    window.fetch = async url => {
-      if (String(url).indexOf('/statusline/api/magpie-quota') === 0) return { json: async () => ({ ok: true, data: item }) }
+    window.fetch = async (url, options = {}) => {
+      if (String(url).indexOf('/statusline/api/magpie-quota') === 0) {
+        const body = JSON.parse(options.body || '{}')
+        return { json: async () => ({ ok: true, data: body.id === longName.id ? longName : item }) }
+      }
       throw new Error('Unexpected Magpie fixture request: ' + url)
     }
     slpComponents.publishConfig(config)
-    ReactDOM.createRoot(root).render(React.createElement(slpComponents.QuotaChip, {
-      resource: { kind: 'magpie', id: 'agy-cli', key: 'magpie:agy-cli' }, config: config, stepCount: 0,
-    }))
+    const chip = resource => React.createElement(slpComponents.QuotaChip, { resource: resource, config: config, stepCount: 0 })
+    ReactDOM.createRoot(root).render(React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 16 } },
+      chip({ kind: 'magpie', id: 'agy-cli', key: 'magpie:agy-cli' }),
+      chip({ kind: 'magpie', id: longName.id, key: 'magpie:' + longName.id })))
   })
 }
 

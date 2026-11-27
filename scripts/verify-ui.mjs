@@ -101,8 +101,12 @@ async function verifyChip(page, folder) {
 }
 
 async function verifyMagpieAccounts(page, folder) {
-  const chip = page.locator('.slp-quota-trigger').first()
+  const chips = page.locator('.slp-quota-trigger')
+  const chip = chips.first()
   await chip.waitFor()
+  const longName = chips.nth(1).locator('.slp-quota-name')
+  if ((await longName.innerText()).trim() !== 'Custom Lo') throw new Error('Unknown subscription name was not clipped to nine code points')
+  if (!(await longName.getAttribute('class')).includes('slp-quota-name-clipped')) throw new Error('Clipped subscription name did not fade its edge')
   await chip.click()
   const panel = page.locator('.slp-panel').first()
   await panel.waitFor()

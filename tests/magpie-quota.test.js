@@ -384,6 +384,13 @@ test('a credit pool reported as parts plus a total leads with the total, and the
   assert.equal(sub.windows[2].usedPercent, 24)
 })
 
+test('a 5-hour window leads a weekly one in a generic subscription', () => {
+  const list = api.parseMagpieSubscriptions([{
+    provider: 'kimi', windows: [{ name: '7 days', used: 20 }, { name: '5 hours', used: 10 }],
+  }], now)
+  assert.deepEqual(list[0].windows.map(win => win.short), ['5h', '7d'])
+})
+
 test('a pool without a reported total keeps its windows in the order Magpie sent them', () => {
   const list = api.parseMagpieSubscriptions([{
     provider: 'kimi', windows: [{ name: '5 hours', used: 10, limit: 100 }, { name: '7 days', used: 20, limit: 400 }],
