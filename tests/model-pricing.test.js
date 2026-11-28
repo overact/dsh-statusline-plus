@@ -134,21 +134,6 @@ test('a model missing from both catalogs falls back to a labelled snapshot entry
   assert.equal(real.resolve({ provider: 'llamacpp', model: 'qwen3.8-flash-next' }).source, 'openrouter')
 })
 
-test('the offline fallback only holds models the host catalogs do not price', async () => {
-  // The contract: FALLBACK is for gaps, not a second copy. When the bundled pi-ai
-  // snapshot learns a model, its entry here becomes dead weight that can silently
-  // disagree with the host's price, so this test fails until it is removed.
-  const { loadPricingCatalog, FALLBACK } = await import('../lib/model-pricing.js')
-  const live = await loadPricingCatalog()
-  if (!live.info.version) return // no bundled catalog in this environment: nothing to compare
-  for (const model of Object.keys(FALLBACK)) {
-    const resolved = live.resolve({ provider: 'unknown', model })
-    assert.ok(resolved, model + ' is not priced by anything')
-    assert.ok(['fallback', 'fallback-reference'].includes(resolved.source),
-      model + ' now has a ' + resolved.source + ' card; remove it from FALLBACK')
-  }
-})
-
 test('native prices precede snapshots and subscriptions/custom routes use exact public model identity', () => {
   const c = catalog()
   assert.equal(c.resolve({ provider: 'codex', model: 'gpt-6.1-sol' }).cost.input, 3)

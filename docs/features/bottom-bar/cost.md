@@ -35,14 +35,15 @@ Resolution order:
 1. Official card, when the vendor prices the model.
 2. `openrouter` reference, when the vendor publishes no card for it.
 3. `FALLBACK` for models both catalogs lack. An offline table, never an online query; each
-   entry records `kind` (`official` or `reference`), `asOf` and `url`. It holds only models
-   the host catalogs do not price: today `gemini-4-hydrogen` (official card) and
-   `qwen3.8-flash-next` (OpenRouter reference). The bundled pi-ai snapshot is versioned and
-   older (1.5.2 at the time of writing), which is why the table exists at all.
-   **A model the catalogs learn must leave this table** — a second copy silently disagrees
-   with the host's price when it moves, and a test fails when one does. Adding a model means
-   adding one entry with its source and date, never a guess, and never editing the bundled
-   catalog, which belongs to the Host.
+   entry records `kind` (`official` or `reference`), `asOf` and `url`. It holds models an
+   older bundled catalog can lack: today `gemini-4-hydrogen` (official card) and
+   `qwen3.8-flash-next` (OpenRouter reference). The engine range starts at `dsh 0.2.0-rc.2`,
+   so the newest pi-ai snapshot is not the only one in use — a model the *newest* snapshot
+   prices still needs a card for the hosts behind it, and this table is only consulted after
+   both catalogs decline. Whether an entry has become fully redundant is a judgement about
+   which hosts are still in use, not something a test can decide. Adding a model means adding
+   one entry with its source and date, never a guess, and never editing the bundled catalog,
+   which belongs to the Host.
 4. `RATES` for DeepSeek, by peak and off-peak tariff, in CNY.
 
 An unrecognized model stays unpriced. When the vendor lists the model with an all-zero
