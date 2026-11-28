@@ -111,6 +111,51 @@ comment, or native checkpoints keep the old semantics.
 Update the as-of date with the table. `viewSchema` pins `PRICING_AS_OF`, and the preview
 sample in `LayoutPreview` carries the date too.
 
+## Today's total
+
+The chip and the panel price **this session**. "What has today cost" cannot come from
+the same projection: it keeps no day bucket, and adding one would invalidate every
+stored row on the next start.
+
+So the Host answers it separately, in `lib/today-spend.js`, through
+`GET /statusline/api/today-spend`:
+
+- Only logs touched since local midnight are read. A session's log is append-only, so a
+  file untouched today holds no event from today. The corpus here has a few such files,
+  not a thousand.
+- Each log is replayed by the Host (`sessionQuery.readSession`), not by a decoder of
+  ours, and the fork prefix (`inheritedEventCount`) is skipped: a fork is not charged
+  for yesterday's events a second time.
+- Each request is priced at **its own** timestamp, with the tariff in force then, and a
+  retry (`assistant/attempt` with no message for the same step) is charged once.
+- An unpriceable request is counted as unpriced (shown on the line), an unreadable log as
+  skipped (tooltip only), and the figure is a lower bound exactly when either exists.
+- Both id forms are tried: a session's directory is named `session-<id>`, and the Host's
+  corpus keys some of them with that prefix and some without.
+
+The line reads `Today ¥1.23 · 3 sessions · 1 unpriced` and is hidden when nothing could be
+counted: a confident `¥0.00` for a day with unknown models would be a lie.
+
+It stays **one line**, and the split is deliberate: a count (`1 unpriced`) is short enough
+to read without hovering, while the prose that explains it — unread sessions, "the total is
+a lower bound" — is the line's `title`. A wrapped second line costs more panel height than
+that sentence is worth. `data-complete="false"` marks the incomplete case for tests.
+
+- Limit: at most 40 logs per refresh, cached for 60 s and single-flighted, so two tabs
+  never walk the same files.
+- The day boundary is the local midnight of the machine running the Host, which is the
+  same machine as the browser for every supported setup.
+
+## Rate verification
+
+The built-in cards are compared to the official page numerically — not only the
+wording. A price cut or a changed discount leaves the peak sentence intact, so the
+wording check alone would never see it. Results appear in the peak panel, next to the
+rule warning, because that is the surface that already reports official-page drift. See
+[peak-hours](../peak-hours.md#the-numbers-not-only-the-wording).
+
+Tests: `tests/today-spend.test.js`, `tests/pricing-verify.test.js`.
+
 ## Tests
 
 `npm run verify -- --files lib/session-metrics.js --ui cost`.

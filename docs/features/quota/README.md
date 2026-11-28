@@ -151,6 +151,17 @@ Under `prefers-reduced-motion` the animation is off but the removal still happen
    `modelQuotaSource`.
 4. Add parser tests with invented values, shaped like a real response.
 
+## Advice, not only a reason
+
+A failure code names what happened; it rarely says what to do. Every code that can reach
+the panel therefore has one sentence of advice (`quotaAdvice`), shown under the status
+line: `no-credential` points at the API key field, `rate-limit` suggests a longer
+refresh interval, `forbidden` mentions the account or region, and an unknown code still
+gets a sentence rather than a blank line.
+
+The chip stays a reading. The advice lives in the details panel, where there is room for
+it and where someone who opened it is already looking for a cause.
+
 ## Tests
 
 `tests/magpie-quota.test.js`, `tests/provider-quota.test.js`, `tests/antigravity.test.js`,

@@ -27,6 +27,11 @@ The chip reads projections and has no route of its own.
   one. The percentage is in the panel. `formatTokens` rounds first and then picks the unit,
   so `999,999` reads `1M` rather than the `1000K` that rounding in the smaller unit would
   produce.
+- The percentage column adds up to 100. `largestRemainderPct` gives the leftover
+  tenths to the largest fractional parts, so three equal thirds read 33.4 / 33.3 /
+  33.3 rather than 33.3 × 3 = 99.9. Rounding each share independently is the classic
+  way to print a table of parts that does not match its own total; the bar uses the
+  same rounded widths so the drawing and the figures agree.
 - Most providers never report cache writes, so that row appears only when it has tokens.
 - **Cache misses are requests, not tokens.** A miss is one settled request with prompt
   input and no cache read, shown after the `Cache read` label as `(N misses)`, and only
@@ -38,5 +43,6 @@ The chip reads projections and has no route of its own.
 
 ## Tests
 
-`tests/client-lifecycle.test.js`, `tests/session-metrics.test.js`. There is no dedicated
-browser smoke panel, so check a panel change in a real page.
+`tests/client-lifecycle.test.js` (including the largest-remainder rule),
+`tests/session-metrics.test.js`, and the `context-split` check in
+`scripts/verify-ui.mjs`, which opens the real panel and asserts the column totals 100.

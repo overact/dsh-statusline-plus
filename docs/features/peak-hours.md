@@ -63,6 +63,36 @@ treated as a broken file.
   once, so a calendar refresh during a run cannot silently change folded money. See
   [cost](bottom-bar/cost.md#rules).
 
+## The numbers, not only the wording
+
+`checkOfficialRule` reads the *sentence*: if the peak windows or the discounted-period
+phrasing change, it says so. It cannot see money. A price cut, a new model row or a
+changed discount leaves that sentence untouched, so an estimate would keep using the old
+numbers indefinitely.
+
+`lib/pricing-verify.js` reads the same page — the one already fetched for the rule check,
+so this costs no extra request — in the page's own terms (元 per million tokens):
+
+- Columns are mapped by **model name** from the header row, not by position. A reordered
+  page is not a price change.
+- The page is validated against itself first: every cell positive, cache-hit below
+  cache-miss, and every off-peak leg exactly half its peak leg. A page that fails this is
+  reported as unreadable, never as a cheap model.
+- Only then is it compared to the card we price with. A leg that moves beyond 0.5 % is
+  reported with its path and both numbers; a leg outside 0.2×–5× is treated as a parse
+  fault and the reading is dropped.
+- A changed discount is reported as its own change, even when every leg still halves.
+
+The card is **never written from the page**. The alert names the difference and asks a
+human to check; promoting a scraped number automatically is how a comparable plugin
+served a 2.5×-too-high table for months after the page was restructured.
+
+`rule.checkedAt` is also rendered: a card nobody has checked for a week says so, which
+is the only way to notice that the fetches have been failing.
+
+Tests: `tests/pricing-verify.test.js` (fixture: a trimmed copy of the real page),
+`tests/peak-schedule.test.js`.
+
 ## Tests
 
 `tests/peak.test.js`, `tests/peak-schedule.test.js`. Peak display has no browser smoke

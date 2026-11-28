@@ -48,6 +48,41 @@ window.__ModuleLoader__.load({
 `register` returns a disposer. Returning it from the `inject` callback lets the Host
 remove the item when your plugin unloads or hot-reloads.
 
+## Budget
+
+The row is shared with built-ins and other plugins, so an item declares how much of it
+it may take. All three options are optional.
+
+| Option | Type | Meaning |
+| --- | --- | --- |
+| `maxCells` | integer 1–48, or `0` | Width cap in character cells. Default **24**. `0` turns the cap off. A cell is one digit in the row's font. Content past the cap is clipped with a faded right edge. |
+| `minColumns` | integer 0–400 | Hide the item when the row cannot give it this many cells. Default `0` (always show). |
+| `detail` | string, ≤160 chars | One line of explanation, used as the item's tooltip. Trimmed. |
+
+```js
+slots.register({
+  name: 'statusline-plus.dock.item',
+  id: 'my-plugin.ci',
+  order: 100,
+  label: 'CI status',
+  maxCells: 12,      // "CI ✓ main 3m" fits; anything longer is clipped
+  minColumns: 24,    // on a phone-width row, leave it out instead of squeezing
+  detail: 'Last CI run on this branch', // shown on hover
+}, BuildStatus)
+```
+
+The row applies these, not your component: it is the only place that knows how much room
+is left. `maxCells` becomes a `max-width` on your item's wrapper, `minColumns` removes
+the wrapper from flow (so it takes no line and no separator), and `detail` becomes the
+wrapper's `title`.
+
+An item that declares nothing still gets the 24-cell cap. That default exists because an
+unbounded item can push the whole row onto a third line; pass `maxCells: 0` if your
+reading genuinely needs more and you have checked it at 320px.
+
+A `minColumns` decision is re-measured on resize and when you change the declaration.
+It is never applied to a hidden item's own width, so it cannot oscillate.
+
 ## Rules
 
 - **Ids.** Use `<plugin>.<item>`, both parts `[a-z0-9]` followed by up to 31 of
@@ -64,7 +99,8 @@ remove the item when your plugin unloads or hot-reloads.
 - **Rendering.** Render a compact inline element of row height: plain text, or a
   `<button>` that opens your own panel. Render `null` when there is nothing to show;
   the row then skips the item and its separator. The row sets text colour (tertiary,
-  secondary on hover); leave colour unset unless the value is a status colour.
+  secondary on hover); leave colour unset unless the value is a status colour. Keep
+  within the budget above rather than expecting the row to make room afterwards.
 - **Failures.** The Host guards each item. A component that throws is retired until your
   plugin registers it again: it leaves the row and Settings, and a crashed replacement
   gives the place back to the built-in. The rest of the row keeps working. A label
@@ -85,6 +121,8 @@ remove the item when your plugin unloads or hot-reloads.
 ## Testing your item
 
 Check that it appears in the row and in Settings → bottom row with the "Extension"
-tag, that dragging it and switching it off survive a reload, and that unloading your
-plugin removes it. Status Line Plus's own coverage of the slot is the `dock-extension`
-check in `scripts/verify-ui.mjs`.
+tag, that dragging it and switching it off survive a reload, that a long reading is
+clipped by `maxCells` rather than pushing the row, that a raised `minColumns` hides it
+on a narrow window, and that unloading your plugin removes it. Status Line Plus's own
+coverage of the slot is the `dock-extension` check in `scripts/verify-ui.mjs`, which
+exercises the budget cap and the column minimum.

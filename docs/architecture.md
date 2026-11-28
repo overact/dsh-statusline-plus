@@ -33,6 +33,11 @@ bounded caches share `lib/ttl-map.js`, its JSON state files share `lib/json-stor
 and its single-flight refresh gates share `lib/cached-refresh.js`. Add a row there
 instead of a parallel list.
 
+Three modules sit beside the older ones: `lib/pricing-verify.js` reads the official
+rate table numerically (the rule check reads wording) and only ever reports;
+`lib/provider-defaults.js` answers what DSH already knows about a provider's connection;
+`lib/today-spend.js` sums today's spend across sessions through the Host's replay.
+
 ## Browser slots
 
 | Slot | Content |
@@ -63,6 +68,9 @@ All live under `/statusline/api/`.
 | `reset-notices` | GET | Provider-wide reset notices for `kinds` (AIHOT, 10 min + ETag) |
 | `version` | GET, POST | Update check, and install |
 | `restart` | GET, POST | Reload/restart capability and progress; start one |
+| `wire` | GET | The host/client contract number (constant, no I/O) |
+| `provider-defaults` | POST | A route's connection, read from DSH's own model settings |
+| `today-spend` | GET | Today's cross-session spend (cached 60 s) |
 
 Named routes bypass the built-in `/api` transport and its authentication. DSH
 0.2.3-alpha admits registered WebServer routes itself (their `auth` defaults to

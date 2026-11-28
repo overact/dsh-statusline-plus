@@ -68,6 +68,22 @@ the tooltip.
 remains. Colour is identity, not health — except an exhausted window, which turns the
 whole rail to the error tint.
 
+### A failed read is not an empty seat
+
+Knowing which subscription pays for a model is separate from knowing what it has
+left. When the source is resolved but the read fails, the rail turns into a 3px
+hatched track in the warning tint and the tooltip names the reason (`Quota read
+failed: not found; retrying automatically`). An absent rail means "this model has
+no quota source"; a failed one means "there is a source and we do not have its
+number". Those are different answers and must not look the same.
+
+There is no countdown in that tooltip. The store retries on its own ladder
+(`quotaRetryMs`), and a frozen "15s" would be wrong by the time it is read.
+
+A figure that survives a failed refresh keeps its rail — it is still the last good
+reading — and the tooltip ends with "This refresh failed; the figure is from the
+last successful read" so it cannot pass for a fresh one.
+
 **A balance has no denominator**, so it never paints a proportion. It shows its
 amount (e.g. `¥51.43`); only `isAvailable === false` or a remaining below `redBelow`
 turns the rail into a full error stripe, which reads as "this is spent" rather than
@@ -146,10 +162,25 @@ on) are in the Header group of the settings page and in `RESET_KEYS`.
   highlight/focus state. It never prevents the wheel. Verified by the scroll list in
   `verify-ui --panel modelbar`.
 
+## Contrast: a reading must beat an absent reading
+
+A window subscription has no amount text, so the 3px fill is the whole reading. It is
+painted at 42 % of its state colour with a `label-tertiary` track — a bar the eye can
+pick out between two lines of model names. A **missing** reading (the hatched track) sits
+at 20 %, deliberately below a real fill: a texture that says "no value" must not out-shout
+the rows that have one. A balance's amount uses `--dsw-alias-label-secondary`, not the
+caption step, because it is content.
+
+The regression test asserts the relationship, not the numbers: the unknown hatch's alpha
+is below the reading's, and the reading is at least 35 % so it cannot fade back to
+invisible.
+
 ## Tests
 
 `tests/client-lifecycle.test.js` covers source resolution, the window choice, the
-balance branch and the tooltip. `scripts/verify-ui.mjs --panel modelbar` mounts the
+balance branch, the tooltip, and the failed-read paint (a known source with no
+number paints hatching; a healthy balance still paints nothing). `scripts/verify-ui.mjs --panel modelbar` mounts the
 label in Host-shaped buttons and asserts the 3px rail, survival across hover, the
-balance row, the empty-session rule and that the active row follows a wheel scroll under a
+balance row, the empty-session rule, that a failed read paints the hatched rail with
+its reason in the tooltip, and that the active row follows a wheel scroll under a
 stationary pointer.

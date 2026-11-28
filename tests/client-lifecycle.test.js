@@ -85,7 +85,7 @@ function harness({ hidden = false, wallTime = Date.now(), panelLayout = null } =
       disconnect() { this.nodes.clear() }
     }
   }
-  const source = fs.readFileSync(require.resolve('../lib/client'), 'utf8').replace('return module.exports', 'return { magpieSubscriptionHint, ContextProjection, ContextRow, componentOrder, layoutOrder, isExtensionId, dockExtensionsOf, componentEnabled, reorderComponent, layoutPreset, matchingPreset, dockComponents, LayoutEditor, LayoutPreview, ToolActivityRow, toolElapsed, quotaRefreshOnStep, TpsRow, useLiveTps, useQuotaResource, formatPathSegs, fmtResetHours, minutesLabel, primarySubscriptionKind, looksLikeSubscription, providerMatchesModel, modelQuotaSource, modelQuotaMeter, meterPaint, modelQuotaTitle, planColor, planKeyOf, fmtMoney, QuotaLine, parseSeconds, PeakPanel, PeakFooterDot, RestartFooterButton, restartStep, restartPollDelay, restartProgressSteps, quotaStepRefreshDue, useModelQuota, deepseekPeakStatus, HeaderChip, SettingsPage, DeepseekPeakChip, ActivityRow, childActivityRows, childElapsed, CostRow, estimateCost, quotaFreshness, pickFoldLevel, QuotaSource, QUOTA_SOURCES, QuotaChip, QuotaUnavailable, quotaState, fmtRetryIn, contextUsage, ContextPanel, formatTokens, STR, resetSentence, resetSentenceParts, resetKindOfName, quotaRequest, publishConfig, apiSetConfig, setScope: function (scope) { settingsScope = scope } }')
+  const source = fs.readFileSync(require.resolve('../lib/client'), 'utf8').replace('return module.exports', 'return { magpieSubscriptionHint, ContextProjection, ContextRow, componentOrder, layoutOrder, isExtensionId, dockExtensionsOf, componentEnabled, reorderComponent, layoutPreset, matchingPreset, dockComponents, LayoutEditor, LayoutPreview, ToolActivityRow, toolElapsed, quotaRefreshOnStep, TpsRow, useLiveTps, useQuotaResource, formatPathSegs, fmtResetHours, minutesLabel, primarySubscriptionKind, looksLikeSubscription, providerMatchesModel, modelQuotaSource, modelQuotaMeter, meterPaint, modelQuotaTitle, modelQuotaFailurePaint, modelQuotaFailTitle, modelQuotaStaleSuffix, dockCellBudget, dockMinColumns, dockDetail, largestRemainderPct, applyModelRail, planColor, planKeyOf, fmtMoney, QuotaLine, parseSeconds, PeakPanel, PeakFooterDot, RestartFooterButton, restartStep, restartPollDelay, restartProgressSteps, quotaStepRefreshDue, useModelQuota, deepseekPeakStatus, HeaderChip, SettingsPage, DeepseekPeakChip, ActivityRow, childActivityRows, childElapsed, CostRow, estimateCost, quotaFreshness, pickFoldLevel, QuotaSource, QUOTA_SOURCES, QuotaChip, QuotaUnavailable, quotaState, fmtRetryIn, contextUsage, ContextPanel, formatTokens, noteFault, noteWire, isOwnEntry, healthState, HealthBanner, WIRE_EXPECTED, quotaAdvice, STR, resetSentence, resetSentenceParts, resetKindOfName, quotaRequest, publishConfig, apiSetConfig, setScope: function (scope) { settingsScope = scope } }')
   vm.runInNewContext(source, context)
   exported.setScope(scope)
   return {
@@ -307,13 +307,30 @@ test('child activity uses independent running status and native timing without c
   assert.equal(baseline[0].running, false)
 })
 
+test('a child that settled long ago is not replayed as just-stopped', () => {
+  // The fade window belongs to the stop, not to this mount: using the mount time
+  // made every session switch replay 5s of fade plus 15s of removal for children
+  // that had settled hours earlier, so the chip appeared out of nowhere.
+  const settle = ms => ({ children: [{ id: 'one', settledAt: Date.now() - ms }] })
+  const propsFor = ms => ({ useProjection: key => key === 'subagentCatalog' ? [{ id: 'one', label: 'worker', createdAt: 1 }] : settle(ms),
+    useSessions: select => select({ ids: ['one'], byId: { one: { running: false } } }),
+    useSessionStatus: select => select(new Map()) })
+  // Separate mounts: the stop time is remembered per mount, which is the point.
+  const old = harness()
+  assert.equal(old.renderComponent(old.ActivityRow, propsFor(10 * 60000)), null, 'an old stop is not shown at all')
+  old.unmount()
+  const fresh = harness()
+  assert.ok(fresh.renderComponent(fresh.ActivityRow, propsFor(2000)), 'a fresh stop is shown')
+  fresh.unmount()
+})
+
 test('activity details are bounded and tick only while visible, open and running', () => {
   const h = harness(), catalog = Array.from({ length: 20 }, (_, i) => ({ id: 'child-' + i, label: 'Worker ' + i }))
   const props = { useProjection: () => catalog, useSessions: select => select({ byId: {} }),
     useSessionStatus: select => select(new Map([[catalog[0].id, { running: true }]])) }
   let view = h.renderComponent(h.ActivityRow, props)
   assert.equal(view.children[0].children[0], 'Subagents 0/20 · ?19')
-  assert.match(view.children[0].props.title, /1 running.*19 unknown/)
+  assert.match(view.children[0].props['data-peek'], /1 running.*19 unknown/)
   assert.equal(h.timers.size, 0)
   view.children[0].props.onClick()
   view = h.renderComponent(h.ActivityRow, props)
@@ -446,7 +463,7 @@ test('tools show bounded real calls, freeze settled durations and clean up hidde
   const props = { sessionId: 'one', useProjection: () => data, useSessionStatus: select => select(new Map([['one', { running }]])) }
   let view = h.renderComponent(h.ToolActivityRow, props)
   assert.equal(view.children[0].children[0], 'Tools 3')
-  assert.match(view.children[0].props.title, /tool_0 · tool_1 \+1/)
+  assert.match(view.children[0].props['data-peek'], /tool_0 · tool_1 \+1/)
   assert.doesNotMatch(textContent(view.children[0]), /tool_|12s/)
   assert.equal(h.timers.size, 0, 'collapsed count needs no elapsed clock')
   view.children[0].props.onClick(); view = h.renderComponent(h.ToolActivityRow, props)
@@ -454,7 +471,7 @@ test('tools show bounded real calls, freeze settled durations and clean up hidde
   const list = view.children[1].children[1]
   assert.equal(list.props.className, 'slp-panel-scroll', 'only the list scrolls; the heading stays put')
   assert.equal(list.children[0].length, 12)
-  assert.match(view.children[0].props.title, /not exact execution time/, 'timing caveat lives in the trigger tooltip')
+  assert.match(view.children[0].props['data-peek'], /not exact execution time/, 'timing caveat lives in the trigger peek')
   assert.doesNotMatch(textContent(view), /not exact execution time/)
   assert.equal(h.toolElapsed(data.tools[3], now + 30000), 10)
   h.setVisible(false); assert.equal(h.renderComponent(h.ToolActivityRow, props), null)
@@ -624,7 +641,7 @@ test('cost UI exposes partial coverage and unknown pricing instead of fabricated
   const bucket = { pricedMessages: 1, unpricedMessages: 0, amountCny: 0.0012 }
   const props = { useProjection: () => ({ currentTurn: bucket, session: bucket, pricingAsOf: '2026-10-02T04:24:12Z' }) }
   let view = h.renderComponent(h.CostRow, props)
-  assert.match(view.children[0].props.title, /API reference cost.*1 priced/)
+  assert.match(view.children[0].props['data-peek'], /API reference cost.*1 priced/)
   assert.equal(view.children[0].children[0], '≈¥0.00')
   assert.doesNotMatch(view.children[0].children[0], /Turn|Session|subtotal/)
   view.children[0].props.onClick(); view = h.renderComponent(h.CostRow, props)
@@ -642,14 +659,17 @@ test('cost UI shows native USD amounts, separate currencies, source freshness an
   const props = { useProjection: () => data }
   let view = h.renderComponent(h.CostRow, props)
   assert.equal(view.children[0].children[0], '≈$0.25')
-  assert.match(view.children[0].props.title, /Unknown cache-write price/)
+  assert.match(view.children[0].props['data-peek'], /Unknown cache-write price/)
   view.children[0].props.onClick(); view = h.renderComponent(h.CostRow, props)
   assert.match(textContent(view), /1 priced · 1 unpriced \(OpenAI\)/, 'the priced count names the model vendor')
   assert.doesNotMatch(textContent(view), /catalog generated|same reference rates/)
   const tip = descendants(view, node => node.props?.className === 'slp-hint')[0].props['data-tip']
   assert.match(tip, /Official catalog 0\.87\.1/)
   assert.doesNotMatch(tip, /not a bill|Input is uncached/, 'the tooltip carries provenance only')
-  assert.equal(h.requests.length, 0, 'cost rendering never queries prices online')
+  // The cost figure never asks the network for a price. The only request it may
+  // make is this plugin's own Host route for today's cross-session total.
+  assert.ok(h.requests.every(request => String(request.url).indexOf('/statusline/api/') === 0), 'cost rendering never queries prices online')
+  assert.ok(!h.requests.some(request => /today-spend/.test(String(request.url)) && request.url.indexOf('https') === 0))
   assert.doesNotMatch(textContent(view), /per hour/, 'no request span: no hourly rate')
   data.activeFrom = 0; data.activeTo = 4 * 60000
   view = h.renderComponent(h.CostRow, props)
@@ -699,7 +719,8 @@ test('compact cost chart and rows share currency subtotals without rounding bar 
   assert.ok(Math.abs(widths(bars(view)[0])[1] - 100 / 201) < 1e-12, 'tiny components retain precise chart proportions')
   delete bucket.breakdown.cache
   assert.equal(bars(h.renderComponent(h.CostRow, props)).length, 0, 'incomplete breakdown never renders a misleading chart')
-  assert.equal(h.requests.length, 0)
+  // Same rule as above: no price is fetched, but the local today-total route is allowed.
+  assert.ok(h.requests.every(request => String(request.url).indexOf('/statusline/api/') === 0))
   h.unmount()
 })
 
@@ -939,7 +960,13 @@ test('the model rail shows the window that blocks first, and never fakes a balan
   assert.equal(h.meterPaint(h.modelQuotaMeter({ style: 'balance', isAvailable: false }, 'used'), 'deepseek').pct, 1)
   const paint = h.meterPaint(h.modelQuotaMeter(windows, 'used'), 'codex')
   assert.equal(paint.pct, 0.82)
-  assert.match(paint.color, /15%/)
+  // A window subscription has no amount text: this fill is the whole reading.
+  assert.match(paint.color, /42%/)
+  // ...and a missing reading must not out-shout it.
+  const alphaOf = color => Number(/(\d+)%/.exec(color)[1])
+  const failed = h.modelQuotaFailurePaint({ id: 'codex' }, 'network')
+  assert.ok(alphaOf(failed.color) < alphaOf(paint.color), 'the unknown hatch is stronger than a real reading')
+  assert.ok(alphaOf(paint.color) >= 35, 'the reading is too faint to see at 3px')
   const exhausted = h.meterPaint({ style: 'windows', pct: 100, exhausted: true }, 'codex')
   assert.equal(exhausted.pct, 1)
   assert.match(exhausted.color, /state-error-primary/)
@@ -956,6 +983,136 @@ test('the model rail tooltip names every window and its reset', () => {
   assert.match(title, /^Codex · 5 hours 30% used \(1\.0h\)/)
   assert.match(title, /7 days 82% used \(2\.0h\)/)
   assert.equal(h.modelQuotaTitle({ style: 'balance', remaining: 51.43, currency: 'CNY' }, 'DeepSeek', 'used'), 'DeepSeek · balance ¥51.43')
+  h.unmount()
+})
+
+test('a failed slot entry is reported in Settings, and only our own entries are', () => {
+  const h = harness()
+  // The slots we share with other plugins carry their entries too; theirs are not
+  // our bug and must not appear in our panel.
+  assert.equal(h.isOwnEntry({ id: 'statusline-plus-chip' }), 'statusline-plus-chip')
+  assert.equal(h.isOwnEntry({ options: { id: 'statusline-plus' } }), 'statusline-plus')
+  assert.equal(h.isOwnEntry({ id: 'someone-else.chip' }), '')
+  assert.equal(h.isOwnEntry(null), '')
+  h.noteFault('conversation.composer.dock', 'boom')
+  h.noteFault('conversation.composer.dock', 'boom')
+  assert.equal(h.healthState().faults.length, 1, 'a throw on every render must not fill the panel')
+  h.noteFault('conversation.input.model.label', 'undefined is not a function')
+  assert.equal(h.healthState().faults[0].key, 'conversation.input.model.label', 'newest first')
+  ;['a', 'b', 'c', 'd'].forEach(key => h.noteFault(key, 'x'))
+  assert.equal(h.healthState().faults.length, 3, 'three lines, newest kept')
+  h.noteWire(99)
+  const view = h.renderComponent(h.HealthBanner, {})
+  const text = textContent(view)
+  assert.match(text, /interface version/)
+  assert.match(text, /99/, 'the host wire number is named')
+  assert.match(text, new RegExp(String(h.WIRE_EXPECTED)), 'and the one the bundle expects')
+  assert.match(text, /Failed in/)
+  h.unmount()
+})
+
+test('a matching wire version reports nothing at all', () => {
+  const h = harness()
+  h.noteWire(h.WIRE_EXPECTED)
+  assert.equal(h.renderComponent(h.HealthBanner, {}), null, 'agreeing halves make no banner')
+  h.unmount()
+})
+
+test('every failure code gets an actionable sentence, never a bare code', () => {
+  const h = harness()
+  const codes = ['network', 'timeout', 'rate-limit', 'auth', 'no-credential', 'signed-out', 'no-account',
+    'invalid-response', 'invalid-json', 'not-found', 'disabled', 'unauthorized', 'forbidden', 'aborted', 'busy']
+  codes.forEach(code => {
+    const advice = h.quotaAdvice(code)
+    assert.ok(advice && advice.length > 10, 'no advice for ' + code)
+    assert.doesNotMatch(advice, /^\w[\w-]*$/, code + ' advice is just the code')
+  })
+  assert.notEqual(h.quotaAdvice('no-credential'), h.quotaAdvice('rate-limit'), 'different causes get different advice')
+  assert.match(h.quotaAdvice('no-credential'), /Settings/)
+  assert.match(h.quotaAdvice('rate-limit'), /rate limiting/)
+  // An unknown code still gets a sentence rather than an empty line.
+  assert.ok(h.quotaAdvice('some-future-code').length > 10)
+  h.unmount()
+})
+
+test('a dock item declares its budget instead of taking whatever room it likes', () => {
+  const h = harness()
+  const slots = { entriesOfSlot: () => [
+    { options: { id: 'a.plain' } },
+    { options: { id: 'a.loud', maxCells: 10, minColumns: 30, detail: '  CI build  ' } },
+    { options: { id: 'a.huge', maxCells: 999 } },
+    { options: { id: 'a.off', maxCells: 0 } },
+    { options: { id: 'a.neg', minColumns: -5 } },
+    { options: { id: 'a.null', maxCells: null } },
+  ] }
+  const [plain, loud, huge, off, neg, nul] = h.dockExtensionsOf(slots)
+  assert.equal(plain.maxCells, 24, 'an item that declares nothing still gets the documented default')
+  assert.equal(plain.minColumns, 0, 'no minimum means "show it wherever the row has room"')
+  assert.equal(plain.detail, '')
+  assert.equal(loud.maxCells, 10)
+  assert.equal(loud.minColumns, 30)
+  assert.equal(loud.detail, 'CI build', 'the detail is trimmed before it reaches a tooltip')
+  assert.equal(huge.maxCells, 48, 'clamped to the documented ceiling')
+  assert.equal(off.maxCells, 0, '0 opts out of the cap')
+  assert.equal(neg.minColumns, 0, 'a negative minimum is no minimum, not a hide-everywhere')
+  assert.equal(nul.maxCells, 24, 'an explicit null is "unspecified", not 1')
+  assert.equal(h.dockDetail('x'.repeat(400)).length, 160, 'a long detail is bounded')
+  assert.equal(h.dockDetail(undefined), '')
+  h.unmount()
+})
+
+test('a chip shows its detail in place, without a native tooltip over it', () => {
+  const h = harness()
+  const bucket = { pricedMessages: 1, unpricedMessages: 0, amountCny: 0.0012 }
+  const view = h.renderComponent(h.CostRow, { useProjection: () => ({ currentTurn: bucket, session: bucket, pricingAsOf: '2026-10-02T04:24:12Z' }) })
+  const trigger = view.children[0]
+  // A `title` would make the browser draw its own tooltip a second later, on top
+  // of the peek.
+  assert.equal(trigger.props.title, undefined)
+  assert.match(trigger.props['data-peek'], /API reference cost.*1 priced/)
+  assert.match(trigger.props['aria-label'], /API reference cost/)
+  h.unmount()
+})
+
+test('a failed quota read paints an unknown rail, not an empty one', () => {
+  const h = harness()
+  // The subscription is known, so "no rail" would claim the model has no quota
+  // reading at all — the same picture a switched-off source draws.
+  const paint = h.modelQuotaFailurePaint({ kind: 'codex' }, 'rate-limit')
+  assert.equal(paint.failed, true)
+  assert.equal(paint.key, 'failed:rate-limit', 'a changed reason repaints the rail')
+  assert.match(paint.color, /state-warn-primary/, 'unknown is a warning tint, not the identity colour')
+  assert.equal(h.modelQuotaFailurePaint(null, 'rate-limit'), null, 'a model with no subscription still gets no rail')
+  // A healthy balance legitimately paints nothing, so this must not become a rail.
+  assert.equal(h.meterPaint(h.modelQuotaMeter({ style: 'balance', remaining: 51.43, currency: 'CNY' }, 'used'), 'deepseek'), null)
+  assert.match(h.modelQuotaFailTitle('rate-limit'), /rate limited/)
+  assert.doesNotMatch(h.modelQuotaFailTitle('rate-limit'), /\d+s/, 'no countdown: the store retries on its own ladder')
+  // Data that survived a failed refresh is still the last good reading, and says so.
+  assert.match(h.modelQuotaStaleSuffix({ error: 'timeout', data: {} }), /last successful read/)
+  assert.equal(h.modelQuotaStaleSuffix({ error: null, data: {} }), '')
+  assert.equal(h.modelQuotaStaleSuffix({ error: 'timeout', data: null }), '', 'a never-loaded entry is the failure case, not a stale one')
+  h.unmount()
+})
+
+test('the context split percentages add up instead of drifting to 99.9 or 100.1', () => {
+  const h = harness()
+  // Three equal thirds round to 33.3 each on their own, which prints 99.9%.
+  assert.deepEqual(Array.from(h.largestRemainderPct([1, 1, 1])), [33.4, 33.3, 33.3])
+  // Compare tenths: 33.4 + 33.3 + 33.3 is 99.99999999999999 in binary floating point.
+  const tenths = values => values.reduce((sum, n) => sum + Math.round(n * 10), 0)
+  assert.equal(tenths(h.largestRemainderPct([1, 1, 1])), 1000)
+  assert.deepEqual(Array.from(h.largestRemainderPct([0, 0])), [0, 0], 'no total means no shares, never NaN')
+  assert.deepEqual(Array.from(h.largestRemainderPct([2, 0, 2])), [50, 0, 50])
+  const h2 = harness()
+  const usage = h2.contextUsage({ uncachedInputTokens: 10000, cacheReadTokens: 10000, cacheWriteTokens: 0, outputTokens: 10000 })
+  const rendered = h2.ContextPanel({ pct: 3, usedTokens: 30000, contextWindow: 1000000, usage, cacheMisses: null, compactions: 0 })
+  // This harness keeps children on `.children` (as an array), not `.props.children`.
+  const cells = descendants(rendered, node => node.type === 'td' && typeof node.children?.[0] === 'string' && /^\d+(\.\d)?%$/.test(node.children[0]))
+  const pct = cells.map(node => Number(node.children[0].replace('%', '')))
+  assert.equal(pct.length, 3)
+  assert.equal(tenths(pct), 1000, 'the column the user adds up must total 100')
+  pct.forEach(value => assert.ok(Math.abs(value - 100 / 3) <= 0.1, 'no row moves more than a tenth from its exact share'))
+  h2.unmount()
   h.unmount()
 })
 

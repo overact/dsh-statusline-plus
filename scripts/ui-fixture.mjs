@@ -33,7 +33,7 @@ export async function installHostModules(page, { hostAnchor = true } = {}) {
 export async function mountFixture(page, hostOptions) {
   await page.clock.install()
   await page.setContent(`<!doctype html><html lang="en"><head><style>
-    :root{--dsw-alias-label-primary:#111;--dsw-alias-label-secondary:#555;--dsw-alias-label-tertiary:#777;--dsw-alias-bg-overlay:#fff;--dsw-alias-bg-layer-1:#fff;--dsw-alias-bg-layer-2:#fafafa;--dsw-alias-border-l1:#ddd;--dsw-alias-border-l2:#ccc;--dsw-alias-brand-primary:#4d6bfe;--dsw-alias-state-business-primary:#4d6bfe;--dsw-alias-state-success-primary:#3f9b6a;--dsw-alias-state-warn-primary:#d97706;--dsw-alias-state-warn-label:#b45309;--dsw-alias-state-error-primary:#d92d20;--dsw-alias-interactive-bg-hover:#0000000d}
+    :root{--dsw-alias-label-primary:#111;--dsw-specific-menu:#fcfdfeb3;--dsw-alias-bg-overlay:#e9ecf2;--dsw-menu-backdrop-filter:blur(40px) saturate(150%);--dsw-alias-label-secondary:#555;--dsw-alias-label-tertiary:#777;--dsw-alias-bg-overlay:#fff;--dsw-alias-bg-layer-1:#fff;--dsw-alias-bg-layer-2:#fafafa;--dsw-alias-border-l1:#ddd;--dsw-alias-border-l2:#ccc;--dsw-alias-brand-primary:#4d6bfe;--dsw-alias-state-business-primary:#4d6bfe;--dsw-alias-state-success-primary:#3f9b6a;--dsw-alias-state-warn-primary:#d97706;--dsw-alias-state-warn-label:#b45309;--dsw-alias-state-error-primary:#d92d20;--dsw-alias-interactive-bg-hover:#0000000d}
     body{font:14px sans-serif;margin:0}#shell{position:fixed;left:56px;right:8px;bottom:24px;height:340px;overflow:auto}
     #root{position:absolute;bottom:16px;left:16px;right:16px}
   </style></head><body><div id="shell"><div id="root"></div></div></body></html>`)
@@ -42,6 +42,21 @@ export async function mountFixture(page, hostOptions) {
     await page.addScriptTag({ path: join(folder, 'umd', name + '.development.js') })
   }
   await installHostModules(page, hostOptions)
+  // Cost views ask for today's cross-session total; before this mock the page had
+  // no fetch at all, which is why that request quietly resolved to nothing.
+  await page.evaluate(() => {
+    window.slpTodayCalls = 0
+    window.fetch = async url => {
+      if (String(url).indexOf('/statusline/api/today-spend') === 0) {
+        window.slpTodayCalls++
+        // Deliberately incomplete: the visible line must stay one line, so the two
+        // caveats have to live in its tooltip.
+        return { ok: true, json: async () => ({ ok: true, data: { supported: true, start: Date.now(), sessions: 5, counted: 3,
+          skipped: 1, unpriced: 1, cnyUnits: 123400000, usdUnits: 0, complete: false } }) }
+      }
+      return { ok: false, json: async () => ({ ok: false, error: 'not-found' }) }
+    }
+  })
   await page.evaluate(() => {
     window.__ModuleLoader__ = { load(spec) { window.slpComponents = spec.factory(window.slpHostModule) } }
   })
@@ -91,9 +106,9 @@ export async function mountFixture(page, hostOptions) {
 // both show in the dock (the default leaves Git pending for resource checks).
 // deepseek: the session reports a direct DeepSeek model, so the header also
 // renders the peak chip; overrides: config values set before the first paint.
-export async function mountResponsiveFixture(page, { dockData = false, deepseek = false, model = null, nativeLines = null, overrides = {}, ...hostOptions } = {}) {
+export async function mountResponsiveFixture(page, { dockData = false, deepseek = false, model = null, nativeLines = null, tokenUsage = false, wire = 2, peakRates = null, overrides = {}, ...hostOptions } = {}) {
   await mountFixture(page, hostOptions)
-  await page.evaluate(({ dockData, deepseek, model, nativeLines, overrides }) => {
+  await page.evaluate(({ dockData, deepseek, model, nativeLines, tokenUsage, wire, peakRates, overrides }) => {
     window.slpFixtureRoot.unmount()
     document.getElementById('shell').style.cssText = 'position:static;height:auto;overflow:visible'
     document.getElementById('root').style.cssText = 'position:static'
@@ -126,6 +141,17 @@ export async function mountResponsiveFixture(page, { dockData = false, deepseek 
       close() { this.closed = true }
     }
     window.fetch = async (url, options = {}) => {
+      // The bundle checks which contract this process speaks on boot.
+      if (String(url).indexOf('/statusline/api/wire') === 0) return { ok: true, json: async () => ({ ok: true, wire }) }
+      if (String(url).indexOf('/statusline/api/provider-defaults') === 0) {
+        return { ok: true, json: async () => ({ ok: true, data: { apiKeyEnv: 'DEEPSEEK_API_KEY', baseURL: 'https://api.deepseek.com', source: 'deepseek' } }) }
+      }
+      // Today's cross-session total. The Host reads it from the logs; here it is a
+      // fixed answer so the cost panel's line is asserted, not guessed.
+      if (url === '/statusline/api/today-spend') {
+        return { json: async () => ({ ok: true, data: { supported: true, start: Date.now() - 3600000, sessions: 3, counted: 3,
+          skipped: 0, unpriced: 0, cnyUnits: 123400000, usdUnits: 0, complete: true } }) }
+      }
       if (url === '/statusline/api/git') {
         const request = { aborted: false }; activity.gitRequests.push(request)
         if (dockData) return { json: async () => ({ ok: true, data: { isRepo: true, branch: 'main', ahead: 0, behind: 0, counts: { staged: 0, unstaged: 1, untracked: 0, conflict: 0 } } }) }
@@ -153,7 +179,16 @@ export async function mountResponsiveFixture(page, { dockData = false, deepseek 
           install: { linked: false, profile: 'fixture', dir: '/fixture' }, host: '0.2.1-rc.5',
           instanceId: activity.updateInstance } }) }
       }
-      if (url === '/statusline/api/peak-schedule') return { json: async () => ({ ok: false }) }
+      if (url === '/statusline/api/peak-schedule') {
+        if (!peakRates) return { json: async () => ({ ok: false }) }
+        // A page whose numbers moved while its wording did not: the case the
+        // wording-only check cannot see.
+        const changes = peakRates === 'discount'
+          ? [{ what: 'discount', from: 0.5, to: 0.4 }]
+          : [{ what: 'deepseek-flash.peak.miss', from: 2, to: 2.5 }]
+        return { json: async () => ({ ok: true, data: { windows: [[9, 12], [14, 18]], fetchedAt: Date.now(),
+          rule: { status: 'match', checkedAt: Date.now() - 9 * 86400000, rates: { status: 'changed', changes, discount: 0.5, reason: null } } } }) }
+      }
       if (url === '/statusline/api/codex-quota') {
         // A test can hold the chip in its loading state for this long (fake clock).
         if (window.slpQuotaDelayMs) await new Promise(resolve => setTimeout(resolve, window.slpQuotaDelayMs))
@@ -220,7 +255,11 @@ export async function mountResponsiveFixture(page, { dockData = false, deepseek 
     const slots = {
       inject: (_name, setup) => setup(),
       register: (spec, component) => {
-        const entry = { id: spec.id, order: spec.order || 0, priority: spec.priority || 0, children: spec.children, component, options: { id: spec.id, order: spec.order, label: spec.label } }
+        // The Host keeps the registration spec as the entry's options, so anything a
+        // plugin declares (a dock budget, a detail line) reaches the reader. The mock
+        // used to whitelist three fields, which silently dropped the rest.
+        const options = Object.fromEntries(Object.entries(spec).filter(([key]) => key !== 'name' && key !== 'children'))
+        const entry = { id: spec.id, order: spec.order || 0, priority: spec.priority || 0, children: spec.children, component, options }
         registrations.set(spec.name, [...(registrations.get(spec.name) || []), entry])
         bump(spec.name)
         return () => { registrations.set(spec.name, (registrations.get(spec.name) || []).filter(item => item !== entry)); bump(spec.name) }
@@ -249,7 +288,10 @@ export async function mountResponsiveFixture(page, { dockData = false, deepseek 
     const sessionProps = { sessionId: 'fixture-parent', useProjection: key => key === 'contextPressure' ? { pressureTokens: 12000, contextWindow: 200000 }
       : model && key === 'modelSelection' ? { next: model }
       : deepseek && key === 'modelSelection' ? { next: { provider: 'deepseek', model: 'deepseek-chat' } }
-      : dockData && key === 'statuslineMetrics' ? settled : { steps: 0 },
+      : dockData && key === 'statuslineMetrics' ? settled
+      // Three equal thirds are the case that used to print a 99.9% column.
+      : tokenUsage && key === 'tokenUsage' ? { uncachedInputTokens: 10000, cacheReadTokens: 10000, cacheWriteTokens: 0, outputTokens: 10000 }
+      : { steps: 0 },
       useSessions: select => select({ byId: { 'fixture-parent': { cwd: '/fixture-repo' } } }) }
     function App() {
       // window.slpFixtureSession seeds the header's session; window.slpSetSession
@@ -280,7 +322,7 @@ export async function mountResponsiveFixture(page, { dockData = false, deepseek 
     }
     window.disposeResponsiveFixture = () => { window.slpFixtureRoot.unmount(); cleanups.forEach(fn => fn()) }
     window.remountResponsiveFixture()
-  }, { dockData, deepseek, model, nativeLines, overrides })
+  }, { dockData, deepseek, model, nativeLines, tokenUsage, wire, peakRates, overrides })
 }
 
 // The "no such subscription" status on its own, inside a header-sized (14px)
@@ -365,6 +407,7 @@ export async function mountModelBarFixture(page) {
       + '<button id="mq-trigger" class="mq-trigger"><span id="mq-trigger-label"></span></button>'
       + '<button id="mq-row-claude" class="mq-row"><span id="mq-row-claude-label"></span></button>'
       + '<button id="mq-row-deepseek" class="mq-row"><span id="mq-row-deepseek-label"></span></button>'
+      + '<button id="mq-row-codex" class="mq-row"><span id="mq-row-codex-label"></span></button>'
       + '<div id="mq-scroll" class="mq-scroll"></div>'
       + '</div>'
     slpComponents.publishConfig({ enabled: true, showQuota: true, modelQuotaBar: true, modelQuotaRows: true,
@@ -386,6 +429,9 @@ export async function mountModelBarFixture(page) {
       mount('mq-trigger-label', { provider: { id: 'claude', name: 'Claude' }, model: { id: 'claude-opus-4-5', name: 'Claude Opus 4.5' }, placement: 'trigger', selected: true }),
       mount('mq-row-claude-label', { provider: { id: 'claude', name: 'Claude' }, model: { id: 'claude-opus-4-5', name: 'Claude Opus 4.5' }, placement: 'option', selected: false }),
       mount('mq-row-deepseek-label', { provider: { id: 'deepseek-account', name: 'DeepSeek' }, model: { id: 'deepseek-v4', name: 'DeepSeek V4' }, placement: 'option', selected: false }),
+      // No route answers for Codex, so this row is the failed-read case: the
+      // subscription is known and the reading never arrives.
+      mount('mq-row-codex-label', { provider: { id: 'codex', name: 'Codex' }, model: { id: 'gpt-5-codex', name: 'GPT-5 Codex' }, placement: 'option', selected: false }),
     ]
     // The Host highlights model rows from onMouseMove. A scroll moves a new row
     // under a stationary pointer without firing it, so this fixture reproduces

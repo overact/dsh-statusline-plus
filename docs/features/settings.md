@@ -67,6 +67,25 @@ so scope that hook by `uid`, never by object identity.
 3. Add it to a pool-clearing key list if it changes a request's result.
 4. Add the control, locale strings and a row in the root README's settings table.
 
+## Filling a provider from DSH
+
+A user who configured a provider on DSH's own Models page has already told the Host its
+base URL and which credential holds its key. "Fill from DSH" reads that instead of
+asking for it twice.
+
+`POST /statusline/api/provider-defaults` answers with `{ apiKeyEnv, baseURL, source }`
+for one route, read through `settings.describe()`:
+
+- A `llm-pi-ai` section contributes `providers[route].{baseURL, apiKeyEnv}`.
+- The DeepSeek row answers only for DeepSeek's own route ids.
+- A base URL is reduced to its origin: the configured DeepSeek URL is the
+  Anthropic-compatible `/anthropic` endpoint, which answers no balance call.
+- An unknown route answers `no-settings`. The plugin never fills a form from another
+  provider's settings.
+
+The button only fills the form. Nothing is written to the profile, and the user still
+saves. `lib/provider-defaults.js` is pure; the route is a thin wrapper around it.
+
 ## Tests
 
 `npm run verify -- --files lib/config.js lib/client.js --ui responsive`.

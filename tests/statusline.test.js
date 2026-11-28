@@ -1588,14 +1588,20 @@ test('oversized recent frames cannot expose stale model records from older frame
   assert.equal(text, '')
 })
 
-test('disk lookup chooses the newest committed v2 generation and refuses unknown successors', () => {
+test('disk lookup chooses the newest committed generation and refuses unknown successors', () => {
   const root = mkdtempSync(join(tmpdir(), 'slp-generation-'))
   try {
     writeFileSync(join(root, 'session.jsonl.zstd'), 'older')
     writeFileSync(join(root, 'session.v2.jsonl'), 'current')
     writeFileSync(join(root, 'session.v9.jsonl.tmp'), 'uncommitted')
     assert.equal(__test.selectSessionLog(root), join(root, 'session.v2.jsonl'))
-    writeFileSync(join(root, 'session.v3.jsonl'), 'future')
+    // The Host has been writing v4 for months; the decoder reads zstd frames of
+    // JSON lines whatever the version, and refusing it disabled the model
+    // fallback for every current session.
+    writeFileSync(join(root, 'session.v4.jsonl.zstd'), 'current generation')
+    assert.equal(__test.selectSessionLog(root), join(root, 'session.v4.jsonl.zstd'))
+    // A version far beyond anything seen is still refused rather than guessed at.
+    writeFileSync(join(root, 'session.v9.jsonl'), 'future')
     assert.throws(() => __test.selectSessionLog(root), /unsupported session format/)
   } finally { rmSync(root, { recursive: true, force: true }) }
 })

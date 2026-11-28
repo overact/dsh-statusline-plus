@@ -81,6 +81,20 @@ idle session with a populated history stays quiet instead of keeping a `0` chip 
 Changing the fold requires a `stateVersion` bump. See
 [architecture](../../architecture.md#session-projections).
 
+## The fade window belongs to the stop
+
+A child that has settled is shown faded for 5 s and removed after 15 s, so the chip reads
+as "just finished" rather than "still working". That window is measured from the child's
+**own settlement time** (`statuslineSubagents` carries it in the parent's log), not from
+when the row happened to mount.
+
+Measuring from the mount replayed the window on every session switch, remount and
+transient status flap: children that had settled hours earlier popped into the row and
+left again 15 s later, which looked like a subagent waking up on its own. A child with no
+settlement record (an external one still running) keeps mounting-time behaviour, which is
+correct — it does not fade until it settles.
+
+
 ## Tests
 
 `npm run verify -- --files lib/tool-activity.js lib/subagent-activity.js --ui subagents`.

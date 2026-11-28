@@ -55,6 +55,14 @@ Settings: `componentOrder`, `hideBottomOnNarrow`, and each component's `show*` s
   saved. The list is capped at 48 ids; when a new extension would pass it, ids of
   extensions that are not loaded give way, last saved first, so every shown item stays
   movable. Reset clears `hiddenComponents` with the other layout keys.
+- **Extension budget.** A registered item may declare `maxCells` (default 24, 0 turns it
+  off), `minColumns` and `detail`. The row applies them, because only the row knows how
+  much room is left: `maxCells` caps the wrapper width in `ch` with a faded right edge,
+  `minColumns` takes the item out of flow (`data-budget="hidden"`) when the dock cannot
+  give it that many digit-widths, and `detail` becomes the item's tooltip. One column is
+  the measured advance of a digit in the row's own font, not a fixed pixel guess. The
+  measurement reads the dock's width, never the row's, so hiding an item cannot change
+  the measurement that hid it.
 - **Extensions.** Other plugins register into the child slot `statusline-plus.dock.item`
   ([guide](../../extending/README.md)). `useDockExtensions` follows the slot through
   `subscribe`/`getVersion` and reads winners from `entriesOfSlot` only when the slot
@@ -73,6 +81,15 @@ Settings: `componentOrder`, `hideBottomOnNarrow`, and each component's `show*` s
   function runs outside the Host's entry guard, so `dockExtensionsOf` catches it and
   falls back to the id.
   On a Host without those slot methods no child slot is declared and only built-ins show.
+- **Hover peek.** The chips that open a details panel (context, cost, subagents, tools)
+  carry their headline in `data-peek`, not in a `title`: a styled, instantly visible
+  line above the chip, with no layout change and no panel. The same sentence is the
+  chip's accessible name. A native `title` would draw the browser's own tooltip a
+  second later on top of it, so these triggers do not have one. The peek is suppressed
+  while the chip's panel is open (the panel says more) and while a drag is running, and
+  it is not rendered at all without a hover-capable pointer — touch users get the panel
+  from the same tap. The Git chip keeps its native `title`: its ≤480px rule clips the
+  trigger, which would cut a CSS peek.
 - **Text colour.** The row matches the Host's own dock stat (`ContextMeter`): plain
   text is `--dsw-alias-label-tertiary`, and a trigger turns `--dsw-alias-label-secondary`
   on hover or while its panel is open. Coloured readings (Git counts, context and cost
@@ -112,6 +129,29 @@ needing a new projection also needs a sample there.
    boolean schema follow from it. Add the key to `RESET_KEYS`.
 3. Add a preview sample and locale strings.
 4. Add a page in this folder and a row in [the index](../../README.md).
+
+## One floating surface
+
+Every popover here — the hover peek, a details panel, the reset drawer — is painted
+from three variables declared on `.slp-root`:
+
+```
+--slp-surface        var(--dsw-specific-menu, var(--dsw-alias-bg-overlay))
+--slp-surface-blur   var(--dsw-menu-backdrop-filter, none)
+--slp-surface-shadow var(--dsw-elevation-prominent, 0 4px 12px rgba(0,0,0,.08))
+```
+
+`--dsw-alias-bg-overlay` is the **neutral bluish overlay scale** (`#e9ecf2` in the light
+theme), not a popover surface; the Host paints its own menus with
+`--dsw-specific-menu` (`rgba(248,249,250,.94)`) plus a 40px backdrop blur and
+`--dsw-elevation-prominent`. Using the overlay token made a tooltip read as a blue-grey
+card over a white composer. The variables chain to the Host tokens so a surface rendered
+outside `.slp-root` (a portal, a test mount) still resolves the same material.
+
+The UI fixture used to set both tokens to the same white, which hid the difference; it
+now carries the real values and `verify-ui --panel cost` asserts the peek is painted with
+the menu surface and has a backdrop.
+
 
 ## Tests
 

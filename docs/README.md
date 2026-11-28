@@ -23,6 +23,7 @@ record what they cannot show, so correct a page in the same change when it goes 
 | Cost estimate, rate cards | [features/bottom-bar/cost.md](features/bottom-bar/cost.md) |
 | Subagent and tool activity | [features/bottom-bar/activity.md](features/bottom-bar/activity.md) |
 | Settings page, saving, validation, reset | [features/settings.md](features/settings.md) |
+| The health banner: wire mismatch, a slot entry that threw | [features/health.md](features/health.md) |
 | UI language, locale dictionaries, live switch | [features/i18n.md](features/i18n.md) |
 | Update button and in-place install | [features/self-update.md](features/self-update.md) |
 | Reload, restart and DSH update button | [features/restart.md](features/restart.md) |

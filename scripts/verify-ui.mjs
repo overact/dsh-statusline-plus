@@ -164,6 +164,15 @@ async function verifyModelBar(page, folder) {
   }, { x, y }, { timeout: 2000 })
   const after = await page.locator('#mq-scroll [data-active="true"]').getAttribute('data-scroll-row')
   if (after === before) throw new Error('The active row did not follow the scroll under the pointer')
+  // A known subscription whose read failed must not look like a model with no
+  // quota source at all: the rail turns into hatching and the tooltip says why.
+  await page.waitForFunction(() => document.querySelector('#mq-row-codex')?.getAttribute('data-slp-model-rail') === 'failed', null, { timeout: 4000 })
+  const failedRail = await page.locator('#mq-row-codex').evaluate(node => getComputedStyle(node).backgroundImage)
+  if (!/repeating-linear-gradient/.test(failedRail)) throw new Error('A failed read did not paint the unknown rail: ' + failedRail)
+  // The label renders inside the mount point; the tooltip is on its own span.
+  const failedTip = await page.locator('#mq-row-codex .slp-mq').getAttribute('title')
+  if (!/Quota read failed/.test(failedTip || '')) throw new Error('A failed read has no tooltip: ' + failedTip)
+  if (!/not found/.test(failedTip || '')) throw new Error('The failed-rail tooltip does not name the reason: ' + failedTip)
   await page.mouse.move(0, 0)
   const screenshot = join(folder, 'modelbar.png')
   await page.screenshot({ path: screenshot, clip: { x: 0, y: 0, width: 380, height: 260 } })
@@ -171,12 +180,45 @@ async function verifyModelBar(page, folder) {
   await page.evaluate(() => window.setComposerStarted(true))
   await page.waitForFunction(() => !getComputedStyle(document.querySelector('#mq-trigger')).backgroundImage.includes('linear-gradient'))
   if (!(await page.locator('#mq-row-claude').evaluate(gradient)).includes('linear-gradient')) throw new Error('Starting a conversation removed the picker rows')
-  return { panel: 'modelbar', rail: '3px', hover: 'kept', balance: '¥51.43', started: 'button cleared, rows kept', scroll: 'active row follows the wheel', screenshot: relative(root, screenshot) }
+  return { panel: 'modelbar', rail: '3px', hover: 'kept', balance: '¥51.43', failed: 'hatched rail with reason', started: 'button cleared, rows kept', scroll: 'active row follows the wheel', screenshot: relative(root, screenshot) }
 }
 
 async function verifyCost(page, folder, live) {
   const trigger = page.locator('.slp-cost-trigger').first()
-  await trigger.waitFor(); await trigger.click()
+  await trigger.waitFor()
+  // The detail a click used to be needed for is a hover peek: no native tooltip
+  // competing with it, and no layout change when it appears.
+  if (await trigger.getAttribute('title')) throw new Error('A native tooltip would cover the peek')
+  if (await trigger.getAttribute('data-peek') === null) throw new Error('The cost chip declares no peek')
+  const boxBefore = await trigger.boundingBox()
+  await trigger.hover()
+  // `display:block` is the shown state: the peek occupies no space until then.
+  await page.waitForFunction(() => getComputedStyle(document.querySelector('.slp-cost-trigger'), '::after').display === 'block', null, { timeout: 3000 })
+  const peekText = await trigger.evaluate(node => getComputedStyle(node, '::after').content)
+  // A popover must be painted with the Host's menu surface, not the neutral bluish
+  // overlay scale: the fixture gives the two tokens different colours so picking the
+  // wrong one is visible here instead of only on a real theme.
+  const surfaces = await trigger.evaluate(node => {
+    const peek = getComputedStyle(node, '::after')
+    const root = getComputedStyle(node.closest('.slp-root') || document.documentElement)
+    return { painted: peek.backgroundColor, blur: peek.backdropFilter,
+      menu: getComputedStyle(document.documentElement).getPropertyValue('--dsw-specific-menu').trim(),
+      overlay: getComputedStyle(document.documentElement).getPropertyValue('--dsw-alias-bg-overlay').trim() }
+  })
+  if (!/blur/.test(surfaces.blur)) throw new Error('The peek has no menu backdrop: ' + surfaces.blur)
+  if (surfaces.painted === surfaces.overlay) throw new Error('The peek is painted with the overlay scale, not the menu surface: ' + surfaces.painted)
+  if (await trigger.evaluate(node => getComputedStyle(node, '::after').display !== 'block')) throw new Error('The peek disappeared before it could be read')
+  if (!/API reference cost/.test(peekText)) throw new Error('The peek does not carry the chip detail: ' + peekText)
+  const boxAfter = await trigger.boundingBox()
+  if (Math.abs(boxAfter.width - boxBefore.width) > 0.5 || Math.abs(boxAfter.height - boxBefore.height) > 0.5) throw new Error('Showing the peek changed the chip layout')
+  // The peek is wider than the chip and grows leftwards from the chip's right edge,
+  // so frame that side instead of the chip's own box.
+  const peekShot = join(folder, 'cost-peek.png')
+  const right = boxAfter.x + boxAfter.width
+  await page.screenshot({ path: peekShot, animations: 'disabled',
+    clip: { x: Math.max(0, right - 352), y: Math.max(0, boxAfter.y - 64), width: Math.min(360, right), height: boxAfter.height + 72 } })
+  await page.mouse.move(0, 0)
+  await trigger.click()
   const panel = page.locator('.slp-cost-panel').first()
   await panel.waitFor()
   if (!/\d\.\d{2}/.test(await trigger.textContent())) throw new Error('Missing two-decimal reference amount')
@@ -187,6 +229,30 @@ async function verifyCost(page, folder, live) {
   if (tokens.length < 3 || tokens.some(text => !/^\d+(?:\.\d+)?[KM]$/.test(text))) throw new Error('Missing compact token counts; an older Host may need reloading')
   const proportions = await panel.locator('.slp-cost-bar').evaluateAll(bars => bars.map(bar => [...bar.children].reduce((sum, child) => sum + parseFloat(child.style.width), 0)))
   if (proportions.some(total => total !== 0 && Math.abs(total - 100) > 0.01)) throw new Error('Cost bar proportions do not sum to 100%')
+  // The day's total is a separate, Host-side read: it must name its session
+  // count, because a number nobody can attribute is worse than no number.
+  const todayLine = panel.locator('.slp-cost-today')
+  let todayText = null
+  try {
+    // A live Host reads today's logs on first request; give it room to answer.
+    await todayLine.waitFor({ timeout: live ? 12000 : 4000 })
+    todayText = await todayLine.textContent()
+  } catch (_) {
+    // A live Host with nothing priced today has no line to show, which is the
+    // documented behaviour rather than a failure.
+    if (!live) throw new Error('The cost panel never showed today\'s total')
+  }
+  if (todayText !== null) {
+    if (!/[¥$][\d.]+ · \d+ sessions/.test(todayText)) throw new Error('The today line does not name its total and sessions: ' + todayText)
+    // One line: the counts stay, the prose moves to the tooltip.
+    if (/incomplete|could not|unpriced requests/i.test(todayText)) throw new Error('The today line carries a sentence instead of a count: ' + todayText)
+    if (!live) {
+      if (!/Today ¥1\.23 · 3 sessions · 1 unpriced/.test(todayText)) throw new Error('The fixture today line changed: ' + todayText)
+      const detail = await todayLine.getAttribute('title')
+      if (!/1 unread sessions/.test(detail || '')) throw new Error('The unread count is not in the tooltip: ' + JSON.stringify(detail))
+      if (!/lower bound/.test(detail || '')) throw new Error('The tooltip does not say the figure is a lower bound: ' + detail)
+    }
+  }
   if (!live) {
     if (tokens.join('|') !== '12K|1M|0.2K') throw new Error('Token formatting differs from settled counts')
     const text = (await rows.allInnerTexts()).join(' ')
@@ -197,7 +263,7 @@ async function verifyCost(page, folder, live) {
   const screenshot = join(folder, 'cost.png')
   await panel.screenshot({ path: screenshot, animations: 'disabled' })
   await trigger.click()
-  return { panel: 'cost', ...size, rows: rowCount, screenshot: relative(root, screenshot) }
+  return { panel: 'cost', ...size, rows: rowCount, today: todayText === null ? 'no figure' : todayText.trim(), peek: 'in place, no shift', screenshot: relative(root, screenshot) }
 }
 
 async function verifySubagents(page, folder, live, count) {
@@ -568,6 +634,11 @@ async function verifyResponsive(page, folder) {
   await assertPanelVisible(page, page.locator('.slp-panel').first())
   await page.locator('.slp-panel .slp-link-btn').first().click()
   await quotaCount(2)
+  // A failure that names a cause also says what to do about it.
+  const adviceNode = page.locator('.slp-panel-advice').first()
+  await adviceNode.waitFor({ timeout: 4000 })
+  const advice = await adviceNode.textContent()
+  if (!advice || advice.trim().length < 10) throw new Error('The failed quota panel carries no advice: ' + JSON.stringify(advice))
   await page.locator('#fixture-header .slp-err').waitFor()
   for (const [index, delay] of [15000, 30000, 60000].entries()) {
     await page.clock.runFor(delay); await quotaCount(index + 3)
@@ -979,6 +1050,42 @@ async function verifyDockExtension(folder, errors) {
     const screenshot = join(folder, 'dock-extension.png')
     const area = await dock.boundingBox()
     await page.screenshot({ path: screenshot, animations: 'disabled', clip: { x: Math.max(0, area.x - 24), y: Math.max(0, area.y - 8), width: area.width + 48, height: area.height + 24 } })
+    // A declared budget is the row's to enforce: the cap clips the item, and a
+    // minimum column count takes it out of flow when the row cannot give it room.
+    await page.evaluate(() => {
+      window.slpExt.tight = window.slpExt.add({ id: 'demo.tight', order: 80, label: 'Tight', maxCells: 6, detail: 'Budget detail' },
+        () => window.React.createElement('span', { className: 'demo-tight' }, 'a far too long extension reading'))
+      window.slpExt.narrow = window.slpExt.add({ id: 'demo.narrow', order: 81, label: 'Narrow', minColumns: 400 },
+        () => window.React.createElement('span', { className: 'demo-narrow' }, 'wide only'))
+      // A minimum the row can meet stays in place. A second id rather than a
+      // re-declaration of the same one: the fixture memoizes a child entry, so
+      // only a fresh registration is a faithful test of the threshold.
+      window.slpExt.fits = window.slpExt.add({ id: 'demo.fits', order: 82, label: 'Fits', minColumns: 4 },
+        () => window.React.createElement('span', { className: 'demo-fits' }, 'fits'))
+    })
+    const tight = dock.locator('[data-component="demo.tight"]')
+    await tight.locator('.demo-tight').waitFor()
+    if (await tight.getAttribute('title') !== 'Budget detail') throw new Error('The declared detail did not become the item tooltip')
+    const cap = await tight.evaluate(node => {
+      const style = getComputedStyle(node), canvas = document.createElement('canvas').getContext('2d')
+      canvas.font = style.fontStyle + ' ' + style.fontWeight + ' ' + style.fontSize + ' ' + style.fontFamily
+      return { width: node.getBoundingClientRect().width, cell: canvas.measureText('0').width }
+    })
+    if (cap.width > cap.cell * 6 + 2) throw new Error('maxCells did not cap the item: ' + cap.width + 'px for ' + cap.cell + 'px cells')
+    await page.waitForFunction(() => {
+      const node = document.querySelector('#fixture-dock [data-component="demo.narrow"]')
+      return node && node.getAttribute('data-budget') === 'hidden' && !node.getClientRects().length
+    }, null, { timeout: 4000 })
+    // The met minimum is not budget-hidden. Whether it still has a layout box is
+    // the two-line budget's business (a long row can mark it data-overflow), so
+    // that is not this check's assertion.
+    await page.waitForFunction(() => {
+      const node = document.querySelector('#fixture-dock [data-component="demo.fits"]')
+      return node && node.getAttribute('data-min-columns') === '4' && node.getAttribute('data-budget') !== 'hidden'
+    }, null, { timeout: 4000 })
+    await page.evaluate(() => { window.slpExt.tight(); window.slpExt.narrow(); window.slpExt.fits() })
+    await page.waitForFunction(() => !document.querySelector('#fixture-dock [data-component="demo.tight"], #fixture-dock [data-component="demo.narrow"], #fixture-dock [data-component="demo.fits"]'))
+
     // Late registrations appear; unregistered items leave the row and settings.
     await page.evaluate(() => { window.slpExt.late = window.slpExt.add({ id: 'demo.late', order: 70, label: 'Late' }, () => window.React.createElement('span', { className: 'demo-late' }, 'late')) })
     await dock.locator('.demo-late').waitFor()
@@ -986,7 +1093,117 @@ async function verifyDockExtension(folder, errors) {
     await page.waitForFunction(() => !document.querySelector('#fixture-dock .demo-late, #fixture-dock .demo-ci, .slp-order-item[data-component="demo.late"], .slp-order-item[data-component="demo.ci"]'))
     if (await shown() !== 'git,tps') throw new Error('Unregistered extensions left the dock as: ' + await shown())
     await page.evaluate(() => { window.slpExt.crash(); window.slpExt.empty(); window.disposeResponsiveFixture() })
-    return { panel: 'dock-extension', lifecycle: 'child slot render/session props/crash retired/crashed replacement restores built-in/empty hidden/settings tag/preview/replace built-in/hide switch/drag save/late add/unregister passed', screenshot: relative(root, screenshot) }
+    return { panel: 'dock-extension', lifecycle: 'child slot render/session props/crash retired/crashed replacement restores built-in/empty hidden/settings tag/preview/replace built-in/hide switch/drag save/budget cap/budget minimum/late add/unregister passed', screenshot: relative(root, screenshot) }
+  } finally { await page.close() }
+}
+
+// The context split is an accounting table: what the reader adds up must total
+// 100%. Three equal thirds are the case that used to print 99.9%.
+// A page whose prices moved while its wording did not. The wording check calls that
+// "match"; the numeric one must speak up, because the estimate would keep using the
+// old card.
+async function verifyPeakRates(folder) {
+  const page = await browser.newPage({ viewport: { width: 900, height: 1000 } })
+  page.setDefaultTimeout(8000)
+  try {
+    await mountResponsiveFixture(page, { peakRates: 'price' })
+    const dot = page.locator('#fixture-footer .slp-peak-dot-btn')
+    await dot.waitFor()
+    await dot.click()
+    const alert = page.locator('.slp-peak-alert[data-alert="rates"]').first()
+    await alert.waitFor({ timeout: 4000 })
+    const text = await alert.textContent()
+    if (!/2\.5/.test(text) || !/rate card/.test(text)) throw new Error('The rate alert does not name the move: ' + text)
+    // A discount change keeps every leg halving, so only the discount reading sees it.
+    const stale = page.locator('.slp-peak-source', { hasText: '9 days' }).first()
+    if (!await stale.count()) throw new Error('An unchecked rate card shows no age')
+    // No artifact: this popover opens upward past the fixture's viewport, so an
+    // element screenshot would show a clipped sliver. `panel-width` already
+    // captures the peak panel; here the assertions are the point.
+    return { panel: 'peak-rates', alert: text.slice(0, 80), stale: 'named', discount: 'covered by the unit test' }
+  } finally { await page.close() }
+}
+
+// A provider already configured on DSH's Models page: the settings card offers to
+// read that connection instead of asking for it twice. The route is mocked, so this
+// asserts the wiring and that the form is filled, not DSH's own settings.
+async function verifyProviderFill(folder) {
+  const page = await browser.newPage({ viewport: { width: 900, height: 1200 } })
+  page.setDefaultTimeout(8000)
+  try {
+    await mountResponsiveFixture(page, { overrides: { providers: [{ id: 'deepseek', label: 'DeepSeek', enabled: true }] } })
+    // The settings section is mounted more than once by the fixture; only the one
+    // the page shows is clickable.
+    const card = page.locator('details.slp-provider-card').filter({ has: page.locator('button[name="fillFromDsh"]') }).first()
+    await card.waitFor()
+    // A provider card is a collapsed <details>: its fields are not clickable until
+    // it is open, which is also what a user does first.
+    await card.evaluate(node => { node.open = true })
+    const button = card.locator('button[name="fillFromDsh"]')
+    await button.click({ timeout: 4000 })
+    await page.waitForFunction(() => {
+      const field = document.querySelector('details.slp-provider-card input[type="text"], details.slp-provider-card input:not([type])')
+      return field && /DEEPSEEK_API_KEY/.test(field.value)
+    }, null, { timeout: 4000 })
+    const note = await card.locator('.slp-msg').first().textContent()
+    if (!/Filled/.test(note)) throw new Error('The fill result is not reported: ' + note)
+    const screenshot = join(folder, 'settings-fill.png')
+    await card.screenshot({ path: screenshot, animations: 'disabled' })
+    return { panel: 'provider-fill', filled: 'DEEPSEEK_API_KEY', note, screenshot: relative(root, screenshot) }
+  } finally { await page.close() }
+}
+
+// The bundle checks the host's interface version on boot. A mismatch is the one
+// state that explains "everything renders less after an update", so it must be
+// visible in Settings instead of only in the console.
+async function verifyHealth(folder) {
+  const page = await browser.newPage({ viewport: { width: 900, height: 900 } })
+  page.setDefaultTimeout(8000)
+  try {
+    await mountResponsiveFixture(page, { wire: 999 })
+    const banner = page.locator('.slp-health')
+    await banner.waitFor()
+    const text = await banner.textContent()
+    if (!/999/.test(text)) throw new Error('The health banner does not name the host wire version: ' + text)
+    if (!/interface version/.test(text)) throw new Error('The health banner does not explain the mismatch: ' + text)
+    const screenshot = join(folder, 'health-mismatch.png')
+    await banner.screenshot({ path: screenshot, animations: 'disabled' })
+    // Agreeing halves show nothing at all.
+    const clean = await browser.newPage({ viewport: { width: 900, height: 900 } })
+    try {
+      await mountResponsiveFixture(clean, { wire: 2 })
+      await clean.waitForTimeout(400)
+      if (await clean.locator('.slp-health').count()) throw new Error('A matching wire version still shows a health banner')
+    } finally { await clean.close() }
+    return { panel: 'health', mismatch: 'named with both versions', match: 'no banner', screenshot: relative(root, screenshot) }
+  } finally { await page.close() }
+}
+
+async function verifyContextSplit(folder) {
+  const page = await browser.newPage({ viewport: { width: 768, height: 900 } })
+  page.setDefaultTimeout(8000)
+  try {
+    await mountResponsiveFixture(page, { dockData: true, tokenUsage: true,
+      overrides: { showContext: true, showGit: false, showTps: false } })
+    const trigger = page.locator('#fixture-dock .slp-context-trigger')
+    await trigger.waitFor()
+    await trigger.click()
+    const panel = page.locator('#fixture-dock .slp-context-panel')
+    await panel.waitFor()
+    const cells = await panel.locator('tbody tr td:last-child').allTextContents()
+    const values = cells.map(text => Number(String(text).replace('%', '')))
+    if (values.length < 3) throw new Error('The context breakdown has no percentage column: ' + cells.join(' '))
+    if (values.some(value => !Number.isFinite(value))) throw new Error('A percentage cell is not a number: ' + cells.join(' '))
+    const tenths = values.reduce((sum, value) => sum + Math.round(value * 10), 0)
+    if (tenths !== 1000) throw new Error('The context split does not add up to 100%: ' + cells.join(' + ') + ' = ' + tenths / 10 + '%')
+    const exact = 100 / values.length
+    values.forEach(value => {
+      if (Math.abs(value - exact) > 0.1) throw new Error('A row moved more than a tenth from its exact share: ' + cells.join(' '))
+    })
+    // No screenshot: the panel hangs above a dock the fixture page places off the
+    // top of the viewport, so any capture frames the wrong strip. The columns
+    // themselves are the assertion.
+    return { panel: 'context-split', cells: values.length, total: '100%', rows: cells.join(' + ') }
   } finally { await page.close() }
 }
 
@@ -1033,6 +1250,10 @@ try {
   if (!opts.live && ['all', 'mobile'].includes(opts.panel)) checks.push(await verifyMobile(page, folder))
   if (!opts.live && ['all', 'restart'].includes(opts.panel)) checks.push(await verifyRestart(page, folder))
   if (!opts.live && ['all', 'reset'].includes(opts.panel)) checks.push(await verifyReset(page, folder))
+  if (!opts.live && ['all', 'cost'].includes(opts.panel)) checks.push(await verifyContextSplit(folder))
+  if (!opts.live && ['all', 'responsive'].includes(opts.panel)) checks.push(await verifyHealth(folder))
+  if (!opts.live && ['all', 'responsive'].includes(opts.panel)) checks.push(await verifyProviderFill(folder))
+  if (!opts.live && ['all', 'responsive'].includes(opts.panel)) checks.push(await verifyPeakRates(folder))
   if (errors.length || !opts.live && network) throw new Error(errors.join('; ') || 'Offline fixture made a network request')
   if (opts.live && await page.evaluate(() => window.slpModules.entries.state.getSnapshot().failures.length)) throw new Error('Native module loader reported failures')
   const report = { ok: true, mode: opts.live ? 'live' : 'fixture', durationMs: Math.round(performance.now() - started), checks, errors: 0 }
