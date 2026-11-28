@@ -135,13 +135,14 @@ test('Both maintained calendars suppress weekday public holidays, including the 
 
 test('Unknown calendar years never certify a weekday peak or fabricate its next transition', () => {
   for (const [time, expected] of [
-    ['2027-01-01T08:59:59', false],
-    ['2027-01-01T09:00:00', null],
-    ['2027-01-01T11:59:59', null],
-    ['2027-01-01T12:00:00', false],
-    ['2027-01-01T14:00:00', null],
-    ['2027-01-01T18:00:00', false],
-    ['2027-01-02T10:00:00', false],
+    // 2029 is past every published calendar, including the built-in floor.
+    ['2029-01-01T08:59:59', false],
+    ['2029-01-01T09:00:00', null],
+    ['2029-01-01T11:59:59', null],
+    ['2029-01-01T12:00:00', false],
+    ['2029-01-01T14:00:00', null],
+    ['2029-01-01T18:00:00', false],
+    ['2029-01-06T10:00:00', false],
   ]) {
     const result = status(time)
     assert.equal(result.isPeak, expected, time)
@@ -152,11 +153,13 @@ test('Unknown calendar years never certify a weekday peak or fabricate its next 
 })
 
 test('A known year does not manufacture a countdown across an uncovered year boundary', () => {
-  const peak = status('2026-12-31T17:00:00')
+  // The built-in floor now runs through 2027, so the first uncovered boundary is
+  // the one into 2028 — that is where a countdown must stop rather than guess.
+  const peak = status('2027-12-31T17:00:00')
   assert.equal(peak.isPeak, true)
-  assert.equal(peak.nextSwitchAt, beijing('2026-12-31T18:00:00'))
+  assert.equal(peak.nextSwitchAt, beijing('2027-12-31T18:00:00'))
   assert.equal(peak.remainingSec, 3600)
-  const offPeak = status('2026-12-31T18:00:00')
+  const offPeak = status('2027-12-31T18:00:00')
   assert.equal(offPeak.calendarKnown, true)
   assert.equal(offPeak.isPeak, false)
   assert.equal(offPeak.nextSwitchAt, null)

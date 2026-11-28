@@ -242,7 +242,8 @@ test('a request is priced at the tariff in effect at its first stream record', (
   assert.deepEqual(cny(quote({ observedAt: offPeakEnd })), 5.02)
   // Dispatched in off-peak, first stream record in peak: the whole request is peak.
   assert.deepEqual(cny(quote({ observedAt: beijing('2026-10-08T14:00:01') })), 10.04)
-  assert.equal(quote({ observedAt: beijing('2027-01-04T10:00:00') }).reason, 'tariff-window-unknown')
+  // Past every published year, including the built-in floor: no tariff is invented.
+  assert.equal(quote({ observedAt: beijing('2029-01-01T10:00:00') }).reason, 'tariff-window-unknown')
   const f = fold(); f.request(1, 1, route, peakStart); f.message(1, 1, usage, route, offPeakEnd)
   assert.equal(f.view.session.amountCny, 5.02)
   assert.equal(f.view.session.amountCny, 5.02)

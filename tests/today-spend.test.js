@@ -107,6 +107,27 @@ test('a retried step is charged once, and a retry that produced no message still
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
 
+test('a session that ran past midnight does not carry yesterday into today', async () => {
+  const now = Date.now()
+  const start = startOfLocalDay(now)
+  const root = sessionsRoot([{ id: ID.a }])
+  try {
+    const result = await todaySpend({
+      now, root,
+      query: queryOf([{ id: ID.a, value: { inheritedEventCount: 0, events: [
+        // Yesterday's request: same log (the file was touched today), not today's spend.
+        HEADER(start - 3600000),
+        MESSAGE(1, 1, { time: start - 3600000 }),
+        // A request that began before midnight and settled after it: the event
+        // carries the settlement time, so it belongs to today.
+        MESSAGE(2, 1, { time: start + 60000 }),
+      ] } }]),
+    })
+    assert.equal(result.cnyUnits, 500000, 'one request today, not two')
+    assert.equal(result.counted, 1)
+  } finally { rmSync(root, { recursive: true, force: true }) }
+})
+
 test('a log the Host cannot replay is counted as uncounted, never as free', async () => {
   const now = Date.now()
   const root = sessionsRoot([{ id: ID.torn }])

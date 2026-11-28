@@ -33,7 +33,9 @@ weekend, so those days only earn a note in the panel.
 1. **Windows** are hard-coded. The official wording is too loose to parse safely.
 2. **Calendar**: holiday-cn for this year and next, jsDelivr first because it is reachable
    from mainland China, then GitHub raw. A published fetched year wins. Otherwise the
-   built-in 2025-2026 calendar applies.
+   built-in 2025-2027 calendar applies, present in both halves: `PEAK_HOLIDAYS` /
+   `PEAK_MAKEUP_DAYS` in the browser and `BUILTIN_HOLIDAYS` in the host, because a request
+   is priced at its own instant and must still get a tariff with no network.
 3. **Official pricing page**: only a change detector. If the rule sentence differs or is
    gone, the indicator warns that rules may have changed next to its official link, and
    the schedule still applies.
@@ -45,6 +47,12 @@ loads once per page and again after 6 h. Any failure falls back to the built-in 
 `days: []` from holiday-cn means "not published yet", never "no holidays". A published
 year is never replaced by an unpublished one, and a list with under 20 off days is
 treated as a broken file.
+
+The built-in floor is extended once the State Council publishes a year — not before, since
+an invented holiday would become a wrong tariff for every request in it. Adding a year
+means three edits (host ranges, browser ranges with names, make-up days) and moving the
+tests that assert an *uncovered* year to one further out; they exist precisely so this
+extension cannot silently turn "unknown" into a confident wrong answer.
 
 ## Pitfalls
 

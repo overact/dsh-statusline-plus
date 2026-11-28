@@ -35,7 +35,12 @@ Resolution order:
 1. Official card, when the vendor prices the model.
 2. `openrouter` reference, when the vendor publishes no card for it.
 3. `FALLBACK` for models both catalogs lack. An offline table, never an online query; each
-   entry records `kind` (`official` or `reference`), `asOf` and `url`.
+   entry records `kind` (`official` or `reference`), `asOf` and `url`. It currently holds
+   `gpt-6.1-sol`, `claude-sonnet-5-5`, `gemini-4-hydrogen` (official cards) and
+   `qwen3.8-flash-next` (OpenRouter reference), verified 2026-11-21; the bundled pi-ai
+   snapshot itself is versioned and older (1.5.2 at the time of writing), which is why the
+   fallback exists at all. Adding a model means adding one entry here with its source and
+   date — never a guess, and never editing the bundled catalog, which belongs to the Host.
 4. `RATES` for DeepSeek, by peak and off-peak tariff, in CNY.
 
 An unrecognized model stays unpriced. When the vendor lists the model with an all-zero

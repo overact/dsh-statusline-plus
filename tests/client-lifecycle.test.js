@@ -1737,7 +1737,7 @@ test('DeepSeek peak clock ticks locally, stops while hidden and cleans up on unm
 })
 
 test('footer dot shows peak state without a session, with countdown tooltip and an upward panel', () => {
-  for (const [at, tone, word] of [['2026-10-08T02:00:00Z', 'peak', /Peak · Off-peak in 02:00:00/], ['2026-10-10T02:00:00Z', 'off', /Off-peak · Peak in/], ['2027-03-03T02:00:00Z', 'unknown', /Schedule unknown/]]) {
+  for (const [at, tone, word] of [['2026-10-08T02:00:00Z', 'peak', /Peak · Off-peak in 02:00:00/], ['2026-10-10T02:00:00Z', 'off', /Off-peak · Peak in/], ['2029-03-07T02:00:00Z', 'unknown', /Schedule unknown/]]) {
     const h = harness({ wallTime: Date.parse(at) })
     h.setConfig({ ...config })
     h.renderComponent(h.PeakFooterDot)
@@ -1766,7 +1766,11 @@ test('fetched holiday calendar extends coverage, notes make-up days and flags a 
   const off = Array.from({ length: 25 }, (_, i) => '2027-02-' + String(i + 1).padStart(2, '0'))
   const schedule = { holidays: { 2027: { year: 2027, published: true, off, work: ['2027-02-27'], names: { '2027-02-10': '春节' } } }, rule: { status: 'match' } }
   const weekday = Date.parse('2027-03-03T02:00:00Z') // Wed 10:00 Beijing
-  assert.equal(h.deepseekPeakStatus(weekday).isPeak, null, 'built-in calendar does not cover 2027')
+  // 2027 is in the built-in floor now, so a fetched copy only adds names and
+  // make-up days on top of a year that already classifies offline.
+  assert.equal(h.deepseekPeakStatus(weekday).isPeak, true, 'the built-in floor covers 2027')
+  assert.equal(h.deepseekPeakStatus(Date.parse('2027-02-08T02:00:00Z')).isPeak, false, 'Spring Festival 2027 is off-peak offline')
+  assert.equal(h.deepseekPeakStatus(Date.parse('2030-03-06T02:00:00Z')).isPeak, null, 'a year nobody published stays unknown')
   const known = h.deepseekPeakStatus(weekday, schedule)
   assert.equal(known.isPeak, true); assert.equal(known.calendarSource, 'fetched')
   assert.equal(h.deepseekPeakStatus(Date.parse('2027-02-10T02:00:00Z'), schedule).holiday, '春节')
@@ -1775,7 +1779,7 @@ test('fetched holiday calendar extends coverage, notes make-up days and flags a 
   const builtinMakeup = h.deepseekPeakStatus(Date.parse('2026-10-10T02:00:00Z'))
   assert.equal(builtinMakeup.isPeak, false); assert.equal(builtinMakeup.makeupWorkday, true)
   assert.equal(h.deepseekPeakStatus(weekday, { ...schedule, rule: { status: 'changed' } }).ruleChanged, true)
-  assert.equal(h.deepseekPeakStatus(weekday, { ...schedule, holidays: { 2027: { year: 2027, published: false, off: [] } } }).isPeak, null, 'unpublished stays unknown')
+  assert.equal(h.deepseekPeakStatus(Date.parse('2030-03-06T02:00:00Z'), { ...schedule, holidays: {} }).isPeak, null, 'unpublished stays unknown')
   // the dot loads the schedule and raises its alert badge
   h.setConfig({ ...config })
   h.renderComponent(h.PeakFooterDot)
