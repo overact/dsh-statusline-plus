@@ -134,13 +134,29 @@ test('a model missing from both catalogs falls back to a labelled snapshot entry
   assert.equal(real.resolve({ provider: 'llamacpp', model: 'qwen3.8-flash-next' }).source, 'openrouter')
 })
 
+test('the offline fallback only holds models the host catalogs do not price', async () => {
+  // The contract: FALLBACK is for gaps, not a second copy. When the bundled pi-ai
+  // snapshot learns a model, its entry here becomes dead weight that can silently
+  // disagree with the host's price, so this test fails until it is removed.
+  const { loadPricingCatalog, FALLBACK } = await import('../lib/model-pricing.js')
+  const live = await loadPricingCatalog()
+  if (!live.info.version) return // no bundled catalog in this environment: nothing to compare
+  for (const model of Object.keys(FALLBACK)) {
+    const resolved = live.resolve({ provider: 'unknown', model })
+    assert.ok(resolved, model + ' is not priced by anything')
+    assert.ok(['fallback', 'fallback-reference'].includes(resolved.source),
+      model + ' now has a ' + resolved.source + ' card; remove it from FALLBACK')
+  }
+})
+
 test('native prices precede snapshots and subscriptions/custom routes use exact public model identity', () => {
   const c = catalog()
   assert.equal(c.resolve({ provider: 'codex', model: 'gpt-6.1-sol' }).cost.input, 3)
   assert.equal(c.resolve({ provider: 'custom', model: 'openai/gpt-6-sol' }).source, 'official')
   assert.equal(c.resolve({ provider: 'codex', model: 'gpt-6-sol-fast' }), null)
   assert.equal(c.resolve({ provider: 'custom', model: 'constructor' }), null)
-  assert.equal(createPricingCatalog().resolve({ provider: 'codex', model: 'gpt-6.1-sol' }).source, 'fallback')
+  // A model the bundled catalogs lack still gets its offline card.
+  assert.equal(createPricingCatalog().resolve({ provider: 'codex', model: 'gemini-4-hydrogen' }).source, 'fallback')
   assert.equal(createPricingCatalog([{ provider: 'zai', model: 'glm-5.3-highspeed', cost: { input: 0, output: 0 } }]).resolve({ provider: 'zai', model: 'glm-5.3-highspeed' }), null)
 })
 
@@ -154,7 +170,7 @@ test('gateway namespaces do not change the model reference card or its exact ver
   for (const prefix of ['workbuddy-ai/', 'custom-gateway/', 'openai/', 'magpie/workbuddy-ai/']) {
     assert.equal(c.resolve({ provider: 'magpie-workbuddy', model: prefix + 'deepseek-v4.1-flash' }), flash)
     assert.equal(c.resolve({ provider: 'anything', model: prefix + 'gpt-6-sol' }).cost, cost)
-    assert.equal(c.resolve({ provider: 'anything', model: prefix + 'gpt-6.1-sol' }).source, 'fallback')
+    assert.equal(c.resolve({ provider: 'anything', model: prefix + 'gemini-4-hydrogen' }).source, 'fallback')
     for (const unknown of ['deepseek-v4-flash', 'deepseek-v4.1-flashlight', 'gpt-6-sol-fast', 'unknown', '']) {
       assert.equal(c.resolve({ provider: 'deepseek', model: prefix + unknown }), null)
     }

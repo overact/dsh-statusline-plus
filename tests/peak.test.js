@@ -118,11 +118,13 @@ test('Weekend make-up workdays remain off-peak instead of becoming business-day 
 })
 
 test('Both maintained calendars suppress weekday public holidays, including the long Spring Festival break', () => {
+  // The floor keeps this year and the next; 2025 has rolled off, so the cases are
+  // the two years that are still maintained.
   for (const [time, nextTime, holiday] of [
-    ['2025-01-01T10:00:00', '2025-01-02T09:00:00', '元旦'],
-    ['2025-10-06T15:00:00', '2025-10-09T09:00:00', '国庆节 / 中秋节'],
+    ['2026-01-01T10:00:00', '2026-01-05T09:00:00', '元旦'],
     ['2026-02-16T10:00:00', '2026-02-24T09:00:00', '春节'],
     ['2026-09-25T15:00:00', '2026-09-28T09:00:00', '中秋节'],
+    ['2027-02-08T10:00:00', '2027-02-15T09:00:00', '春节'],
   ]) {
     const result = status(time)
     assert.equal(result.calendarKnown, true)
