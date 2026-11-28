@@ -133,7 +133,7 @@ So the Host answers it separately, in `lib/today-spend.js`, through
 - Both id forms are tried: a session's directory is named `session-<id>`, and the Host's
   corpus keys some of them with that prefix and some without.
 
-The line reads `Today ¥1.23 · 3 sessions · 1 unpriced` and is hidden when nothing could be
+The line reads `Today ¥1.23 · 3 sessions · (1 unpriced)` and is hidden when nothing could be
 counted: a confident `¥0.00` for a day with unknown models would be a lie.
 
 It stays **one line**, and the split is deliberate: a count (`1 unpriced`) is short enough

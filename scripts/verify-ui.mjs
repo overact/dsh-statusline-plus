@@ -247,7 +247,7 @@ async function verifyCost(page, folder, live) {
     // One line: the counts stay, the prose moves to the tooltip.
     if (/incomplete|could not|unpriced requests/i.test(todayText)) throw new Error('The today line carries a sentence instead of a count: ' + todayText)
     if (!live) {
-      if (!/Today ¥1\.23 · 3 sessions · 1 unpriced/.test(todayText)) throw new Error('The fixture today line changed: ' + todayText)
+      if (!/Today ¥1\.23 · 3 sessions · \(1 unpriced\)/.test(todayText)) throw new Error('The fixture today line changed: ' + todayText)
       const detail = await todayLine.getAttribute('title')
       if (!/1 unread sessions/.test(detail || '')) throw new Error('The unread count is not in the tooltip: ' + JSON.stringify(detail))
       if (!/lower bound/.test(detail || '')) throw new Error('The tooltip does not say the figure is a lower bound: ' + detail)
